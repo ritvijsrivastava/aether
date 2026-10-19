@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import '../../core/hlc/hlc.dart';
 import '../../core/id/id_generator.dart';
 import '../../data/db/database.dart';
@@ -9,9 +11,13 @@ import '../../domain/commands/command_bus.dart';
 import '../../domain/model/models.dart';
 import '../../domain/ops/op.dart';
 import '../../domain/ops/op_store.dart';
+import '../../domain/text/page_text.dart';
+import '../../domain/text/text_selection.dart';
 import 'engine/canvas_controller.dart';
 import 'engine/scene.dart';
 import 'engine/view_state.dart';
+import 'marks/mark_layers.dart';
+import 'marks/mark_tool.dart';
 
 /// An open document: its pages on the canvas, its own undo history, and its
 /// remembered view.
@@ -19,14 +25,14 @@ import 'engine/view_state.dart';
 /// Card moves made by dragging are saved as undoable commands; undo and redo
 /// reload the page positions into the canvas. The view (pan and zoom) is saved
 /// shortly after it stops changing, and restored on the next open.
-class DocumentSession {
+class DocumentSession implements MarkSink {
   DocumentSession({
     required this.docId,
     required this.store,
     required this.db,
     required this.controller,
     required HlcClock clock,
-    required IdGenerator ids,
+    required this.ids,
     this.viewSaveDelay = const Duration(milliseconds: 600),
   }) : bus = CommandBus(store: store, clock: clock, ids: ids),
        _factory = CommandFactory(store) {
@@ -39,11 +45,16 @@ class DocumentSession {
   final OpStore store;
   final AetherDatabase db;
   final CanvasController controller;
+  final IdGenerator ids;
   final CommandBus bus;
   final Duration viewSaveDelay;
   final CommandFactory _factory;
 
   Document? document;
+
+  /// The document's highlights, kept in step with the store. Painters and the
+  /// Extract list listen to it.
+  final HighlightLayer highlights = HighlightLayer();
 
   Future<void> _tail = Future.value();
   Timer? _viewTimer;
@@ -58,7 +69,18 @@ class DocumentSession {
     if (e == null || e.deleted || e.kind != EntityKind.document) return false;
     document = Document.fromState(e);
     controller.scene.value = await _sceneFromStore();
+    await _reloadMarks();
     return true;
+  }
+
+  Future<void> _reloadMarks() async {
+    final entities = await store.entities(kind: EntityKind.mark, docId: docId);
+    final all = <Highlight>[];
+    for (final e in entities) {
+      final m = Mark.fromState(e);
+      if (m is Highlight) all.add(m);
+    }
+    if (!_disposed) highlights.replaceAll(all);
   }
 
   Future<Scene> _sceneFromStore() async {
@@ -106,12 +128,102 @@ class DocumentSession {
   }
 
   Future<void> undo() => _enqueue(() async {
-    if (await bus.undo()) controller.scene.value = await _sceneFromStore();
+    if (await bus.undo()) await _reloadAll();
   });
 
   Future<void> redo() => _enqueue(() async {
-    if (await bus.redo()) controller.scene.value = await _sceneFromStore();
+    if (await bus.redo()) await _reloadAll();
   });
+
+  Future<void> _reloadAll() async {
+    controller.scene.value = await _sceneFromStore();
+    await _reloadMarks();
+  }
+
+  // --- highlights ---------------------------------------------------------------
+
+  Highlight _highlight(
+    String id,
+    String pageId,
+    MarkSelection s,
+    Meaning meaning,
+    PageText? text,
+  ) => Highlight(
+    id: id,
+    docId: docId,
+    pageId: pageId,
+    meaning: meaning,
+    startChar: s.start,
+    endChar: s.end,
+    quote: s.quote,
+    contextBefore: text == null || s.isRegion
+        ? ''
+        : text.contextBefore(s.start),
+    contextAfter: text == null || s.isRegion ? '' : text.contextAfter(s.end),
+    rects: s.rects,
+  );
+
+  /// Shows the highlight at once and saves it behind the queue. If the save
+  /// fails the highlight is taken back off the page, never left looking
+  /// saved when it is not.
+  @override
+  String addHighlight({
+    required String pageId,
+    required MarkSelection selection,
+    required Meaning meaning,
+    PageText? text,
+  }) {
+    final id = ids.next();
+    final h = _highlight(id, pageId, selection, meaning, text);
+    highlights.add(h);
+    _enqueue(() async {
+      try {
+        await bus.run(
+          _factory.create(
+            EntityKind.mark,
+            id,
+            h.toFields(),
+            label: 'Highlight',
+          ),
+        );
+      } catch (e, st) {
+        debugPrint('Saving highlight $id failed: $e\n$st');
+        highlights.remove(id);
+      }
+    });
+    return id;
+  }
+
+  @override
+  String replaceHighlight({
+    required String oldId,
+    required String pageId,
+    required MarkSelection selection,
+    required Meaning meaning,
+    PageText? text,
+  }) {
+    final id = ids.next();
+    final h = _highlight(id, pageId, selection, meaning, text);
+    final old = highlights.byId(oldId);
+    highlights
+      ..remove(oldId)
+      ..add(h);
+    _enqueue(() async {
+      try {
+        await bus.run(
+          Command.group('Highlight', [
+            await _factory.delete(oldId),
+            _factory.create(EntityKind.mark, id, h.toFields()),
+          ]),
+        );
+      } catch (e, st) {
+        debugPrint('Replacing highlight $oldId failed: $e\n$st');
+        highlights.remove(id);
+        if (old != null) highlights.add(old);
+      }
+    });
+    return id;
+  }
 
   /// Completes when every queued save has been written.
   Future<void> settled() => _tail;

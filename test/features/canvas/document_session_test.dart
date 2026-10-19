@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:aether/core/hlc/hlc.dart';
@@ -7,9 +8,14 @@ import 'package:aether/data/db/database.dart';
 import 'package:aether/data/db/drift_op_store.dart';
 import 'package:aether/data/pdf/pdf_storage.dart';
 import 'package:aether/domain/commands/command.dart';
+import 'package:aether/domain/ops/entity_state.dart';
 import 'package:aether/domain/commands/command_bus.dart';
 import 'package:aether/domain/model/models.dart';
+import 'package:aether/core/geometry/box.dart';
 import 'package:aether/domain/ops/op.dart';
+import 'package:aether/domain/ops/op_store.dart';
+import 'package:aether/domain/text/page_text.dart';
+import 'package:aether/domain/text/text_selection.dart';
 import 'package:aether/features/canvas/document_session.dart';
 import 'package:aether/features/canvas/engine/canvas_controller.dart';
 import 'package:aether/features/canvas/engine/scene.dart';
@@ -20,6 +26,49 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/fakes.dart';
+
+/// Glyphs 6 wide, 10 tall, lines 14 apart from y = 100, x from 72.
+PageText layoutText(List<String> lines) {
+  final codes = <int>[];
+  final boxes = <double>[];
+  for (var l = 0; l < lines.length; l++) {
+    var x = 72.0;
+    for (final r in lines[l].runes) {
+      codes.add(r);
+      boxes.addAll([x, 100.0 + l * 14, x + 6, 110.0 + l * 14]);
+      x += 6;
+    }
+    if (l < lines.length - 1) {
+      codes.add(0x0A);
+      boxes.addAll([0, 0, 0, 0]);
+    }
+  }
+  return PageText.build(Int32List.fromList(codes), Float32List.fromList(boxes));
+}
+
+/// A store whose writes can be made to fail.
+class FlakyStore implements OpStore {
+  FlakyStore(this.inner);
+  final OpStore inner;
+  bool failCommits = false;
+
+  @override
+  Future<void> commit(List<Op> ops) =>
+      failCommits ? Future.error(StateError('disk full')) : inner.commit(ops);
+  @override
+  Future<EntityState?> entity(String id) => inner.entity(id);
+  @override
+  Future<List<EntityState>> entities({
+    EntityKind? kind,
+    String? docId,
+    bool includeDeleted = false,
+  }) =>
+      inner.entities(kind: kind, docId: docId, includeDeleted: includeDeleted);
+  @override
+  Future<List<Op>> allOps() => inner.allOps();
+  @override
+  Future<Hlc?> latestHlc() => inner.latestHlc();
+}
 
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -281,6 +330,164 @@ void main() {
       s.controller.setView(const ViewState(x: -1, y: -2, zoom: 1.25));
       await s.dispose();
       expect(await db.viewState('some-other-doc'), isNull);
+    });
+  });
+
+  group('highlights', () {
+    final text = layoutText(['the quick brown', 'fox jumps over.']);
+    MarkSelection pick(int a, int b) => TextSelector.between(text, a, b)!;
+
+    Future<List<EntityState>> storedMarks() =>
+        store.entities(kind: EntityKind.mark, docId: docId);
+
+    Future<DocumentSession> opened() async {
+      final s = open();
+      await s.load();
+      return s;
+    }
+
+    test('a new highlight shows at once and is saved behind it', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first;
+      final id = s.addHighlight(
+        pageId: page.id,
+        selection: pick(1, 4),
+        meaning: Meaning.method,
+        text: text,
+      );
+      expect(s.highlights.count, 1, reason: 'visible before it is written');
+      expect(s.highlights.byId(id)!.quote, 'quick brown fox jumps');
+      await s.settled();
+      final saved = await storedMarks();
+      expect(saved.single.id, id);
+      final back = Mark.fromState(saved.single) as Highlight;
+      expect(back.meaning, Meaning.method);
+      expect(back.pageId, page.id);
+      expect(back.quote, 'quick brown fox jumps');
+      expect(back.rects.length, 2);
+      expect(back.startChar, text.words[1].start);
+      expect(back.endChar, text.words[4].end);
+      expect(back.contextBefore, 'the');
+      expect(back.contextAfter, 'over.');
+    });
+
+    test('highlights come back when the document is reopened', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards[1];
+      s.addHighlight(
+        pageId: page.id,
+        selection: pick(0, 0),
+        meaning: Meaning.claim,
+        text: text,
+      );
+      s.addHighlight(
+        pageId: page.id,
+        selection: TextSelector.region(10, 20, 110, 70)!,
+        meaning: Meaning.question,
+      );
+      await s.settled();
+      final again = await opened();
+      expect(again.highlights.count, 2);
+      expect(again.highlights.forPage(page.id).length, 2);
+      final region = again.highlights
+          .forPage(page.id)
+          .firstWhere((h) => h.startChar < 0);
+      expect(region.quote, '(image region)');
+      expect(region.meaning, Meaning.question);
+      expect(region.rects.single, const Box(10, 20, 110, 70));
+    });
+
+    test('undo takes a highlight off the page, redo puts it back', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first;
+      s.addHighlight(
+        pageId: page.id,
+        selection: pick(0, 0),
+        meaning: Meaning.claim,
+        text: text,
+      );
+      await s.settled();
+      expect(s.bus.undoLabel, 'Highlight');
+      await s.undo();
+      expect(s.highlights.count, 0);
+      expect(await storedMarks(), isEmpty);
+      await s.redo();
+      expect(s.highlights.count, 1);
+      expect((await storedMarks()).length, 1);
+    });
+
+    test('replacing is one step: undo brings the old one back', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first;
+      final word = s.addHighlight(
+        pageId: page.id,
+        selection: pick(1, 1),
+        meaning: Meaning.claim,
+        text: text,
+      );
+      final sentence = s.replaceHighlight(
+        oldId: word,
+        pageId: page.id,
+        selection: TextSelector.sentenceAt(text, 1)!,
+        meaning: Meaning.claim,
+        text: text,
+      );
+      expect(s.highlights.byId(word), isNull);
+      expect(s.highlights.byId(sentence)!.quote, contains('jumps over.'));
+      await s.settled();
+      expect((await storedMarks()).single.id, sentence);
+
+      await s.undo();
+      expect(s.highlights.count, 1);
+      expect(s.highlights.byId(word)!.quote, 'quick');
+      await s.undo();
+      expect(s.highlights.count, 0);
+    });
+
+    test('a failed save takes the highlight back off the page', () async {
+      final flaky = FlakyStore(store);
+      final controller = CanvasController(scene: const Scene([]))
+        ..viewport = const Size(1000, 800);
+      addTearDown(controller.dispose);
+      final s = DocumentSession(
+        docId: docId,
+        store: flaky,
+        db: db,
+        controller: controller,
+        clock: HlcClock('dev', now: () => 7000 + clockTick++),
+        ids: SequentialIdGenerator('f${clockTick++}'),
+      );
+      addTearDown(s.dispose);
+      await s.load();
+      flaky.failCommits = true;
+      s.addHighlight(
+        pageId: controller.scene.value.cards.first.id,
+        selection: pick(0, 0),
+        meaning: Meaning.claim,
+        text: text,
+      );
+      expect(s.highlights.count, 1);
+      await s.settled();
+      expect(s.highlights.count, 0, reason: 'never left looking saved');
+      expect(await storedMarks(), isEmpty);
+    });
+
+    test('the highlight layer tells listeners when it changes', () async {
+      final s = await opened();
+      var changes = 0;
+      s.highlights.addListener(() => changes++);
+      final page = s.controller.scene.value.cards.first;
+      final id = s.addHighlight(
+        pageId: page.id,
+        selection: pick(0, 0),
+        meaning: Meaning.claim,
+        text: text,
+      );
+      expect(changes, 1);
+      s.highlights.remove(id);
+      expect(changes, 2);
+      s.highlights.remove(id); // already gone: no notification
+      expect(changes, 2);
     });
   });
 }

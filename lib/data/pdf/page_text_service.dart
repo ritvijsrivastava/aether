@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:pdfrx/pdfrx.dart';
 
 import '../../domain/text/page_text.dart';
+import '../../domain/text/page_text_source.dart';
 import '../../domain/text/page_text_codec.dart';
 
 /// Reads the characters of one page. Implemented over pdfium; faked in tests.
@@ -103,7 +104,7 @@ class PageTextCache {
 /// Text for the pages of one open document, lazily: memory first, then the
 /// disk cache, then pdfium. Concurrent requests for a page share one
 /// extraction.
-class PageTextService {
+class PageTextService implements PageTextSource {
   PageTextService({
     required this.docKey,
     required this.extractor,
@@ -125,6 +126,7 @@ class PageTextService {
 
   /// The text of page [pageIndex] (0-based). Never throws: a page that cannot
   /// be read comes back as [PageText.empty] and is retried on the next call.
+  @override
   Future<PageText> pageText(int pageIndex) {
     final hit = _memory.remove(pageIndex);
     if (hit != null) {
@@ -138,6 +140,7 @@ class PageTextService {
   }
 
   /// The page if it is already in memory.
+  @override
   PageText? peek(int pageIndex) => _memory[pageIndex];
 
   Future<PageText> _load(int i) async {

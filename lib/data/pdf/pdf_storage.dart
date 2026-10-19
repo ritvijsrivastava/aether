@@ -37,6 +37,9 @@ class PdfStorage {
 
   final Directory root;
   Directory get _pdfDir => Directory(p.join(root.path, 'pdfs'));
+
+  /// Cached page text (see `PageTextCache`), one folder per PDF hash.
+  Directory get textDir => Directory(p.join(root.path, 'text'));
   Directory get _thumbDir => Directory(p.join(root.path, 'thumbs'));
 
   String pdfPath(String hash) => p.join(_pdfDir.path, '$hash.pdf');

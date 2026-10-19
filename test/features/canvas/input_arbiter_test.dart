@@ -46,12 +46,36 @@ class Rec implements GestureSink {
   @override
   void cardDragEnd() => log.add('cardEnd');
 
+  final List<Offset> marks = [];
+  @override
+  void markStart(Offset p) {
+    marks.add(p);
+    log.add('markStart');
+  }
+
+  @override
+  void markMove(Offset p) {
+    marks.add(p);
+    log.add('markMove');
+  }
+
+  @override
+  void markEnd(Offset p) {
+    marks.add(p);
+    log.add('markEnd');
+  }
+
+  @override
+  void markCancel() => log.add('markCancel');
+
   int count(String s) => log.where((e) => e == s).length;
 }
 
 class Ctx implements ArbiterContext {
   @override
   bool panTool = false;
+  @override
+  bool markTool = false;
   @override
   bool spaceHeld = false;
   @override
@@ -278,6 +302,121 @@ void main() {
       a.down(s(2, touch, 0, 0, 500));
       a.move(s(2, touch, 7, 0, 510));
       expect(rec.pan.dx, 37);
+    });
+  });
+
+  group('mark tool', () {
+    setUp(() => ctx.markTool = true);
+
+    test('a pen drag is a mark, not a pan', () {
+      a.down(s(9, pen, 100, 100, 0, buttons: 1));
+      a.move(s(9, pen, 140, 110, 10, buttons: 1));
+      a.up(s(9, pen, 180, 120, 20));
+      expect(rec.log.where((e) => e.startsWith('mark')).toList(), [
+        'markStart',
+        'markMove',
+        'markEnd',
+      ]);
+      expect(rec.marks, [
+        const Offset(100, 100),
+        const Offset(140, 110),
+        const Offset(180, 120),
+      ]);
+      expect(rec.pan, Offset.zero);
+    });
+
+    test('a mouse drag with the primary button marks', () {
+      a.down(s(1, mouse, 10, 10, 0, buttons: 1));
+      a.move(s(1, mouse, 30, 10, 5, buttons: 1));
+      a.up(s(1, mouse, 30, 10, 9));
+      expect(rec.count('markStart'), 1);
+      expect(rec.count('markEnd'), 1);
+    });
+
+    test('a mouse press with no button held does nothing', () {
+      a.down(s(1, mouse, 10, 10, 0));
+      expect(rec.count('markStart'), 0);
+    });
+
+    test('the eraser end of a pen does not mark', () {
+      a.down(s(9, PointerDeviceKind.invertedStylus, 10, 10, 0, buttons: 1));
+      expect(rec.count('markStart'), 0);
+    });
+
+    test('Space, the Pan tool or the middle button pan instead', () {
+      ctx.spaceHeld = true;
+      a.down(s(1, mouse, 10, 10, 0, buttons: 1));
+      a.move(s(1, mouse, 30, 10, 5, buttons: 1));
+      a.up(s(1, mouse, 30, 10, 9));
+      expect(rec.count('markStart'), 0);
+      expect(rec.pan, const Offset(20, 0));
+    });
+
+    test('a finger still pans while "finger draws" is off', () {
+      a.down(s(1, touch, 10, 10, 0));
+      a.move(s(1, touch, 40, 10, 10));
+      a.up(s(1, touch, 40, 10, 20));
+      expect(rec.count('markStart'), 0);
+      expect(rec.pan, const Offset(30, 0));
+    });
+
+    test('with "finger draws" on, one finger marks', () {
+      ctx.fingerDraws = true;
+      a.down(s(1, touch, 10, 10, 0));
+      a.move(s(1, touch, 40, 10, 10));
+      a.up(s(1, touch, 40, 10, 20));
+      expect(rec.count('markStart'), 1);
+      expect(rec.count('markEnd'), 1);
+      expect(rec.pan, Offset.zero);
+    });
+
+    test('a second finger cancels the mark and pinches', () {
+      ctx.fingerDraws = true;
+      a.down(s(1, touch, 100, 300, 0));
+      a.move(s(1, touch, 105, 300, 5));
+      a.down(s(2, touch, 200, 300, 10));
+      expect(rec.count('markCancel'), 1);
+      a.move(s(2, touch, 250, 300, 20));
+      expect(rec.zoom, greaterThan(1));
+      a.up(s(1, touch, 105, 300, 30));
+      a.up(s(2, touch, 250, 300, 31));
+      expect(rec.count('markEnd'), 0, reason: 'a cancelled mark never ends');
+    });
+
+    test('a pen landing cancels a finger mark', () {
+      ctx.fingerDraws = true;
+      a.down(s(1, touch, 10, 10, 0));
+      a.move(s(1, touch, 40, 10, 10));
+      a.down(s(9, pen, 200, 200, 20, buttons: 1));
+      expect(rec.count('markCancel'), 1);
+      a.move(s(1, touch, 90, 10, 30));
+      expect(rec.count('markMove'), 1, reason: 'the finger no longer marks');
+    });
+
+    test('Escape drops the mark in progress', () {
+      a.down(s(9, pen, 100, 100, 0, buttons: 1));
+      a.move(s(9, pen, 140, 110, 10, buttons: 1));
+      a.escape();
+      expect(rec.count('markCancel'), 1);
+      a.up(s(9, pen, 180, 120, 20));
+      expect(rec.count('markEnd'), 0);
+      // And the arbiter is ready for the next one.
+      a.down(s(9, pen, 100, 100, 100, buttons: 1));
+      expect(rec.count('markStart'), 2);
+    });
+
+    test('a pointer cancel drops the mark', () {
+      a.down(s(9, pen, 100, 100, 0, buttons: 1));
+      a.cancel(s(9, pen, 100, 100, 10));
+      expect(rec.count('markCancel'), 1);
+      expect(rec.count('markEnd'), 0);
+    });
+
+    test('a card handle still drags its card under the Mark tool', () {
+      ctx.handle = const Rect.fromLTWH(0, 0, 100, 50);
+      a.down(s(9, pen, 10, 10, 0, buttons: 1));
+      expect(rec.count('markStart'), 0);
+      expect(rec.log, contains('cardStart:card1'));
     });
   });
 }

@@ -70,6 +70,9 @@ Future<void> pumpApp(
   AppSettings settings = const AppSettings(),
   AetherDatabase? db,
   List<Override> overrides = const [],
+
+  /// Use this library folder instead of an empty throwaway one.
+  PdfStorage? storage,
 }) async {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
   final database = db ?? AetherDatabase(NativeDatabase.memory());
@@ -77,8 +80,8 @@ Future<void> pumpApp(
   final root = Directory.systemTemp.createTempSync('aether_lib_');
   Directory('${root.path}/pdfs').createSync(recursive: true);
   Directory('${root.path}/thumbs').createSync(recursive: true);
-  final storage = PdfStorage(root);
-  addTearDown(() => storage.root.deleteSync(recursive: true));
+  final library = storage ?? PdfStorage(root);
+  addTearDown(() => root.deleteSync(recursive: true));
   await tester.runAsync(() => seedDocuments(database, docs));
 
   tester.view.physicalSize = size;
@@ -92,7 +95,7 @@ Future<void> pumpApp(
       overrides: [
         settingsProvider.overrideWith(() => FakeSettings(settings)),
         databaseProvider.overrideWithValue(database),
-        pdfStorageProvider.overrideWithValue(storage),
+        pdfStorageProvider.overrideWithValue(library),
         hlcClockProvider.overrideWithValue(HlcClock('test')),
         ...overrides,
       ],

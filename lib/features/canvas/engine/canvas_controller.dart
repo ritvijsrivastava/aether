@@ -7,13 +7,14 @@ import 'package:flutter/physics.dart' show FrictionSimulation;
 import 'package:flutter/scheduler.dart';
 
 import '../input/input_arbiter.dart';
+import '../marks/mark_tool.dart';
 import 'scene.dart';
 import 'view_state.dart';
 
 /// Owns the canvas view and scene and implements the gestures the arbiter
 /// asks for. Painters listen to [view] and [scene] directly, so a pan or a
 /// card drag repaints layers without rebuilding any widget.
-class CanvasController implements GestureSink {
+class CanvasController implements GestureSink, MarkGestures {
   CanvasController({required Scene scene, ViewState view = const ViewState()})
     : scene = ValueNotifier<Scene>(scene),
       view = ValueNotifier<ViewState>(view);
@@ -32,6 +33,10 @@ class CanvasController implements GestureSink {
   /// first fit is made for a screen that then grows; this redoes it. Set by
   /// [fitFirst] and cleared by anything the user does.
   bool refitOnResize = false;
+
+  /// Receives the Mark tool's drag. Set once a document's text is ready; the
+  /// calls are ignored until then.
+  MarkGestures? marks;
 
   /// Called after a card drag ends, with the card and its total world shift.
   void Function(String cardId, Offset delta)? onCardMoved;
@@ -116,6 +121,20 @@ class CanvasController implements GestureSink {
       onCardMoved?.call(id, _dragTotal);
     }
   }
+
+  // --- mark tool ---------------------------------------------------------------
+
+  @override
+  void markStart(Offset screen) => marks?.markStart(screen);
+
+  @override
+  void markMove(Offset screen) => marks?.markMove(screen);
+
+  @override
+  void markEnd(Offset screen) => marks?.markEnd(screen);
+
+  @override
+  void markCancel() => marks?.markCancel();
 
   // --- zoom and fit ---------------------------------------------------------
 

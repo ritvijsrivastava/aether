@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../data/pdf/page_text_service.dart';
 import '../../ui/adaptive/window_class.dart';
 import '../library/import/password_dialog.dart';
 import '../../ui/theme/tokens.dart';
@@ -15,6 +16,8 @@ import 'canvas_top_bar.dart';
 import 'canvas_ui_state.dart';
 import 'canvas_view.dart';
 import 'document_session.dart';
+import 'marks/mark_layers.dart';
+import 'marks/mark_tool.dart';
 import 'engine/canvas_controller.dart';
 import 'engine/page_surface.dart';
 import 'engine/scene.dart';
@@ -63,6 +66,8 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   PageSurface _surface = SyntheticPageSurface();
   OpenedPdf? _pdf;
   DocumentSession? _session;
+  final ValueNotifier<LiveMark?> _live = ValueNotifier(null);
+  MarkToolController? _markTool;
   StreamSubscription<void>? _history;
   _Load _load = _Load.ready;
   String? _error;
@@ -159,6 +164,21 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
         shortestSideDp: MediaQuery.sizeOf(context).shortestSide,
       ),
     );
+    final tool = MarkToolController(
+      view: _controller.view,
+      scene: _controller.scene,
+      live: _live,
+      meaning: () => ref.read(canvasUiProvider).meaning,
+      text: PageTextService(
+        docKey: doc.sourceHash,
+        extractor: PdfrxTextExtractor(pdf.document),
+        cache: PageTextCache(ref.read(pdfStorageProvider).textDir),
+      ),
+      sink: session,
+    );
+    _markTool = tool;
+    _controller.marks = tool;
+    _controller.view.addListener(_warmText);
     _history = session.bus.changes.listen((_) {
       if (mounted) setState(() {});
     });
@@ -169,15 +189,22 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     });
   }
 
+  void _warmText() => _markTool?.warmVisible(viewport: _controller.viewport);
+
   /// First layout is known: restore the remembered view, or show page one.
   Future<void> _onReady() async {
     final saved = await _session?.savedView();
     if (!mounted) return;
     saved != null ? _controller.setView(saved) : _controller.fitFirst();
+    _warmText();
   }
 
   @override
   void dispose() {
+    _controller.view.removeListener(_warmText);
+    _controller.marks = null;
+    _markTool?.dispose();
+    _live.dispose();
     _history?.cancel();
     _session?.dispose();
     final surface = _surface;
@@ -215,6 +242,8 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       controller: _controller,
       surface: _surface,
       tool: ui.tool,
+      highlights: session?.highlights,
+      live: _live,
       fingerDraws: settings.fingerDraws,
       onReady: _onReady,
       onUndo: session?.undo,

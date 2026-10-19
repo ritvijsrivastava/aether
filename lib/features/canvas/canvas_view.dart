@@ -7,6 +7,7 @@ import 'canvas_ui_state.dart';
 import 'engine/canvas_controller.dart';
 import 'engine/page_surface.dart';
 import 'engine/painters.dart';
+import 'marks/mark_layers.dart';
 import 'input/input_arbiter.dart';
 
 /// The interactive surface: grid, cards, drag handles, and the pointer and
@@ -20,6 +21,8 @@ class CanvasView extends StatefulWidget {
     required this.controller,
     required this.surface,
     required this.tool,
+    this.highlights,
+    this.live,
     this.fingerDraws = false,
     this.onReady,
     this.onUndo,
@@ -29,6 +32,11 @@ class CanvasView extends StatefulWidget {
   final CanvasController controller;
   final PageSurface surface;
   final CanvasTool tool;
+
+  /// The document's highlights and the one being dragged; null in the
+  /// synthetic test documents.
+  final HighlightLayer? highlights;
+  final ValueNotifier<LiveMark?>? live;
   final bool fingerDraws;
 
   /// Called once the first non-empty layout is known (to fit the first page).
@@ -52,6 +60,8 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
 
   @override
   bool get panTool => widget.tool == CanvasTool.pan;
+  @override
+  bool get markTool => widget.tool == CanvasTool.mark;
   @override
   bool get spaceHeld => _space;
   @override
@@ -87,6 +97,8 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
         ? SystemMouseCursors.grab
         : handleAt(p) != null
         ? SystemMouseCursors.grab
+        : markTool
+        ? SystemMouseCursors.text
         : SystemMouseCursors.basic;
     if (c != _cursor) setState(() => _cursor = c);
   }
@@ -98,6 +110,10 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
       return KeyEventResult.handled;
     }
     if (e is KeyUpEvent) return KeyEventResult.ignored;
+    if (e.logicalKey == LogicalKeyboardKey.escape) {
+      _arbiter.escape();
+      return KeyEventResult.handled;
+    }
     final c = widget.controller;
     final ctrl =
         HardwareKeyboard.instance.isControlPressed ||
@@ -215,9 +231,20 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
                           devicePixelRatio: MediaQuery.devicePixelRatioOf(
                             context,
                           ),
+                          highlights: widget.highlights,
                         ),
                       ),
                     ),
+                    if (widget.live != null)
+                      RepaintBoundary(
+                        child: CustomPaint(
+                          painter: LiveMarkPainter(
+                            view: c.view,
+                            scene: c.scene,
+                            live: widget.live!,
+                          ),
+                        ),
+                      ),
                     RepaintBoundary(
                       child: CustomPaint(
                         painter: HandlesPainter(

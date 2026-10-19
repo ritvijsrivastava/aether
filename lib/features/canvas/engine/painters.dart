@@ -7,6 +7,7 @@ import 'package:flutter/painting.dart'
 
 import '../../../ui/theme/tokens.dart';
 import '../../../ui/widgets/dot_grid.dart';
+import '../marks/mark_layers.dart';
 import 'page_surface.dart';
 import 'scene.dart';
 import 'view_state.dart';
@@ -88,13 +89,25 @@ class CardsPainter extends CustomPainter {
     required this.surface,
     required this.tokens,
     this.devicePixelRatio = 1,
-  }) : super(repaint: Listenable.merge([view, scene, ?surface.repaint]));
+    this.highlights,
+  }) : super(
+         repaint: Listenable.merge([
+           view,
+           scene,
+           ?surface.repaint,
+           ?highlights,
+         ]),
+       );
 
   final ValueListenable<ViewState> view;
   final ValueListenable<Scene> scene;
   final PageSurface surface;
   final AetherTokens tokens;
   final double devicePixelRatio;
+
+  /// Highlights painted into each page right after its tiles, so they
+  /// multiply into the page itself.
+  final HighlightLayer? highlights;
 
   final Paint _paper = Paint();
   final Paint _shadowNear = Paint();
@@ -139,6 +152,7 @@ class CardsPainter extends CustomPainter {
       canvas.save();
       canvas.clipRRect(rr);
       surface.paint(canvas, c, info);
+      highlights?.paintPage(canvas, c, info);
       canvas.restore();
     }
     canvas.restore();
@@ -151,6 +165,7 @@ class CardsPainter extends CustomPainter {
       old.surface != surface ||
       old.view != view ||
       old.scene != scene ||
+      old.highlights != highlights ||
       old.devicePixelRatio != devicePixelRatio;
 }
 

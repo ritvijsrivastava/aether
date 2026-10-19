@@ -329,6 +329,9 @@ class MarkDrag {
   /// True if this drag selects text; false for a free rectangle.
   bool get isText => _anchor >= 0;
 
+  /// The word the drag started on, or -1 for a free rectangle.
+  int get anchorWord => _anchor;
+
   /// The selection as it stands: the word under the pointer-down, or null for
   /// a rectangle that has not grown yet.
   MarkSelection? get selection => _current;

@@ -41,12 +41,23 @@ abstract interface class GestureSink {
   void cardDragStart(String cardId);
   void cardDragBy(Offset delta);
   void cardDragEnd();
+
+  /// The Mark tool's drag: [markStart] on pointer-down, [markMove] while it
+  /// moves, then [markEnd] or, if something interrupts it (a second finger, a
+  /// pen landing, Escape), [markCancel].
+  void markStart(Offset screen);
+  void markMove(Offset screen);
+  void markEnd(Offset screen);
+  void markCancel();
 }
 
 /// Live facts the arbiter needs on every event.
 abstract interface class ArbiterContext {
   /// The Pan tool is active.
   bool get panTool;
+
+  /// The Mark tool is active.
+  bool get markTool;
 
   /// Space is held (temporary pan).
   bool get spaceHeld;
@@ -60,10 +71,11 @@ abstract interface class ArbiterContext {
 
 /// Turns raw pointer events into canvas gestures.
 ///
-/// Rules (SPEC §7): a finger pans and pinches, never marks; a handle drags
-/// its card for any pointer; mouse and pen pan only under the Pan tool,
-/// Space or the middle button; and touches are ignored while a pen is near
-/// (palm rejection safety net, the OS does the real work).
+/// Rules (SPEC §7): a finger pans and pinches, never marks (unless "finger
+/// draws" is on); a handle drags its card for any pointer; mouse and pen pan
+/// only under the Pan tool, Space or the middle button, and otherwise apply
+/// the active tool; and touches are ignored while a pen is near (palm
+/// rejection safety net, the OS does the real work).
 ///
 /// Pure logic: events in, [GestureSink] calls out.
 class InputArbiter {
@@ -116,6 +128,10 @@ class InputArbiter {
         _ignored.addAll(_touches.keys);
         _touches.clear();
         _finish(Offset.zero);
+      } else if (_mode == _Mode.mark && _touches.containsKey(_lead)) {
+        _ignored.addAll(_touches.keys);
+        _touches.clear();
+        _endMark(cancel: true);
       }
     }
 
@@ -142,9 +158,14 @@ class InputArbiter {
         }
         if (!_touchPans) {
           // Finger-draws is on: a single finger belongs to the tool, but two
-          // fingers still pinch. (No tool consumes it before M3.)
+          // fingers still pinch.
           _touches[p.id] = p.position;
-          if (_touches.length == 2) _beginPinch();
+          if (_touches.length == 1 && context.markTool) {
+            _beginMark(p);
+          } else if (_touches.length == 2) {
+            if (_mode == _Mode.mark) _endMark(cancel: true);
+            _beginPinch();
+          }
           return;
         }
         _touches[p.id] = p.position;
@@ -165,6 +186,10 @@ class InputArbiter {
             p.kind == PointerDeviceKind.stylus;
         if (middle || (primary && (context.panTool || context.spaceHeld))) {
           _beginPan(p);
+        } else if (primary &&
+            context.markTool &&
+            p.kind != PointerDeviceKind.invertedStylus) {
+          _beginMark(p);
         }
     }
   }
@@ -183,6 +208,10 @@ class InputArbiter {
         final d = p.position - _last;
         _last = p.position;
         if (d != Offset.zero) sink.cardDragBy(d);
+      case _Mode.mark:
+        if (p.id != _lead) return;
+        if (_touches.containsKey(p.id)) _touches[p.id] = p.position;
+        sink.markMove(p.position);
       case _Mode.pinch:
         if (!_touches.containsKey(p.id)) return;
         _touches[p.id] = p.position;
@@ -217,6 +246,9 @@ class InputArbiter {
       case _Mode.cardDrag:
         if (p.id != _lead) return;
         _finish(Offset.zero);
+      case _Mode.mark:
+        if (p.id != _lead) return;
+        _endMark(at: p.position);
       case _Mode.pinch:
         if (_touches.length == 1) {
           // One finger left: carry on panning with it, no fling.
@@ -241,7 +273,10 @@ class InputArbiter {
       up(p);
       return;
     }
-    if ((_mode == _Mode.pan || _mode == _Mode.cardDrag) && p.id == _lead) {
+    if (_mode == _Mode.mark && p.id == _lead) {
+      _endMark(cancel: true);
+    } else if ((_mode == _Mode.pan || _mode == _Mode.cardDrag) &&
+        p.id == _lead) {
       _finish(Offset.zero);
     } else if (_touches.isEmpty && _mode == _Mode.pinch) {
       _finish(Offset.zero);
@@ -281,6 +316,11 @@ class InputArbiter {
 
   void panZoomEnd() => sink.panEnd(Offset.zero);
 
+  /// Escape: drop a mark in progress without making it.
+  void escape() {
+    if (_mode == _Mode.mark) _endMark(cancel: true);
+  }
+
   bool get _touchPans =>
       !context.fingerDraws || context.panTool || context.spaceHeld;
 
@@ -296,6 +336,21 @@ class InputArbiter {
       ..reset()
       ..add(p.time, p.position);
     sink.gestureStart();
+  }
+
+  void _beginMark(PointerSample p) {
+    _mode = _Mode.mark;
+    _lead = p.id;
+    _last = p.position;
+    sink.gestureStart();
+    sink.markStart(p.position);
+  }
+
+  /// Ends the mark drag: at [at] normally, or abandoned if [cancel].
+  void _endMark({Offset? at, bool cancel = false}) {
+    _mode = _Mode.idle;
+    _lead = null;
+    cancel ? sink.markCancel() : sink.markEnd(at ?? _last);
   }
 
   void _beginPinch() {
@@ -324,7 +379,7 @@ class InputArbiter {
   }
 }
 
-enum _Mode { idle, pan, pinch, cardDrag }
+enum _Mode { idle, pan, pinch, cardDrag, mark }
 
 /// Velocity from the last ~100 ms of samples.
 class _Velocity {
