@@ -12,9 +12,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   await _load('Figtree', [
     for (final w in [400, 500, 600, 700]) 'assets/fonts/Figtree-$w.ttf',
   ]);
-  await _load('SourceSerif4', [
-    for (final w in [400, 600, 700]) 'assets/fonts/SourceSerif4-$w.ttf',
-  ]);
+  await _load('SourceSerif4', ['assets/fonts/SourceSerif4-400.ttf']);
   await testMain();
 }
 

@@ -55,18 +55,6 @@ class Op {
     this.undoOf,
   });
 
-  factory Op.fromJson(Map<String, Object?> j) => Op(
-    opId: j['opId']! as String,
-    hlc: Hlc.parse(j['hlc']! as String),
-    entityKind: EntityKind.values.byName(j['entityKind']! as String),
-    entityId: j['entityId']! as String,
-    kind: OpKind.values.byName(j['kind']! as String),
-    txGroupId: j['txGroupId']! as String,
-    field: j['field'] as String?,
-    value: j['value'],
-    undoOf: j['undoOf'] as String?,
-  );
-
   final String opId;
   final Hlc hlc;
   final EntityKind entityKind;
@@ -80,16 +68,4 @@ class Op {
 
   /// For an undo transaction: the [txGroupId] it reverses.
   final String? undoOf;
-
-  Map<String, Object?> toJson() => {
-    'opId': opId,
-    'hlc': hlc.encode(),
-    'entityKind': entityKind.name,
-    'entityId': entityId,
-    'kind': kind.name,
-    'txGroupId': txGroupId,
-    if (field != null) 'field': field,
-    if (value != null) 'value': value,
-    if (undoOf != null) 'undoOf': undoOf,
-  };
 }

@@ -70,13 +70,9 @@ class AetherTokens extends ThemeExtension<AetherTokens> {
   static const double minTarget = 48;
 
   // Motion.
-  static const Duration fast = Duration(milliseconds: 120);
   static const Duration medium = Duration(milliseconds: 200);
-  static const Duration slow = Duration(milliseconds: 240);
 
   bool get isDark => brightness == Brightness.dark;
-
-  Color meaningColor(int index) => const [claim, method, question][index];
 
   // Shadows (DESIGN.md "Shadow Vocabulary").
   List<BoxShadow> get float => [

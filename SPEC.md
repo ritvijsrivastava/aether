@@ -87,7 +87,7 @@ lib/
 ### 3.3 Dependencies (choose and pin at M0; no claim about exact versions here)
 | Need | Choice | Notes |
 |---|---|---|
-| PDF raster + text | `pdfrx` 2.6.x (pdfium) **[DECIDED, M0]** | Verified on Linux and Android emulator: silent open of owner-password PDFs, tile render 3 to 7 ms, per-char rects, structured reading order (`loadStructuredText`). pdfium binaries are fetched by a build hook on first build (needs network once). See `docs/spikes/m0.md`. |
+| PDF raster + text | `pdfrx` 2.6.x (pdfium) **[DECIDED, M0]**; removed from `pubspec.yaml` after M1 because nothing used it yet, re-add with `flutter pub add pdfrx` at M2 | Verified on Linux and Android emulator: silent open of owner-password PDFs, tile render 3 to 7 ms, per-char rects, structured reading order (`loadStructuredText`). pdfium binaries are fetched by a build hook on first build (needs network once). See `docs/spikes/m0.md`. |
 | Database | `drift` + `drift_dev`/`build_runner`; SQLite via the `sqlite3` 3.x native-assets build | **[DECIDED, M0]** builds and runs on Linux and Android. `sqlite3_flutter_libs` is obsolete under sqlite3 3.x and is not used. |
 | State | `riverpod` / `flutter_riverpod` | |
 | IDs | `uuid` (v7) | Or tiny in-house UUIDv7. |

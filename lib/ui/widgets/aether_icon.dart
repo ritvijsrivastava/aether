@@ -20,22 +20,16 @@ abstract final class AetherIcons {
   static const undo = 'M3 7v6h6M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13';
   static const redo = 'M21 7v6h-6M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13';
   static const list = 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01';
-  static const close = 'M18 6 6 18M6 6l12 12';
   static const more = 'M12 12h.01M19 12h.01M5 12h.01';
   static const plus = 'M12 5v14M5 12h14';
   static const minus = 'M5 12h14';
   static const settings =
       'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6';
   static const back = 'm15 18-6-6 6-6';
-  static const fit =
-      'M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3';
-  static const check = 'M20 6 9 17l-5-5';
   static const doc =
       'M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2zM14 2v6h6';
   static const upload =
       'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12';
-  static const trash =
-      'M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2';
 }
 
 final Map<String, Path> _parsed = {};

@@ -4,7 +4,6 @@ import 'package:meta/meta.dart';
 
 import '../../core/geometry/box.dart';
 import '../ops/entity_state.dart';
-import '../ops/op.dart';
 import 'ink_codec.dart';
 
 /// The three built-in meanings. Stable string ids; user-defined meanings are a
@@ -83,8 +82,6 @@ class Document {
   final String sourceHash;
   final int pageCount;
 
-  static const kind = EntityKind.document;
-
   Map<String, Object?> toFields() => {
     F.title: title,
     F.sourceHash: sourceHash,
@@ -121,8 +118,6 @@ class PageRef {
   final double width, height;
   final double cardX, cardY;
 
-  static const kind = EntityKind.page;
-
   Map<String, Object?> toFields() => {
     F.docId: docId,
     F.index: index,
@@ -145,8 +140,6 @@ sealed class Mark {
 
   MarkType get type;
   Box get bounds;
-
-  static const kind = EntityKind.mark;
 
   /// Fields shared by all marks, including the indexed bounds columns.
   @protected
@@ -351,8 +344,6 @@ class Link {
   final String id;
   final String docId;
   final String fromNoteId, toHighlightId;
-
-  static const kind = EntityKind.link;
 
   Map<String, Object?> toFields() => {
     F.docId: docId,

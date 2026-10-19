@@ -19,9 +19,6 @@ class Box {
   double get width => x1 - x0;
   double get height => y1 - y0;
 
-  bool intersects(Box o) =>
-      x0 <= o.x1 && o.x0 <= x1 && y0 <= o.y1 && o.y0 <= y1;
-
   Box union(Box o) => Box(
     x0 < o.x0 ? x0 : o.x0,
     y0 < o.y0 ? y0 : o.y0,

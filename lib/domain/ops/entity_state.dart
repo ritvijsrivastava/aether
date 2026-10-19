@@ -35,15 +35,6 @@ class EntityState {
   /// Earliest create op seen.
   final Hlc? createdHlc;
 
-  /// Hlc of the most recent change of any kind.
-  Hlc? get updatedHlc {
-    Hlc? best = lifeHlc;
-    for (final h in fieldHlcs.values) {
-      if (best == null || h > best) best = h;
-    }
-    return best;
-  }
-
   T? field<T>(String name) => fields[name] as T?;
 
   EntityState applyOp(Op op) {

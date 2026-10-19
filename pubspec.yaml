@@ -33,8 +33,6 @@ dependencies:
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
-  pdfrx: ^2.6.6
   drift: ^2.35.2
   path_provider: ^2.1.6
   path: ^1.9.1
@@ -88,10 +86,6 @@ flutter:
       fonts:
         - asset: assets/fonts/SourceSerif4-400.ttf
           weight: 400
-        - asset: assets/fonts/SourceSerif4-600.ttf
-          weight: 600
-        - asset: assets/fonts/SourceSerif4-700.ttf
-          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:
