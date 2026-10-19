@@ -97,6 +97,20 @@ class MarkToolController implements MarkGestures {
   PageText? _pageText;
   MarkDrag? _drag;
   Future<void>? _loading;
+  DateTime _startedAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Marks that had to wait for a page's text, the wait of the last one, and
+  /// the longest wait. A wait means the text was not ready at pointer-down
+  /// (the page was not warmed yet); the numbers are shown in the performance
+  /// overlay so the S9 can say whether warming is enough.
+  int waits = 0;
+  Duration lastWait = Duration.zero, maxWait = Duration.zero;
+
+  /// One line for the performance overlay.
+  String get stats => waits == 0
+      ? 'text always ready'
+      : 'text waited $waits× · last ${lastWait.inMilliseconds} ms'
+            ' · max ${maxWait.inMilliseconds} ms';
 
   // The last completed tap, for double-tap detection.
   _Tap? _lastTap;
@@ -125,6 +139,7 @@ class MarkToolController implements MarkGestures {
     _card = card;
     _downScreen = _latestScreen = screen;
     _downPage = _page(screen);
+    _startedAt = _now();
 
     final source = text!;
     final ready = source.peek(card.index);
@@ -133,7 +148,12 @@ class MarkToolController implements MarkGestures {
     } else {
       final token = _token;
       _loading = source.pageText(card.index).then((t) {
-        if (token == _token && _active) _begin(t);
+        if (token == _token && _active) {
+          lastWait = _now().difference(_startedAt);
+          waits++;
+          if (lastWait > maxWait) maxWait = lastWait;
+          _begin(t);
+        }
       });
     }
   }

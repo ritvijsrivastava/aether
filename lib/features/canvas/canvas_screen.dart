@@ -73,6 +73,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   DocumentSession? _session;
   final ValueNotifier<LiveMark?> _live = ValueNotifier(null);
   MarkToolController? _markTool;
+  PageTextService? _textService;
   late final FlashController _flash = FlashController(this);
   ExtractController? _extract;
   bool _copied = false;
@@ -173,16 +174,18 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
         shortestSideDp: MediaQuery.sizeOf(context).shortestSide,
       ),
     );
+    final textService = PageTextService(
+      docKey: doc.sourceHash,
+      extractor: PdfrxTextExtractor(pdf.document),
+      cache: PageTextCache(ref.read(pdfStorageProvider).textDir),
+    );
+    _textService = textService;
     final tool = MarkToolController(
       view: _controller.view,
       scene: _controller.scene,
       live: _live,
       meaning: () => ref.read(canvasUiProvider).meaning,
-      text: PageTextService(
-        docKey: doc.sourceHash,
-        extractor: PdfrxTextExtractor(pdf.document),
-        cache: PageTextCache(ref.read(pdfStorageProvider).textDir),
-      ),
+      text: textService,
       sink: session,
     );
     _markTool = tool;
@@ -291,6 +294,10 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     final size = MediaQuery.sizeOf(context);
     final cls = WindowClass.of(size.width);
     final ui = ref.watch(canvasUiProvider);
+    // Choosing the Mark tool is the moment its text is about to be needed.
+    ref.listen(canvasUiProvider.select((u) => u.tool), (_, tool) {
+      if (tool == CanvasTool.mark) _warmText();
+    });
     final settings = ref.watch(settingsProvider).value ?? const AppSettings();
     final landscape = size.width > size.height;
     final extractOpen =
@@ -332,7 +339,13 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
             alignment: Alignment.topCenter,
             child: Padding(
               padding: const EdgeInsets.only(top: AetherTokens.s2),
-              child: PerfHud(extra: () => _surface.stats),
+              child: PerfHud(
+                extra: () => [
+                  _surface.stats,
+                  _textService?.stats,
+                  _markTool?.stats,
+                ].whereType<String>().join('\n'),
+              ),
             ),
           ),
         if (_load != _Load.ready)

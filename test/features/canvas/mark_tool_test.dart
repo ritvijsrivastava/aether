@@ -313,6 +313,25 @@ void main() {
       expect(sink.added.single.selection.quote, 'quick brown fox jumps');
     });
 
+    test('a wait is counted and timed for the overlay', () async {
+      expect(tool.stats, 'text always ready');
+      text.gate = Completer<void>();
+      tool.markStart(quick);
+      clock = clock.add(const Duration(milliseconds: 180));
+      text.gate!.complete();
+      await Future<void>.delayed(Duration.zero);
+      tool.markEnd(quick);
+      expect(tool.waits, 1);
+      expect(tool.lastWait, const Duration(milliseconds: 180));
+      expect(tool.maxWait, const Duration(milliseconds: 180));
+      expect(tool.stats, 'text waited 1× · last 180 ms · max 180 ms');
+      // A mark whose text is ready adds nothing.
+      text.gate = null;
+      tool.markStart(quick);
+      tool.markEnd(quick);
+      expect(tool.waits, 1);
+    });
+
     test('releasing before the text arrives still finishes the mark', () async {
       text.gate = Completer<void>();
       tool.markStart(quick);

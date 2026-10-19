@@ -124,6 +124,14 @@ class PageTextService implements PageTextSource {
   /// Counters for tests and the debug HUD.
   int extractions = 0, diskHits = 0, memoryHits = 0;
 
+  /// How long the last and the slowest pdfium extraction took, in ms.
+  int lastExtractMs = 0, maxExtractMs = 0;
+
+  /// One line for the performance overlay.
+  String get stats =>
+      'text ${_memory.length}p · extract last $lastExtractMs ms'
+      ' max $maxExtractMs ms';
+
   /// The text of page [pageIndex] (0-based). Never throws: a page that cannot
   /// be read comes back as [PageText.empty] and is retried on the next call.
   @override
@@ -151,9 +159,12 @@ class PageTextService implements PageTextSource {
     }
     try {
       extractions++;
+      final sw = Stopwatch()..start();
       final raw = await extractor.extract(i);
       if (raw == null) return PageText.empty;
       final text = PageText.build(raw.codes, raw.boxes);
+      lastExtractMs = sw.elapsedMilliseconds;
+      if (lastExtractMs > maxExtractMs) maxExtractMs = lastExtractMs;
       await cache?.write(docKey, i, text);
       return _remember(i, text);
     } catch (e) {

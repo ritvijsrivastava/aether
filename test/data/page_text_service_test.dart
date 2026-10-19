@@ -123,6 +123,15 @@ void main() {
     expect(s.peek(2), isNotNull);
   });
 
+  test('times extractions for the overlay', () async {
+    final s = service(withCache: false);
+    expect(s.stats, 'text 0p · extract last 0 ms max 0 ms');
+    await s.pageText(0);
+    await s.pageText(1);
+    expect(s.stats, startsWith('text 2p · extract last '));
+    expect(s.maxExtractMs, greaterThanOrEqualTo(s.lastExtractMs));
+  });
+
   test('delete removes a document\'s cached pages', () async {
     await service().pageText(0);
     expect(Directory('${dir.path}/abc').existsSync(), isTrue);

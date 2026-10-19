@@ -483,6 +483,37 @@ void main() {
       },
     );
 
+    test('committing a mark costs the UI isolate under 5 ms', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first;
+      final sel = pick(0, 4); // two lines of text
+      // Warm up, then time only the synchronous part: the optimistic add. The
+      // write itself runs behind the queue.
+      for (var i = 0; i < 20; i++) {
+        s.addHighlight(
+          pageId: page.id,
+          selection: sel,
+          meaning: Meaning.claim,
+          text: text,
+        );
+      }
+      final sw = Stopwatch()..start();
+      const n = 100;
+      for (var i = 0; i < n; i++) {
+        s.addHighlight(
+          pageId: page.id,
+          selection: sel,
+          meaning: Meaning.claim,
+          text: text,
+        );
+      }
+      final ms = sw.elapsedMicroseconds / n / 1000;
+      // ignore: avoid_print
+      print('addHighlight on the UI isolate: ${ms.toStringAsFixed(3)} ms');
+      expect(ms, lessThan(5));
+      await s.settled();
+    });
+
     test('a failed save takes the highlight back off the page', () async {
       final flaky = FlakyStore(store);
       final controller = CanvasController(scene: const Scene([]))
