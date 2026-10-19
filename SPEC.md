@@ -487,11 +487,53 @@ Each milestone ends with a **review stop** where you try it on the Tab S9 and/or
 | **M1** Shell, theme, data foundations | Tokens, theme extension, bundled fonts, light/dark, adaptive scaffold (3 classes) with placeholder content, Library with empty state, Drift schema, ids/HLC/op log with tests | Layouts correct at 360, 600, 840, 1280 dp and at 1.3x and 2.0x text scale; dark theme contrast test passes; migrations and op log tests green |
 | **M2** Canvas engine | View transform, pan/pinch/wheel/keys, grid, card drag, PDF tile renderer with LOD, import flow, zoom pill, fit | Open a 200-page PDF; pan/zoom at the section 13 budgets on S9 and Linux; no blank pages |
 | **M3** Text and marks | Text layer extraction, word/line snapping, multi-line highlights, Extract list with filters, jump, Markdown copy | Drag-select matches expected text on fixture PDFs; Extract matches marks exactly; export golden tests |
-| **M4** Ink, notes, links, select, undo | Pressure ink, prediction, erase (whole + partial), notes (move/resize), links (multi, snap), lasso + actions, full command stack | Undo/redo property tests; ink budgets met; palm rejection verified on S9 |
-| **M5** Persistence and library | Autosave, crash recovery, reopen, library (thumbnails, search, rename, recently deleted), JSON backup, share/save | Kill -9 mid-stroke loses at most the tail of one stroke; round-trip export/import identical |
-| **M6** Polish, accessibility, release | Screen-reader pass, keyboard pass, motion, empty/error states, settings, perf profiling, release builds (APK split + Linux bundle) | All budgets in section 13; a11y checklist; no analyzer warnings; release artifacts install and run on both |
+| **M3.1** Follow-ups (small, no review stop) | Register items R1 to R4: rotated-page correctness, missing fixtures, text no longer queues behind tiles, selection perf check | Rotated PDF highlights land on the right words (test); scanned, rotated and RTL fixtures exist; text for visible pages is ready before first touch on the S9 |
+| **M4** Ink, notes, links, select, undo | Pressure ink, prediction, erase (whole + partial), notes (move/resize), links (multi, snap), lasso + actions, full command stack; **plus register items R5 to R13** | Undo/redo property tests; ink budgets met; palm rejection verified on S9 |
+| **M5** Persistence and library | Autosave, crash recovery, reopen, library (thumbnails, search, rename, recently deleted), JSON backup, share/save; **plus register items R14 to R19** | Kill -9 mid-stroke loses at most the tail of one stroke; round-trip export/import identical |
+| **M6** Polish, accessibility, release | Screen-reader pass, keyboard pass, motion, empty/error states, settings, perf profiling, release builds (APK split + Linux bundle); **plus register items R20 to R31** | All budgets in section 13; a11y checklist; no analyzer warnings; release artifacts install and run on both |
 
 **Stop rules:** after M2 (is the canvas feel right?) and after M4 (is the pen feel right?) I stop for your hands-on review before building on top.
+
+
+### 18.1 Carry-forward register (added after M3)
+
+Everything an earlier milestone report or this spec marked "later", "unverified", "not exercised" or "known limitation", with the milestone that now owns it. Nothing may stay in a report's "known gaps" without a row here. An item is closed only when its "done when" is true and the report says so.
+
+| ID | Item | Came from | Owner | Done when |
+|---|---|---|---|---|
+| R1 | Rotated pages: highlight rects use pdfrx's rotation handling with no test | M3 | M3.1 | A page with `/Rotate` 90, 180, 270 gets highlights on the right words (fixture + test) |
+| R2 | Fixtures still missing: scanned (no text) page, rotated page, RTL / unusual fonts (SPEC 15) | M0, §19.10 | M3.1 | Generated, git-ignored, listed in `docs`, used by tests |
+| R3 | Text extraction can queue behind tile renders after a big zoom (one pdfium worker) | M3 | M3.1 | Visible pages' text is requested before tiles after a view change; first mark after a zoom starts selecting without a wait on the S9 |
+| R4 | Drag-select hit-test under 1 ms and mark commit under 5 ms on the UI isolate (§13) never measured | M3 | M3.1 | Benchmark test on real page text; numbers in the report |
+| R5 | Eraser end (`invertedStylus`) never observed on Linux; treated as a toolbar tool | M0 | M4 | Re-tested on Wacom under Wayland; erase works from toolbar and, if reported, from the pen end |
+| R6 | Barrel-button bits differ per device (Wacom 4/2, S Pen 2) and are not visible while hovering on Wacom | M0 | M4 | Button mapping is a table, not constants; barrel = temporary erase verified on both devices |
+| R7 | X11 gives no pressure or stylus kind; Wayland does | M0 | M4 | Ink falls back to constant width on X11 without errors; test covers both |
+| R8 | Pressure curve (soft default; real strokes peak 0.1 to 0.6) and 500 Hz batching (every sample consumed) | M0 | M4 | Curve is configurable; a stroke fed 4 samples per frame loses none |
+| R9 | Pinch with two real fingers and pen input were never exercised on the S9 (only `adb input`) | M2 | M4 | Done by hand at the M4 review stop; checklist in the M4 report |
+| R10 | Extract shows only highlights; Notes filter, "↳" linked quote lines and the Markdown "## Notes" section are not built | M3, §10 | M4 | Notes and links appear in Extract and in Markdown, with golden files |
+| R11 | Highlight hit-test with a 16 px minimum height (select, erase, tap to focus) | M3 | M4 | Thin text highlights can be selected and erased by finger and pen |
+| R12 | Highlight meanings Claim/Method/Question and glyphs are "assumed approved" | §20 | M4 | Owner confirms at the M4 review stop, or says what to change |
+| R13 | Undo for ink, notes, links and lasso actions groups correctly (one gesture = one step) | §9 | M4 | Property tests, as in the M4 row |
+| R14 | Undo history is in memory and not rebuilt from the log on launch | M1, M2 | M5 | Reopen restores the last ~200 transaction groups as undoable |
+| R15 | Highlights store `contextBefore/After` but nothing re-anchors them | M3, §5.4 | M5 | On open, a highlight whose quote no longer matches its text range is re-anchored by context or flagged; test with a changed text layer |
+| R16 | Library shows no mark count and "date added" instead of "last opened" (§11.1) | §11.1 | M5 | Both shown and tested |
+| R17 | Cached page text is not removed when a PDF is purged | M3 | M5 | Purging a PDF also deletes `text/<hash>/`; test |
+| R18 | Android file picker, Linux file dialog and Linux drag and drop never driven by hand | M2 | M5 | Owner (or hand test on a device) imports through each; noted in the M5 report |
+| R19 | A password-protected PDF asks again after the app restarts (password cache is per session) | M2 | M5 | Decision recorded: keep (and say so in the empty/error copy) or store in the platform keystore |
+| R20 | Column-aware reading order for odd layouts (content-stream order is right for the two fixtures) | M0, M3, §20 | M6 | Implemented, or written into the release notes as a known limitation with an example |
+| R21 | Free-rectangle highlights show "Image region" in Extract; a page-crop thumbnail was proposed (6.2) | M3 | M6 | Thumbnail shown in Extract and in the screen-reader label, or the proposal is dropped in writing |
+| R22 | Right-to-left text is not handled specially | M3 | M6 | Added to the v1 non-goals (1.2) and release notes, or selection tested on the RTL fixture |
+| R23 | Multiply blend cost on the S9 measured only with 8 highlights; flat-fill fallback undecided | M3 | M6 | Measured on a page with many highlights; keep multiply or switch by setting, written down |
+| R24 | Predictive back enabled but never exercised on a device | M1 | M6 | Back from Canvas, sheets and menus checked on the S9 |
+| R25 | Linux minimum window size (800x520) never resized by hand; HiDPI and Wayland checks | M1, §17 | M6 | Done and noted in the M6 report |
+| R26 | Real phone never used (emulator only, by owner decision) | M1, §20 | M6 | Owner runs the phone checklist; phone layout and "finger draws" hint verified |
+| R27 | Bundled original sample document ("Open sample") assumed yes, not built | §11.1, §20 | M6 | Built, labelled as a sample, or dropped by the owner |
+| R28 | Source Serif 4 and Figtree licences to confirm when bundling (§19.7); dark theme values unconfirmed (§19.8) | M1 | M6 | Licence files shipped; owner confirms dark theme |
+| R29 | First build downloads pdfium through a native-assets hook; release builds and offline builds not checked | M0 | M6 | Release APK and Linux bundle build from a clean cache with the documented steps |
+| R30 | §13 budgets never run as a set: 200-page open under 800 ms, cold start, memory, Extract scroll with 5,000 items | M2, §13 | M6 | Table of measured values on S9 and Linux in the M6 report |
+| R31 | Highlight style (multiply / flat / pattern) and Extract order settings | M3, §11.3 | M6 | Both in Settings, persisted, tested |
+
+Deferred past v1 on purpose (unchanged): handwriting conversion, OCR, flattened PDF export, card resize, Ctrl+F in Extract, "include sketches", sync, accounts, non-PDF sources.
 
 ---
 
@@ -514,7 +556,7 @@ Each milestone ends with a **review stop** where you try it on the Tab S9 and/or
 7. **Georgia/Source Serif substitution** and Figtree licensing: both open-licensed (OFL) but should be confirmed when bundling.
 8. **Dynamic color/dark mode** values are proposals; DESIGN.md dark theme is unconfirmed.
 9. **Sync-readiness is a promise about the schema, not a tested feature.** Until a second device exists, merge behavior is unproven; keep the op-log tests strict.
-10. **Fixture PDFs** are not yet available.
+10. **Fixture PDFs**: a two-column paper, a 166-page math paper, encrypted, 200 and 500 page files exist; scanned, rotated and RTL do not (register R2).
 
 ---
 
@@ -533,7 +575,7 @@ Each milestone ends with a **review stop** where you try it on the Tab S9 and/or
 - Highlight meanings fixed at Claim/Method/Question with glyphs circle/diamond/triangle (assumed approved unless you object).
 - Bundle an original sample document? (assumed yes, generated by me, clearly labelled as a sample).
 - Fixture PDFs for testing (I will generate simple ones; real-world papers from you would be better).
-- Whether a column-aware reading order is needed sooner than v1.x (decide after seeing M3 on real papers).
+- Column-aware reading order: M3 on the two real papers showed content-stream order is right for ordinary two-column text; scheduled as register R20 (M6) for odd layouts.
 
 
 ### M3 decisions (built, 2026-10-19)
