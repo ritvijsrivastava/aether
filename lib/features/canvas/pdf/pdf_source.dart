@@ -1,5 +1,6 @@
 import 'dart:ui' show Size;
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:pdfrx/pdfrx.dart';
 
 enum PdfOpenFailure {
@@ -46,6 +47,7 @@ Future<OpenedPdf> openPdfFile(String path) async {
   } on PdfPasswordException catch (e) {
     throw PdfOpenException(PdfOpenFailure.password, e);
   } catch (e) {
+    debugPrint('Could not open $path: $e');
     throw PdfOpenException(PdfOpenFailure.unreadable, e);
   }
 }

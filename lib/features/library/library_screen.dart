@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, kProfileMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -124,7 +124,7 @@ class _EmptyLibrary extends StatelessWidget {
                 style: text.body.copyWith(color: t.inkMuted),
                 textAlign: TextAlign.center,
               ),
-              if (kDebugMode) ...[
+              if (kDebugMode || kProfileMode) ...[
                 const SizedBox(height: AetherTokens.s4),
                 Wrap(
                   alignment: WrapAlignment.center,

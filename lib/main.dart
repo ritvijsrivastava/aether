@@ -1,7 +1,10 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'app/app.dart';
 import 'app/providers.dart';
@@ -11,6 +14,10 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   _registerFontLicenses();
+  // Debug and profile builds: let the app create its external files folder so
+  // `adb push` test PDFs there are readable by it (a folder created by the
+  // shell before the app exists is not).
+  if (!kReleaseMode && Platform.isAndroid) await getExternalStorageDirectory();
   final db = await openAetherDatabase();
   runApp(
     ProviderScope(
