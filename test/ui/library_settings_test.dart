@@ -6,20 +6,14 @@ import 'package:flutter_test/flutter_test.dart';
 import '../support/harness.dart';
 
 void main() {
-  testWidgets(
-    'empty library invites an import and Import PDF explains itself',
-    (tester) async {
-      await pumpApp(tester, size: const Size(360, 800));
-      expect(find.text('Nothing on the desk yet'), findsOneWidget);
-      expect(
-        find.textContaining('Everything you mark lands in Extract'),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('Import PDF'));
-      await tester.pump();
-      expect(find.text('PDF import is not built yet.'), findsOneWidget);
-    },
-  );
+  testWidgets('empty library invites an import', (tester) async {
+    await pumpApp(tester, size: const Size(360, 800));
+    expect(find.text('Nothing on the desk yet'), findsOneWidget);
+    expect(
+      find.textContaining('Everything you mark lands in Extract'),
+      findsOneWidget,
+    );
+  });
 
   testWidgets(
     'phone and tablet use a FAB; desktop puts Import in the app bar',
@@ -41,8 +35,8 @@ void main() {
         Document(id: 'd2', title: 'One pager', sourceHash: 'h2', pageCount: 1),
       ],
     );
-    expect(find.text('13 pages'), findsOneWidget);
-    expect(find.text('1 page'), findsOneWidget);
+    expect(find.textContaining('13 pages · Added'), findsOneWidget);
+    expect(find.textContaining('1 page · Added'), findsOneWidget);
     await tester.tap(find.text('MapReduce'));
     await tester.pumpAndSettle();
     expect(find.text('Copy as Markdown'), findsOneWidget);
@@ -106,5 +100,18 @@ void main() {
       (s.themeMode, s.fingerDraws, s.leftHanded),
       (ThemeMode.system, false, false),
     );
+  });
+
+  testWidgets('an unknown location lands on the library, not an error screen', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      size: const Size(840, 600),
+      location: 'file:///sdcard/Android/data/x/files/paper.pdf',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Nothing on the desk yet'), findsOneWidget);
+    expect(find.textContaining('Page Not Found'), findsNothing);
   });
 }

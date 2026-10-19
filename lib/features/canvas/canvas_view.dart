@@ -22,6 +22,8 @@ class CanvasView extends StatefulWidget {
     required this.tool,
     this.fingerDraws = false,
     this.onReady,
+    this.onUndo,
+    this.onRedo,
   });
 
   final CanvasController controller;
@@ -31,6 +33,9 @@ class CanvasView extends StatefulWidget {
 
   /// Called once the first non-empty layout is known (to fit the first page).
   final VoidCallback? onReady;
+
+  /// Ctrl+Z and Ctrl+Shift+Z / Ctrl+Y. Null when there is no history.
+  final VoidCallback? onUndo, onRedo;
 
   @override
   State<CanvasView> createState() => _CanvasViewState();
@@ -109,6 +114,15 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
       c.zoomBy(0.8);
       return KeyEventResult.handled;
     }
+    if (ctrl && k == LogicalKeyboardKey.keyZ) {
+      final redo = HardwareKeyboard.instance.isShiftPressed;
+      (redo ? widget.onRedo : widget.onUndo)?.call();
+      return KeyEventResult.handled;
+    }
+    if (ctrl && k == LogicalKeyboardKey.keyY) {
+      widget.onRedo?.call();
+      return KeyEventResult.handled;
+    }
     if (ctrl && k == LogicalKeyboardKey.digit0) {
       c.fitPage();
       return KeyEventResult.handled;
@@ -137,7 +151,10 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
           c.viewport = size;
           // Re-clamp for the new size (window resize, rotation) next frame.
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) c.setView(c.view.value);
+            if (!mounted) return;
+            // An untouched first fit follows the screen size (see
+            // CanvasController.refitOnResize); anything else is just re-clamped.
+            c.refitOnResize ? c.fitFirst() : c.setView(c.view.value);
           });
         }
         if (!_ready && !size.isEmpty && !c.scene.value.isEmpty) {

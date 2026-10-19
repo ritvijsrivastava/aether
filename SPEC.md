@@ -499,7 +499,7 @@ Each milestone ends with a **review stop** where you try it on the Tab S9 and/or
 - Review stop after **2a** (engine on synthetic pages) before any PDF code.
 - Panning is **clamped**: the viewport may roam up to one screen beyond the cards, never further (`ViewState.clamped`).
 - Imported pages land **in one column, top to bottom**, 80 px apart, centred on a shared vertical axis. (Changed from "one row, left to right" after hands-on review of 2a: a column reads like a document and makes the dot grid visible on both sides.)
-- Import paths in M2: file picker (both platforms), Linux drag and drop, and Android "Open with / Share to Aether".
+- Import paths in M2 (all built): file picker on both platforms (GTK dialog on Linux, a native streaming picker on Android), Linux drag and drop, and Android "Open with / Share to Aether". Importing a file already in the library opens the existing document. A password-protected PDF prompts, and the password is remembered in memory for the session only.
 - "Fit" fits the page nearest the centre of the screen (not the whole document, which is meaningless for a 500-page row); Ctrl+0 is the same, Ctrl+1 is 100%.
 - The drag handle keeps a constant screen size at any zoom and is hidden when its card is under 90 px wide.
 

@@ -47,6 +47,37 @@ class AetherDatabase extends _$AetherDatabase {
     )..where((d) => d.slot.equals(0))).getSingle()).deviceId;
   }
 
+  // --- imported PDFs (local only, never synced) -----------------------------
+
+  Future<PdfFileRow?> pdfFile(String sourceHash) => (select(
+    pdfFiles,
+  )..where((f) => f.sourceHash.equals(sourceHash))).getSingleOrNull();
+
+  Future<void> putPdfFile({
+    required String sourceHash,
+    required String path,
+    required int byteLength,
+    required DateTime importedAt,
+  }) => into(pdfFiles).insertOnConflictUpdate(
+    PdfFilesCompanion.insert(
+      sourceHash: sourceHash,
+      path: path,
+      byteLength: byteLength,
+      importedAt: importedAt.millisecondsSinceEpoch,
+    ),
+  );
+
+  // --- per-document view (local only) ---------------------------------------
+
+  Future<ViewStateRow?> viewState(String docId) => (select(
+    viewStates,
+  )..where((v) => v.docId.equals(docId))).getSingleOrNull();
+
+  Future<void> putViewState(String docId, double x, double y, double zoom) =>
+      into(viewStates).insertOnConflictUpdate(
+        ViewStatesCompanion.insert(docId: docId, x: x, y: y, zoom: zoom),
+      );
+
   Future<String?> setting(String key) async {
     final row = await (select(
       settings,

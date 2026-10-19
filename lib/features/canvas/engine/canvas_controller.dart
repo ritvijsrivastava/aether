@@ -27,6 +27,12 @@ class CanvasController implements GestureSink {
   /// Screen area covered by floating controls; "fit" centres in what is left.
   EdgeInsets insets = EdgeInsets.zero;
 
+  /// While true, a change in the viewport's size re-fits the first page. A
+  /// document can open while the soft keyboard is still folding away, so the
+  /// first fit is made for a screen that then grows; this redoes it. Set by
+  /// [fitFirst] and cleared by anything the user does.
+  bool refitOnResize = false;
+
   /// Called after a card drag ends, with the card and its total world shift.
   void Function(String cardId, Offset delta)? onCardMoved;
 
@@ -60,7 +66,10 @@ class CanvasController implements GestureSink {
   }
 
   @override
-  void gestureStart() => _stop();
+  void gestureStart() {
+    refitOnResize = false;
+    _stop();
+  }
 
   @override
   void panBy(Offset delta) => _set(view.value.panBy(delta));
@@ -85,6 +94,7 @@ class CanvasController implements GestureSink {
 
   @override
   void cardDragStart(String cardId) {
+    refitOnResize = false;
     _dragging = cardId;
     _dragTotal = Offset.zero;
   }
@@ -116,19 +126,24 @@ class CanvasController implements GestureSink {
   );
 
   void zoomBy(double factor, {bool animate = true}) {
+    refitOnResize = false;
     final target = view.value.zoomAt(_focus, factor);
     animate ? animateTo(target) : setView(target);
   }
 
-  void zoomTo(double zoom) => animateTo(
-    view.value.withZoomAt(
-      _focus,
-      zoom.clamp(ViewState.minZoom, ViewState.maxZoom),
-    ),
-  );
+  void zoomTo(double zoom) {
+    refitOnResize = false;
+    animateTo(
+      view.value.withZoomAt(
+        _focus,
+        zoom.clamp(ViewState.minZoom, ViewState.maxZoom),
+      ),
+    );
+  }
 
   /// Fit the page nearest the centre of the screen.
   void fitPage({bool animate = true}) {
+    refitOnResize = false;
     final s = scene.value;
     if (s.isEmpty || viewport.isEmpty) return;
     final here = view.value.screenToWorld(_focus);
@@ -142,6 +157,7 @@ class CanvasController implements GestureSink {
     final s = scene.value;
     if (s.isEmpty || viewport.isEmpty) return;
     setView(ViewState.fitRect(s.cards.first.rect, viewport, insets: insets));
+    refitOnResize = true;
   }
 
   void animateTo(

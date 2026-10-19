@@ -1,3 +1,4 @@
+import 'package:aether/core/hlc/hlc.dart';
 import 'package:aether/domain/ops/entity_state.dart';
 import 'package:aether/domain/ops/op.dart';
 import 'package:aether/domain/ops/op_store.dart';
@@ -39,6 +40,10 @@ class MemoryOpStore implements OpStore {
   @override
   Future<List<Op>> allOps() async =>
       [..._log]..sort((a, b) => a.hlc.compareTo(b.hlc));
+
+  @override
+  Future<Hlc?> latestHlc() async =>
+      _log.isEmpty ? null : (await allOps()).last.hlc;
 
   /// Visible (non-deleted) entities with non-null fields, for comparisons.
   Map<String, Map<String, Object?>> view() => {

@@ -2,7 +2,16 @@ import 'package:flutter/foundation.dart' show immutable;
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/hlc/hlc.dart';
+import '../core/id/id_generator.dart';
 import '../data/db/database.dart';
+import '../data/pdf/pdf_password_cache.dart';
+import '../data/pdf/pdf_storage.dart';
+import '../domain/commands/command_bus.dart';
+import '../features/library/import/pdf_importer.dart';
+import '../features/library/import/pdf_inspector.dart';
+import '../features/library/import/pdf_picker.dart';
+import '../features/library/library_actions.dart';
 import '../data/db/drift_op_store.dart';
 import '../domain/model/models.dart';
 import '../domain/ops/op.dart';
@@ -18,17 +27,98 @@ final opStoreProvider = Provider<OpStore>(
   (ref) => DriftOpStore(ref.watch(databaseProvider)),
 );
 
+/// Overridden in `main()` once the library folder exists.
+final pdfStorageProvider = Provider<PdfStorage>(
+  (ref) => throw UnimplementedError('pdfStorageProvider must be overridden'),
+);
+
+/// The device's clock. Overridden in `main()`, where it is seeded with the
+/// newest timestamp already in the log so it never goes backwards.
+final hlcClockProvider = Provider<HlcClock>(
+  (ref) => throw UnimplementedError('hlcClockProvider must be overridden'),
+);
+
+final idGeneratorProvider = Provider<IdGenerator>(
+  (ref) => const UuidV7Generator(),
+);
+
+/// Passwords entered this session, in memory only.
+final pdfPasswordsProvider = Provider<PdfPasswordCache>(
+  (ref) => PdfPasswordCache(),
+);
+
+final pdfInspectorProvider = Provider<PdfInspector>(
+  (ref) => const PdfiumInspector(),
+);
+
+final pdfPickerProvider = Provider<PdfPicker>((ref) => platformPdfPicker());
+
+/// The command bus for library-level actions (import, rename, delete).
+/// Documents open on the canvas have their own, so undo stacks never mix.
+final libraryBusProvider = Provider<CommandBus>((ref) {
+  final bus = CommandBus(
+    store: ref.watch(opStoreProvider),
+    clock: ref.watch(hlcClockProvider),
+    ids: ref.watch(idGeneratorProvider),
+  );
+  ref.onDispose(bus.dispose);
+  return bus;
+});
+
+final libraryActionsProvider = Provider<LibraryActions>(
+  (ref) => LibraryActions(
+    store: ref.watch(opStoreProvider),
+    bus: ref.watch(libraryBusProvider),
+  ),
+);
+
+final pdfImporterProvider = Provider<PdfImporter>(
+  (ref) => PdfImporter(
+    store: ref.watch(opStoreProvider),
+    bus: ref.watch(libraryBusProvider),
+    storage: ref.watch(pdfStorageProvider),
+    inspector: ref.watch(pdfInspectorProvider),
+    db: ref.watch(databaseProvider),
+    ids: ref.watch(idGeneratorProvider),
+    passwords: ref.watch(pdfPasswordsProvider),
+  ),
+);
+
 final deviceIdProvider = FutureProvider<String>(
   (ref) => ref.watch(databaseProvider).deviceId(),
 );
 
-/// All non-deleted documents. Not reactive yet; invalidate after changes.
-final documentsProvider = FutureProvider<List<Document>>((ref) async {
+/// A document as the library lists it.
+@immutable
+class LibraryItem {
+  const LibraryItem(this.doc, this.added);
+  final Document doc;
+
+  /// When it was imported (the time of its first operation).
+  final DateTime added;
+}
+
+/// All non-deleted documents, newest first. Not reactive yet: invalidate
+/// after changes.
+final libraryItemsProvider = FutureProvider<List<LibraryItem>>((ref) async {
   final all = await ref
       .watch(opStoreProvider)
       .entities(kind: EntityKind.document);
-  return [for (final e in all) Document.fromState(e)];
+  final items = [
+    for (final e in all)
+      LibraryItem(
+        Document.fromState(e),
+        DateTime.fromMillisecondsSinceEpoch(e.createdHlc?.physicalMs ?? 0),
+      ),
+  ]..sort((a, b) => b.added.compareTo(a.added));
+  return items;
 });
+
+final documentsProvider = FutureProvider<List<Document>>(
+  (ref) async => [
+    for (final i in await ref.watch(libraryItemsProvider.future)) i.doc,
+  ],
+);
 
 @immutable
 class AppSettings {

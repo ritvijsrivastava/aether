@@ -1,3 +1,4 @@
+import '../../core/hlc/hlc.dart';
 import 'entity_state.dart';
 import 'op.dart';
 
@@ -17,4 +18,8 @@ abstract interface class OpStore {
 
   /// The full log in HLC order.
   Future<List<Op>> allOps();
+
+  /// The newest timestamp in the log, so a restarted clock never issues one
+  /// older than anything already written (even if the system clock went back).
+  Future<Hlc?> latestHlc();
 }

@@ -97,6 +97,15 @@ class DriftOpStore implements OpStore {
     ];
   }
 
+  @override
+  Future<Hlc?> latestHlc() async {
+    final row = await _db
+        .customSelect('SELECT MAX(hlc) AS h FROM ops')
+        .getSingle();
+    final h = row.read<String?>('h');
+    return h == null ? null : Hlc.parse(h);
+  }
+
   /// Throws the snapshot away and rebuilds it from the log alone.
   /// Used by tests and as a recovery path.
   Future<void> rebuildSnapshots() async {

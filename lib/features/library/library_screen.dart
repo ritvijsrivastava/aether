@@ -1,36 +1,53 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart' show kDebugMode, kProfileMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
-import '../../app/debug_flags.dart';
 import '../../app/providers.dart';
-import '../../domain/model/models.dart';
 import '../../ui/adaptive/window_class.dart';
 import '../../ui/theme/theme.dart';
 import '../../ui/theme/tokens.dart';
 import '../../ui/widgets/aether_icon.dart';
+import 'import/import_flow.dart';
 
-class LibraryScreen extends ConsumerWidget {
+class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
 
-  static void importPdf(BuildContext context) {
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        const SnackBar(content: Text('PDF import is not built yet.')),
-      );
+  @override
+  ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class _LibraryScreenState extends ConsumerState<LibraryScreen> {
+  String _query = '';
+
+  Future<void> _import() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final requests = await ref.read(pdfPickerProvider).pick();
+      if (!mounted || requests.isEmpty) return;
+      await runImport(context: context, ref: ref, requests: requests);
+    } catch (_) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          const SnackBar(content: Text("Couldn't open the file picker.")),
+        );
+    }
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final t = context.tokens;
     final text = AetherText(t.ink);
     final cls = WindowClass.ofContext(context);
-    final docs = ref.watch(documentsProvider);
+    final items = ref.watch(libraryItemsProvider);
+    final progress = ref.watch(importProgressProvider);
 
     final importButton = FilledButton.icon(
-      onPressed: () => importPdf(context),
+      onPressed: progress.active ? null : _import,
       icon: AetherIcon(AetherIcons.upload, size: 18, color: t.onIndigo),
       label: const Text('Import PDF'),
     );
@@ -55,7 +72,7 @@ class LibraryScreen extends ConsumerWidget {
       floatingActionButton: cls == WindowClass.expanded
           ? null
           : FloatingActionButton.extended(
-              onPressed: () => importPdf(context),
+              onPressed: progress.active ? null : _import,
               backgroundColor: t.indigo,
               foregroundColor: t.onIndigo,
               elevation: 2,
@@ -67,20 +84,77 @@ class LibraryScreen extends ConsumerWidget {
                 style: text.button.copyWith(color: t.onIndigo),
               ),
             ),
-      body: docs.when(
-        loading: () => const SizedBox.shrink(),
-        error: (e, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(AetherTokens.s6),
-            child: Text(
-              'Your library could not be opened. Restart Aether; your marks are safe on this device.',
-              style: text.body,
-              textAlign: TextAlign.center,
+      body: Column(
+        children: [
+          if (progress.active) _ProgressBanner(progress),
+          Expanded(
+            child: items.when(
+              loading: () => const SizedBox.shrink(),
+              error: (e, _) => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(AetherTokens.s6),
+                  child: Text(
+                    'Your library could not be opened. Restart Aether; your marks are safe on this device.',
+                    style: text.body,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+              data: (list) => list.isEmpty
+                  ? const _EmptyLibrary()
+                  : _DocumentList(
+                      items: list,
+                      query: _query,
+                      onQuery: (q) => setState(() => _query = q),
+                    ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProgressBanner extends StatelessWidget {
+  const _ProgressBanner(this.p);
+  final ImportProgress p;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = AetherText(t.inkMuted);
+    return Semantics(
+      liveRegion: true,
+      label: 'Importing ${p.done + 1} of ${p.total}',
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AetherTokens.s4,
+          0,
+          AetherTokens.s4,
+          AetherTokens.s2,
         ),
-        data: (list) =>
-            list.isEmpty ? const _EmptyLibrary() : _DocumentList(list),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AetherTokens.rPill),
+              child: LinearProgressIndicator(
+                minHeight: 4,
+                color: t.indigo,
+                backgroundColor: t.canvas,
+              ),
+            ),
+            const SizedBox(height: AetherTokens.s1),
+            Text(
+              p.total > 1
+                  ? 'Importing ${p.done + 1} of ${p.total}: ${p.current ?? ''}'
+                  : 'Importing ${p.current ?? ''}',
+              style: text.caption,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -130,11 +204,6 @@ class _EmptyLibrary extends StatelessWidget {
                   alignment: WrapAlignment.center,
                   spacing: AetherTokens.s2,
                   children: [
-                    if (kDebugPdfPath.isNotEmpty)
-                      TextButton(
-                        onPressed: () => context.push('/doc/pdf-debug'),
-                        child: const Text('Open the debug PDF'),
-                      ),
                     for (final n in const [30, 500])
                       TextButton(
                         onPressed: () => context.push('/doc/synthetic-$n'),
@@ -151,68 +220,237 @@ class _EmptyLibrary extends StatelessWidget {
   }
 }
 
-class _DocumentList extends StatelessWidget {
-  const _DocumentList(this.docs);
-  final List<Document> docs;
+class _DocumentList extends ConsumerWidget {
+  const _DocumentList({
+    required this.items,
+    required this.query,
+    required this.onQuery,
+  });
+  final List<LibraryItem> items;
+  final String query;
+  final ValueChanged<String> onQuery;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
     final text = AetherText(t.ink);
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(
-        AetherTokens.s4,
-        AetherTokens.s2,
-        AetherTokens.s4,
-        96,
-      ),
-      itemCount: docs.length,
-      separatorBuilder: (_, _) => const SizedBox(height: AetherTokens.s2),
-      itemBuilder: (context, i) {
-        final d = docs[i];
-        return Material(
-          color: t.panel,
-          borderRadius: BorderRadius.circular(AetherTokens.rCard),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(AetherTokens.rCard),
-            onTap: () => context.push('/doc/${d.id}'),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 64),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AetherTokens.s4,
-                  vertical: AetherTokens.s3,
-                ),
-                child: Row(
-                  children: [
-                    AetherIcon(AetherIcons.doc, color: t.inkMuted),
-                    const SizedBox(width: AetherTokens.s3),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            d.title,
-                            style: text.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            d.pageCount == 1
-                                ? '1 page'
-                                : '${d.pageCount} pages',
-                            style: text.caption.copyWith(color: t.inkMuted),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+    final q = query.trim().toLowerCase();
+    final shown = q.isEmpty
+        ? items
+        : [
+            for (final i in items)
+              if (i.doc.title.toLowerCase().contains(q)) i,
+          ];
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AetherTokens.s4,
+            AetherTokens.s1,
+            AetherTokens.s4,
+            AetherTokens.s2,
+          ),
+          child: TextField(
+            onChanged: onQuery,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Search documents',
+              prefixIcon: const Icon(Icons.search),
+              filled: true,
+              fillColor: t.canvas,
+              contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AetherTokens.rPill),
+                borderSide: BorderSide.none,
               ),
             ),
           ),
-        );
-      },
+        ),
+        Expanded(
+          child: shown.isEmpty
+              ? Center(
+                  child: Text(
+                    'No documents match "$query".',
+                    style: text.body.copyWith(color: t.inkMuted),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(
+                    AetherTokens.s4,
+                    AetherTokens.s1,
+                    AetherTokens.s4,
+                    96,
+                  ),
+                  itemCount: shown.length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: AetherTokens.s2),
+                  itemBuilder: (context, i) => _DocumentTile(shown[i]),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DocumentTile extends ConsumerWidget {
+  const _DocumentTile(this.item);
+  final LibraryItem item;
+
+  Future<void> _rename(BuildContext context, WidgetRef ref) async {
+    final controller = TextEditingController(text: item.doc.title);
+    final title = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename document'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Title'),
+          onSubmitted: (v) => Navigator.of(context).pop(v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (title == null ||
+        title.trim().isEmpty ||
+        title.trim() == item.doc.title) {
+      return;
+    }
+    await ref.read(libraryActionsProvider).rename(item.doc.id, title);
+    ref.invalidate(libraryItemsProvider);
+    ref.invalidate(documentsProvider);
+  }
+
+  Future<void> _delete(BuildContext context, WidgetRef ref) async {
+    // This tile disappears with the document, so the Undo callback must not
+    // use its `ref`: hold on to the app-wide container instead.
+    final container = ProviderScope.containerOf(context, listen: false);
+    final actions = container.read(libraryActionsProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    void refresh() {
+      container.invalidate(libraryItemsProvider);
+      container.invalidate(documentsProvider);
+    }
+
+    await actions.delete(item.doc.id);
+    refresh();
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('Deleted "${item.doc.title}".'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () async {
+              await actions.undo();
+              refresh();
+            },
+          ),
+        ),
+      );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tokens;
+    final text = AetherText(t.ink);
+    final d = item.doc;
+    final pages = d.pageCount == 1 ? '1 page' : '${d.pageCount} pages';
+    final added = DateFormat.yMMMd().format(item.added);
+    return Material(
+      color: t.panel,
+      borderRadius: BorderRadius.circular(AetherTokens.rCard),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AetherTokens.rCard),
+        onTap: () => context.push('/doc/${d.id}'),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 88),
+          child: Padding(
+            padding: const EdgeInsets.all(AetherTokens.s3),
+            child: Row(
+              children: [
+                _Thumbnail(sourceHash: d.sourceHash),
+                const SizedBox(width: AetherTokens.s3),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        d.title,
+                        style: text.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$pages · Added $added',
+                        style: text.caption.copyWith(color: t.inkMuted),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'More',
+                  icon: AetherIcon(AetherIcons.more, color: t.inkMuted),
+                  onSelected: (v) {
+                    if (v == 'rename') _rename(context, ref);
+                    if (v == 'delete') _delete(context, ref);
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'rename', child: Text('Rename')),
+                    PopupMenuItem(value: 'delete', child: Text('Delete')),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Thumbnail extends ConsumerWidget {
+  const _Thumbnail({required this.sourceHash});
+  final String sourceHash;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tokens;
+    final path = ref.watch(pdfStorageProvider).thumbnailPath(sourceHash);
+    final fallback = Container(
+      color: t.canvas,
+      alignment: Alignment.center,
+      child: AetherIcon(AetherIcons.doc, color: t.inkMuted),
+    );
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AetherTokens.rPaper),
+      child: SizedBox(
+        width: 56,
+        height: 72,
+        child: ExcludeSemantics(
+          child: Image.file(
+            File(path),
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            cacheWidth: 168,
+            gaplessPlayback: true,
+            errorBuilder: (_, _, _) => fallback,
+          ),
+        ),
+      ),
     );
   }
 }

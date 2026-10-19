@@ -3,6 +3,8 @@ import 'dart:ui' show Size;
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:pdfrx/pdfrx.dart';
 
+import '../../../data/pdf/pdf_password_cache.dart';
+
 enum PdfOpenFailure {
   /// Needs a password we do not have.
   password,
@@ -37,12 +39,16 @@ class OpenedPdf {
 }
 
 /// Opens [path]. Files that are encrypted but have an empty user password
-/// (copying allowed, editing not) open silently; a real user password raises
-/// [PdfOpenFailure.password] until a prompt exists.
-Future<OpenedPdf> openPdfFile(String path) async {
-  await pdfrxFlutterInitialize();
+/// (copying allowed, editing not) open silently. A real user password is
+/// requested from [password] (repeatedly, while it is wrong); with none given,
+/// or if the user gives up, this raises [PdfOpenFailure.password].
+Future<OpenedPdf> openPdfFile(String path, {PasswordProvider? password}) async {
   try {
-    final doc = await PdfDocument.openFile(path, passwordProvider: () => null);
+    await pdfrxFlutterInitialize();
+    final doc = await PdfDocument.openFile(
+      path,
+      passwordProvider: password ?? () => null,
+    );
     return OpenedPdf(doc);
   } on PdfPasswordException catch (e) {
     throw PdfOpenException(PdfOpenFailure.password, e);

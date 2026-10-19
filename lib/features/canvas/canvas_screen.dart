@@ -1,18 +1,20 @@
-import 'dart:io' show Platform;
+import 'dart:async';
+import 'dart:io' show File, Platform;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/debug_flags.dart';
 import '../../app/providers.dart';
 import '../../ui/adaptive/window_class.dart';
+import '../library/import/password_dialog.dart';
 import '../../ui/theme/tokens.dart';
 import '../../ui/widgets/panel_surface.dart';
 import '../extract/extract_panel.dart';
 import 'canvas_top_bar.dart';
 import 'canvas_ui_state.dart';
 import 'canvas_view.dart';
+import 'document_session.dart';
 import 'engine/canvas_controller.dart';
 import 'engine/page_surface.dart';
 import 'engine/scene.dart';
@@ -42,9 +44,6 @@ Scene syntheticScene(int pages) {
   ]);
 }
 
-/// Debug document: opens the PDF at `--dart-define=AETHER_DEBUG_PDF=...`.
-const String debugPdfId = 'pdf-debug';
-
 enum _Load { ready, opening, failed }
 
 /// The document workspace. Layout adapts to the window class:
@@ -63,60 +62,124 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   late final CanvasController _controller;
   PageSurface _surface = SyntheticPageSurface();
   OpenedPdf? _pdf;
+  DocumentSession? _session;
+  StreamSubscription<void>? _history;
   _Load _load = _Load.ready;
   String? _error;
+  String? _title;
+  int _pages = 0;
 
-  bool get _isPdf => widget.docId == debugPdfId;
+  int? get _synthetic => syntheticCount(widget.docId);
 
   @override
   void initState() {
     super.initState();
-    final n = syntheticCount(widget.docId);
+    final n = _synthetic;
     _controller = CanvasController(
       scene: n == null ? const Scene([]) : syntheticScene(n),
     )..attach(this);
-    if (_isPdf) {
+    if (n == null) {
       _load = _Load.opening;
-      _openPdf();
+      _openDocument();
+    } else {
+      _title = 'Synthetic test, $n pages';
+      _pages = n;
     }
   }
 
-  Future<void> _openPdf() async {
+  void _fail(String message) {
+    if (!mounted) return;
+    setState(() {
+      _load = _Load.failed;
+      _error = message;
+    });
+  }
+
+  Future<void> _openDocument() async {
     try {
-      if (kDebugPdfPath.isEmpty) {
-        throw PdfOpenException(
-          PdfOpenFailure.unreadable,
-          'AETHER_DEBUG_PDF is not set',
-        );
-      }
-      final pdf = await openPdfFile(kDebugPdfPath);
-      if (!mounted) {
-        await pdf.dispose();
-        return;
-      }
-      _pdf = pdf;
-      _surface = PdfPageSurface(
-        pageSizes: pdf.pageSizes,
-        renderer: PdfiumTileRenderer(pdf.document),
-        cacheBytes: tileCacheBytesFor(
-          isDesktop: Platform.isLinux,
-          shortestSideDp: MediaQuery.sizeOf(context).shortestSide,
-        ),
-      );
-      _controller.scene.value = Scene.column(pdf.pageSizes);
-      setState(() => _load = _Load.ready);
-    } on PdfOpenException catch (e) {
-      if (mounted) {
-        setState(() {
-          _load = _Load.failed;
-          _error = e.message;
-        });
-      }
+      await _openDocumentUnguarded();
+    } catch (e, st) {
+      // Whatever went wrong, say so instead of sitting on "Opening…".
+      debugPrint('Opening ${widget.docId} failed: $e\n$st');
+      _fail('This document could not be opened.');
     }
+  }
+
+  Future<void> _openDocumentUnguarded() async {
+    final session = DocumentSession(
+      docId: widget.docId,
+      store: ref.read(opStoreProvider),
+      db: ref.read(databaseProvider),
+      controller: _controller,
+      clock: ref.read(hlcClockProvider),
+      ids: ref.read(idGeneratorProvider),
+    );
+    _session = session;
+    if (!await session.load()) {
+      return _fail('This document is no longer in your library.');
+    }
+    final doc = session.document!;
+    final path = ref.read(pdfStorageProvider).pdfPath(doc.sourceHash);
+    if (!File(path).existsSync()) {
+      return _fail('The PDF for this document is missing from this device.');
+    }
+
+    // A password entered earlier this session (for example while importing)
+    // is tried first, so the user is not asked twice in a row.
+    var prompts = 0;
+    final attempt = ref
+        .read(pdfPasswordsProvider)
+        .attempt(
+          doc.sourceHash,
+          () => !mounted
+              ? Future.value(null)
+              : showPdfPasswordDialog(
+                  context,
+                  fileName: doc.title,
+                  retry: prompts++ > 0,
+                ),
+        );
+    final OpenedPdf pdf;
+    try {
+      pdf = await openPdfFile(path, password: attempt.provide);
+      attempt.accepted();
+    } on PdfOpenException catch (e) {
+      return _fail(e.message);
+    }
+    if (!mounted) {
+      await pdf.dispose();
+      return;
+    }
+    _pdf = pdf;
+    _surface = PdfPageSurface(
+      pageSizes: session.pageSizes(),
+      renderer: PdfiumTileRenderer(pdf.document),
+      cacheBytes: tileCacheBytesFor(
+        isDesktop: Platform.isLinux,
+        shortestSideDp: MediaQuery.sizeOf(context).shortestSide,
+      ),
+    );
+    _history = session.bus.changes.listen((_) {
+      if (mounted) setState(() {});
+    });
+    setState(() {
+      _load = _Load.ready;
+      _title = doc.title;
+      _pages = doc.pageCount;
+    });
+  }
+
+  /// First layout is known: restore the remembered view, or show page one.
+  Future<void> _onReady() async {
+    final saved = await _session?.savedView();
+    if (!mounted) return;
+    saved != null ? _controller.setView(saved) : _controller.fitFirst();
   }
 
   @override
   void dispose() {
+    _history?.cancel();
+    _session?.dispose();
     final surface = _surface;
     if (surface is PdfPageSurface) surface.dispose();
     _pdf?.dispose();
@@ -144,24 +207,18 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
             56, // room for the zoom pill
           );
 
-    final docs = ref.watch(documentsProvider).value ?? const [];
-    final doc = docs.where((d) => d.id == widget.docId).firstOrNull;
-    final n = syntheticCount(widget.docId);
-    final title =
-        doc?.title ??
-        (n != null
-            ? 'Synthetic test, $n pages'
-            : _isPdf
-            ? kDebugPdfPath.split('/').last
-            : 'Document');
-    final pages = doc?.pageCount ?? n ?? _pdf?.pageSizes.length ?? 0;
+    final title = _title ?? 'Document';
+    final pages = _pages;
+    final session = _session;
 
     final canvasView = CanvasView(
       controller: _controller,
       surface: _surface,
       tool: ui.tool,
       fingerDraws: settings.fingerDraws,
-      onReady: _controller.fitFirst,
+      onReady: _onReady,
+      onUndo: session?.undo,
+      onRedo: session?.redo,
     );
     final canvas = Stack(
       fit: StackFit.expand,
@@ -193,6 +250,10 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
             title: title,
             pageCount: pages,
             extractVisible: extractOpen,
+            canUndo: session?.bus.canUndo ?? false,
+            canRedo: session?.bus.canRedo ?? false,
+            onUndo: session?.undo,
+            onRedo: session?.redo,
           ),
           Expanded(
             child: cls == WindowClass.compact

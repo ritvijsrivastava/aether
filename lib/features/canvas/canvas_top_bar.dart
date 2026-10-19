@@ -18,12 +18,18 @@ class CanvasTopBar extends ConsumerWidget {
     required this.title,
     required this.pageCount,
     required this.extractVisible,
+    this.canUndo = false,
+    this.canRedo = false,
+    this.onUndo,
+    this.onRedo,
   });
 
   final WindowClass windowClass;
   final String title;
   final int pageCount;
   final bool extractVisible;
+  final bool canUndo, canRedo;
+  final VoidCallback? onUndo, onRedo;
 
   void _copy(BuildContext context) {
     ScaffoldMessenger.of(context)
@@ -67,8 +73,11 @@ class CanvasTopBar extends ConsumerWidget {
           Expanded(child: titleText),
           IconButton(
             tooltip: 'Undo',
-            onPressed: null,
-            icon: AetherIcon(AetherIcons.undo, color: t.inkFaint),
+            onPressed: canUndo ? onUndo : null,
+            icon: AetherIcon(
+              AetherIcons.undo,
+              color: canUndo ? t.ink : t.inkFaint,
+            ),
           ),
           PopupMenuButton<String>(
             tooltip: 'More',
@@ -114,13 +123,19 @@ class CanvasTopBar extends ConsumerWidget {
             ),
           IconButton(
             tooltip: 'Undo',
-            onPressed: null,
-            icon: AetherIcon(AetherIcons.undo, color: t.inkFaint),
+            onPressed: canUndo ? onUndo : null,
+            icon: AetherIcon(
+              AetherIcons.undo,
+              color: canUndo ? t.ink : t.inkFaint,
+            ),
           ),
           IconButton(
             tooltip: 'Redo',
-            onPressed: null,
-            icon: AetherIcon(AetherIcons.redo, color: t.inkFaint),
+            onPressed: canRedo ? onRedo : null,
+            icon: AetherIcon(
+              AetherIcons.redo,
+              color: canRedo ? t.ink : t.inkFaint,
+            ),
           ),
           extractToggle,
           IconButton(

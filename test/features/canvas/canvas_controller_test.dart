@@ -186,4 +186,50 @@ void main() {
     c.cardDragEnd();
     expect(c.scene.value.bounds.left, 5000);
   });
+
+  group('refit on resize', () {
+    testWidgets('an untouched first fit is redone when the screen grows', (
+      tester,
+    ) async {
+      final c = make();
+      c.viewport = const Size(1000, 500); // e.g. the soft keyboard still up
+      c.fitFirst();
+      final small = c.view.value.zoom;
+      expect(c.refitOnResize, isTrue);
+
+      c.viewport = const Size(1000, 800); // keyboard gone
+      c.refitOnResize ? c.fitFirst() : c.setView(c.view.value);
+      expect(c.view.value.zoom, greaterThan(small));
+    });
+
+    testWidgets('anything the user does stops it', (tester) async {
+      for (final act in <String, void Function(CanvasController)>{
+        'gesture': (c) => c.gestureStart(),
+        'pan': (c) => c.panBy(const Offset(5, 5)),
+        'zoom': (c) => c.zoomBy(1.25),
+        'zoomTo': (c) => c.zoomTo(1),
+        'fit page': (c) => c.fitPage(),
+        'card drag': (c) => c.cardDragStart('page-0'),
+      }.entries) {
+        final c = make();
+        c.fitFirst();
+        expect(c.refitOnResize, isTrue, reason: act.key);
+        act.value(c);
+        // panBy alone is not a gesture start; the arbiter always calls
+        // gestureStart first, which is what clears it.
+        if (act.key == 'pan') c.gestureStart();
+        expect(c.refitOnResize, isFalse, reason: act.key);
+        await tester.pump(
+          const Duration(seconds: 1),
+        ); // let any animation finish
+        await tester.pump(const Duration(seconds: 1));
+      }
+    });
+
+    testWidgets('a restored view is not refit', (tester) async {
+      final c = make();
+      c.setView(const ViewState(x: -50, y: -60, zoom: 1.4));
+      expect(c.refitOnResize, isFalse);
+    });
+  });
 }
