@@ -194,6 +194,21 @@ class DocumentSession implements MarkSink {
     return id;
   }
 
+  /// Removes a highlight from the page at once; undoable.
+  void deleteHighlight(String id) {
+    final old = highlights.byId(id);
+    if (old == null) return;
+    highlights.remove(id);
+    _enqueue(() async {
+      try {
+        await bus.run(await _factory.delete(id, label: 'Delete highlight'));
+      } catch (e, st) {
+        debugPrint('Deleting highlight $id failed: $e\n$st');
+        highlights.add(old);
+      }
+    });
+  }
+
   @override
   String replaceHighlight({
     required String oldId,

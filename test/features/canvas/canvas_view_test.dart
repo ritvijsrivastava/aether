@@ -7,9 +7,12 @@ import 'package:aether/features/canvas/engine/page_surface.dart';
 import 'package:aether/features/canvas/engine/painters.dart';
 import 'package:aether/features/canvas/engine/scene.dart';
 import 'package:aether/features/canvas/engine/view_state.dart';
+import 'package:aether/features/canvas/marks/mark_tool.dart';
 import 'package:aether/ui/theme/theme.dart';
 import 'package:aether/ui/theme/tokens.dart';
+import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -20,6 +23,7 @@ Future<CanvasController> pumpCanvas(
   CanvasTool tool = CanvasTool.mark,
   bool fingerDraws = false,
   int pages = 6,
+  VoidCallback? onCopy,
 }) async {
   tester.view.physicalSize = _size;
   tester.view.devicePixelRatio = 1;
@@ -38,6 +42,7 @@ Future<CanvasController> pumpCanvas(
           surface: SyntheticPageSurface(),
           tool: tool,
           fingerDraws: fingerDraws,
+          onCopy: onCopy,
         ),
       ),
     ),
@@ -45,6 +50,18 @@ Future<CanvasController> pumpCanvas(
   c.setView(const ViewState(x: 200, y: 100));
   await tester.pump();
   return c;
+}
+
+class RecordingMarks implements MarkGestures {
+  final List<String> log = [];
+  @override
+  void markStart(Offset p) => log.add('start ${p.dx.round()},${p.dy.round()}');
+  @override
+  void markMove(Offset p) => log.add('move ${p.dx.round()},${p.dy.round()}');
+  @override
+  void markEnd(Offset p) => log.add('end ${p.dx.round()},${p.dy.round()}');
+  @override
+  void markCancel() => log.add('cancel');
 }
 
 void main() {
@@ -209,5 +226,116 @@ void main() {
       await tester.pump();
       expect(tester.takeException(), isNull, reason: 'zoom $z');
     }
+  });
+
+  group('mark tool', () {
+    testWidgets('a pen drag with the Mark tool is a mark, not a pan', (
+      tester,
+    ) async {
+      final c = await pumpCanvas(tester);
+      final marks = RecordingMarks();
+      c.marks = marks;
+      final before = c.view.value;
+      final g = await tester.startGesture(
+        const Offset(500, 400),
+        kind: PointerDeviceKind.stylus,
+      );
+      await g.moveTo(const Offset(540, 420));
+      await g.up();
+      expect(marks.log, ['start 500,400', 'move 540,420', 'end 540,420']);
+      expect(c.view.value, before);
+    });
+
+    testWidgets('a mouse drag with the primary button marks', (tester) async {
+      final c = await pumpCanvas(tester);
+      final marks = RecordingMarks();
+      c.marks = marks;
+      final g = await tester.startGesture(
+        const Offset(300, 300),
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryButton,
+      );
+      await g.moveTo(const Offset(350, 310));
+      await g.up();
+      expect(marks.log.first, 'start 300,300');
+      expect(marks.log.last, 'end 350,310');
+    });
+
+    for (final tool in [CanvasTool.pan, CanvasTool.ink, CanvasTool.erase]) {
+      testWidgets('the ${tool.label} tool does not mark', (tester) async {
+        final c = await pumpCanvas(tester, tool: tool);
+        final marks = RecordingMarks();
+        c.marks = marks;
+        final g = await tester.startGesture(
+          const Offset(500, 400),
+          kind: PointerDeviceKind.stylus,
+        );
+        await g.moveTo(const Offset(540, 420));
+        await g.up();
+        expect(marks.log, isEmpty);
+      });
+    }
+
+    testWidgets('a finger does not mark by default', (tester) async {
+      final c = await pumpCanvas(tester);
+      final marks = RecordingMarks();
+      c.marks = marks;
+      final g = await tester.startGesture(
+        const Offset(500, 400),
+        kind: PointerDeviceKind.touch,
+      );
+      await g.moveBy(const Offset(30, 0));
+      await g.up();
+      expect(marks.log, isEmpty);
+    });
+
+    testWidgets('with "finger draws" on, a finger marks', (tester) async {
+      final c = await pumpCanvas(tester, fingerDraws: true);
+      final marks = RecordingMarks();
+      c.marks = marks;
+      final g = await tester.startGesture(
+        const Offset(500, 400),
+        kind: PointerDeviceKind.touch,
+      );
+      await g.moveBy(const Offset(30, 0));
+      await g.up();
+      expect(marks.log, ['start 500,400', 'move 530,400', 'end 530,400']);
+    });
+
+    testWidgets('Escape drops a mark in progress', (tester) async {
+      final c = await pumpCanvas(tester);
+      final marks = RecordingMarks();
+      c.marks = marks;
+      final g = await tester.startGesture(
+        const Offset(500, 400),
+        kind: PointerDeviceKind.stylus,
+      );
+      await g.moveTo(const Offset(540, 420));
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await g.up();
+      expect(marks.log, ['start 500,400', 'move 540,420', 'cancel']);
+    });
+
+    testWidgets('Ctrl+C asks to copy the Extract list', (tester) async {
+      var copies = 0;
+      await pumpCanvas(tester, onCopy: () => copies++);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      expect(copies, 1);
+    });
+
+    testWidgets('the mouse shows a text cursor under the Mark tool', (
+      tester,
+    ) async {
+      await pumpCanvas(tester);
+      final mouse = TestPointer(1, PointerDeviceKind.mouse);
+      await tester.sendEventToBinding(mouse.hover(const Offset(500, 400)));
+      await tester.pump();
+      expect(
+        RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
+        SystemMouseCursors.text,
+      );
+    });
   });
 }

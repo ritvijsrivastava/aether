@@ -444,6 +444,30 @@ void main() {
       expect(s.highlights.count, 0);
     });
 
+    test('deleting is undoable and survives a reopen', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first;
+      final id = s.addHighlight(
+        pageId: page.id,
+        selection: pick(0, 0),
+        meaning: Meaning.claim,
+        text: text,
+      );
+      await s.settled();
+      s.deleteHighlight(id);
+      expect(s.highlights.count, 0, reason: 'gone at once');
+      await s.settled();
+      expect(await storedMarks(), isEmpty);
+      expect((await opened()).highlights.count, 0);
+
+      await s.undo();
+      expect(s.highlights.byId(id), isNotNull);
+      expect((await storedMarks()).single.id, id);
+      s.deleteHighlight('no-such-highlight'); // quietly nothing
+      await s.settled();
+      expect(s.highlights.count, 1);
+    });
+
     test('a failed save takes the highlight back off the page', () async {
       final flaky = FlakyStore(store);
       final controller = CanvasController(scene: const Scene([]))

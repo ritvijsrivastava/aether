@@ -232,4 +232,79 @@ void main() {
       expect(c.refitOnResize, isFalse);
     });
   });
+
+  group('reveal', () {
+    // Page 2 (index 1) spans world x 0..612, y 872..1664.
+    Offset centreOnScreen(CanvasController c, Rect world) =>
+        c.view.value.worldToScreen(world.center);
+
+    testWidgets('centres the target in the viewport', (tester) async {
+      final c = make();
+      c.setView(const ViewState(zoom: 1));
+      const target = Rect.fromLTWH(100, 1000, 200, 20);
+      c.reveal(target, animate: false);
+      final s = centreOnScreen(c, target);
+      expect(s.dx, closeTo(500, 1e-6));
+      expect(s.dy, closeTo(400, 1e-6));
+    });
+
+    testWidgets('keeps a readable zoom as it is', (tester) async {
+      final c = make();
+      c.setView(const ViewState(zoom: 1.5));
+      c.reveal(const Rect.fromLTWH(100, 1000, 200, 20), animate: false);
+      expect(c.view.value.zoom, 1.5);
+    });
+
+    testWidgets('from far out, comes in to 100%', (tester) async {
+      final c = make();
+      c.setView(const ViewState(zoom: 0.3));
+      c.reveal(const Rect.fromLTWH(100, 1000, 200, 20), animate: false);
+      expect(c.view.value.zoom, 1.0);
+    });
+
+    testWidgets('a target wider than the screen is zoomed out to fit', (
+      tester,
+    ) async {
+      final c = make();
+      c.setView(const ViewState(zoom: 1));
+      const wide = Rect.fromLTWH(0, 1000, 2000, 40);
+      c.reveal(wide, animate: false);
+      expect(c.view.value.zoom, closeTo(1000 * 0.85 / 2000, 1e-9));
+      final r = c.view.value.worldRect(c.viewport);
+      expect(r.left, lessThan(wide.left));
+      expect(r.right, greaterThan(wide.right));
+    });
+
+    testWidgets('centres in the area the floating controls leave free', (
+      tester,
+    ) async {
+      final c = make()..insets = const EdgeInsets.fromLTRB(100, 0, 0, 200);
+      c.setView(const ViewState(zoom: 1));
+      const target = Rect.fromLTWH(100, 1000, 200, 20);
+      c.reveal(target, animate: false);
+      final s = centreOnScreen(c, target);
+      expect(s.dx, closeTo(100 + (1000 - 100) / 2, 1e-6));
+      expect(s.dy, closeTo((800 - 200) / 2, 1e-6));
+    });
+
+    testWidgets('animated, it ends in the same place', (tester) async {
+      final c = make();
+      c.setView(const ViewState(zoom: 1));
+      const target = Rect.fromLTWH(100, 1000, 200, 20);
+      c.reveal(target);
+      expect(c.isAnimating, isTrue);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      final s = centreOnScreen(c, target);
+      expect(s.dx, closeTo(500, 1e-3));
+      expect(s.dy, closeTo(400, 1e-3));
+    });
+
+    testWidgets('does nothing before the canvas has a size', (tester) async {
+      final c = make(viewport: Size.zero);
+      final before = c.view.value;
+      c.reveal(const Rect.fromLTWH(100, 1000, 200, 20), animate: false);
+      expect(c.view.value, before);
+    });
+  });
 }

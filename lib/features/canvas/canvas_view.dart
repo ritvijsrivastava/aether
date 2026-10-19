@@ -7,6 +7,7 @@ import 'canvas_ui_state.dart';
 import 'engine/canvas_controller.dart';
 import 'engine/page_surface.dart';
 import 'engine/painters.dart';
+import 'marks/flash.dart';
 import 'marks/mark_layers.dart';
 import 'input/input_arbiter.dart';
 
@@ -23,10 +24,12 @@ class CanvasView extends StatefulWidget {
     required this.tool,
     this.highlights,
     this.live,
+    this.flash,
     this.fingerDraws = false,
     this.onReady,
     this.onUndo,
     this.onRedo,
+    this.onCopy,
   });
 
   final CanvasController controller;
@@ -37,6 +40,9 @@ class CanvasView extends StatefulWidget {
   /// synthetic test documents.
   final HighlightLayer? highlights;
   final ValueNotifier<LiveMark?>? live;
+
+  /// The outline shown on a highlight after jumping to it from Extract.
+  final FlashController? flash;
   final bool fingerDraws;
 
   /// Called once the first non-empty layout is known (to fit the first page).
@@ -44,6 +50,9 @@ class CanvasView extends StatefulWidget {
 
   /// Ctrl+Z and Ctrl+Shift+Z / Ctrl+Y. Null when there is no history.
   final VoidCallback? onUndo, onRedo;
+
+  /// Ctrl+C: with nothing selected, copy the Extract list as Markdown.
+  final VoidCallback? onCopy;
 
   @override
   State<CanvasView> createState() => _CanvasViewState();
@@ -137,6 +146,10 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
     }
     if (ctrl && k == LogicalKeyboardKey.keyY) {
       widget.onRedo?.call();
+      return KeyEventResult.handled;
+    }
+    if (ctrl && k == LogicalKeyboardKey.keyC && widget.onCopy != null) {
+      widget.onCopy!();
       return KeyEventResult.handled;
     }
     if (ctrl && k == LogicalKeyboardKey.digit0) {
@@ -235,6 +248,17 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
                         ),
                       ),
                     ),
+                    if (widget.flash != null)
+                      RepaintBoundary(
+                        child: CustomPaint(
+                          painter: FlashPainter(
+                            view: c.view,
+                            scene: c.scene,
+                            flash: widget.flash!,
+                            tokens: t,
+                          ),
+                        ),
+                      ),
                     if (widget.live != null)
                       RepaintBoundary(
                         child: CustomPaint(

@@ -3,19 +3,24 @@ import 'dart:io' show File, Platform;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../data/pdf/page_text_service.dart';
+import '../../domain/export/markdown_exporter.dart';
+import '../../domain/model/models.dart';
 import '../../ui/adaptive/window_class.dart';
 import '../library/import/password_dialog.dart';
 import '../../ui/theme/tokens.dart';
 import '../../ui/widgets/panel_surface.dart';
+import '../extract/extract_controller.dart';
 import '../extract/extract_panel.dart';
 import 'canvas_top_bar.dart';
 import 'canvas_ui_state.dart';
 import 'canvas_view.dart';
 import 'document_session.dart';
+import 'marks/flash.dart';
 import 'marks/mark_layers.dart';
 import 'marks/mark_tool.dart';
 import 'engine/canvas_controller.dart';
@@ -61,13 +66,17 @@ class CanvasScreen extends ConsumerStatefulWidget {
 }
 
 class _CanvasScreenState extends ConsumerState<CanvasScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final CanvasController _controller;
   PageSurface _surface = SyntheticPageSurface();
   OpenedPdf? _pdf;
   DocumentSession? _session;
   final ValueNotifier<LiveMark?> _live = ValueNotifier(null);
   MarkToolController? _markTool;
+  late final FlashController _flash = FlashController(this);
+  ExtractController? _extract;
+  bool _copied = false;
+  Timer? _copiedTimer;
   StreamSubscription<void>? _history;
   _Load _load = _Load.ready;
   String? _error;
@@ -177,6 +186,13 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       sink: session,
     );
     _markTool = tool;
+    _extract = ExtractController(
+      highlights: session.highlights,
+      scene: _controller.scene,
+      onJump: _jumpTo,
+      onDelete: (h) => session.deleteHighlight(h.id),
+      onUndo: session.undo,
+    );
     _controller.marks = tool;
     _controller.view.addListener(_warmText);
     _history = session.bus.changes.listen((_) {
@@ -186,6 +202,59 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       _load = _Load.ready;
       _title = doc.title;
       _pages = doc.pageCount;
+    });
+  }
+
+  /// Extract item tapped: bring the highlight into view and point at it.
+  void _jumpTo(Highlight h) {
+    final card = _controller.scene.value.byId(h.pageId ?? '');
+    if (card == null || !mounted) return;
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    final b = h.bounds;
+    _controller.reveal(
+      Rect.fromLTRB(
+        card.rect.left + b.x0,
+        card.rect.top + b.y0,
+        card.rect.left + b.x1,
+        card.rect.top + b.y1,
+      ),
+      animate: !reduce,
+    );
+    _flash
+      ..reduceMotion = reduce
+      ..show(Flash(card.id, h.rects, h.meaning));
+    _extract?.collapseRequests.value++;
+  }
+
+  /// Copy as Markdown: the whole Extract list, grouped by meaning.
+  Future<void> _copyMarkdown() async {
+    final items = _extract?.items(ExtractFilter.all) ?? const [];
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (items.isEmpty) {
+      messenger
+        ?..clearSnackBars()
+        ..showSnackBar(const SnackBar(content: Text('Nothing to copy yet.')));
+      return;
+    }
+    await Clipboard.setData(
+      ClipboardData(text: MarkdownExporter.export(_title ?? 'Document', items)),
+    );
+    if (!mounted) return;
+    messenger
+      ?..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            items.length == 1
+                ? 'Copied 1 highlight as Markdown.'
+                : 'Copied ${items.length} highlights as Markdown.',
+          ),
+        ),
+      );
+    setState(() => _copied = true);
+    _copiedTimer?.cancel();
+    _copiedTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted) setState(() => _copied = false);
     });
   }
 
@@ -205,6 +274,9 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _controller.marks = null;
     _markTool?.dispose();
     _live.dispose();
+    _flash.dispose();
+    _copiedTimer?.cancel();
+    _extract?.collapseRequests.dispose();
     _history?.cancel();
     _session?.dispose();
     final surface = _surface;
@@ -244,10 +316,12 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       tool: ui.tool,
       highlights: session?.highlights,
       live: _live,
+      flash: _flash,
       fingerDraws: settings.fingerDraws,
       onReady: _onReady,
       onUndo: session?.undo,
       onRedo: session?.redo,
+      onCopy: _copyMarkdown,
     );
     final canvas = Stack(
       fit: StackFit.expand,
@@ -283,13 +357,20 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
             canRedo: session?.bus.canRedo ?? false,
             onUndo: session?.undo,
             onRedo: session?.redo,
+            onCopy: _copyMarkdown,
+            copied: _copied,
           ),
           Expanded(
             child: cls == WindowClass.compact
-                ? _CompactBody(controller: _controller, canvas: canvas)
+                ? _CompactBody(
+                    controller: _controller,
+                    canvas: canvas,
+                    extract: _extract,
+                  )
                 : _WideBody(
                     controller: _controller,
                     canvas: canvas,
+                    extract: _extract,
                     expanded: cls == WindowClass.expanded,
                     extractOpen: extractOpen,
                     leftHanded: settings.leftHanded,
@@ -351,6 +432,7 @@ class _WideBody extends ConsumerWidget {
   const _WideBody({
     required this.controller,
     required this.canvas,
+    required this.extract,
     required this.expanded,
     required this.extractOpen,
     required this.leftHanded,
@@ -358,6 +440,7 @@ class _WideBody extends ConsumerWidget {
 
   final CanvasController controller;
   final Widget canvas;
+  final ExtractController? extract;
   final bool expanded, extractOpen, leftHanded;
 
   @override
@@ -401,7 +484,7 @@ class _WideBody extends ConsumerWidget {
               alignment: Alignment.centerLeft,
               minWidth: panelW,
               maxWidth: panelW,
-              child: const PanelSurface(child: ExtractPanel()),
+              child: PanelSurface(child: ExtractPanel(source: extract)),
             )
           : null,
     );
@@ -436,9 +519,14 @@ class _WideBody extends ConsumerWidget {
 }
 
 class _CompactBody extends ConsumerWidget {
-  const _CompactBody({required this.controller, required this.canvas});
+  const _CompactBody({
+    required this.controller,
+    required this.canvas,
+    required this.extract,
+  });
   final CanvasController controller;
   final Widget canvas;
+  final ExtractController? extract;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -462,7 +550,7 @@ class _CompactBody extends ConsumerWidget {
                   bottom: 88,
                   child: Center(child: MeaningStrip()),
                 ),
-              _ExtractSheet(open: open),
+              _ExtractSheet(open: open, source: extract),
             ],
           ),
         ),
@@ -473,20 +561,66 @@ class _CompactBody extends ConsumerWidget {
 }
 
 /// Draggable Extract sheet with collapsed, half and full snap points.
-class _ExtractSheet extends ConsumerWidget {
-  const _ExtractSheet({required this.open});
+class _ExtractSheet extends StatefulWidget {
+  const _ExtractSheet({required this.open, required this.source});
   final bool open;
+  final ExtractController? source;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  State<_ExtractSheet> createState() => _ExtractSheetState();
+}
+
+class _ExtractSheetState extends State<_ExtractSheet> {
+  final DraggableScrollableController _sheet = DraggableScrollableController();
+  double _peek = .1;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.source?.collapseRequests.addListener(_collapse);
+  }
+
+  @override
+  void didUpdateWidget(_ExtractSheet old) {
+    super.didUpdateWidget(old);
+    if (old.source != widget.source) {
+      old.source?.collapseRequests.removeListener(_collapse);
+      widget.source?.collapseRequests.addListener(_collapse);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.source?.collapseRequests.removeListener(_collapse);
+    _sheet.dispose();
+    super.dispose();
+  }
+
+  /// A jump from Extract: get out of the way so the highlight can be seen.
+  void _collapse() {
+    if (!_sheet.isAttached) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _sheet.jumpTo(_peek);
+    } else {
+      _sheet.animateTo(
+        _peek,
+        duration: AetherTokens.medium,
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final t = context.tokens;
     return LayoutBuilder(
       builder: (context, box) {
         // A peek tall enough for the drag handle and the title row, and short
         // enough that the filter chips below stay cleanly hidden.
-        final peek = (68 / box.maxHeight).clamp(.08, .3);
+        final peek = _peek = (68 / box.maxHeight).clamp(.08, .3);
         return DraggableScrollableSheet(
-          initialChildSize: open ? .5 : peek,
+          controller: _sheet,
+          initialChildSize: widget.open ? .5 : peek,
           minChildSize: peek,
           maxChildSize: .92,
           snap: true,
@@ -504,6 +638,7 @@ class _ExtractSheet extends ConsumerWidget {
                 top: Radius.circular(AetherTokens.rPanel),
               ),
               child: ExtractPanel(
+                source: widget.source,
                 scrollController: controller,
                 header: Center(
                   child: Container(

@@ -171,6 +171,35 @@ class CanvasController implements GestureSink, MarkGestures {
     animate ? animateTo(target) : setView(target);
   }
 
+  /// Takes the view to [world] (a rectangle in world space), centred in the
+  /// area the floating controls leave free. Keeps the current zoom when the
+  /// target is readable and fits; zooms in to 100% from far out, and out just
+  /// enough for a wide target to fit.
+  void reveal(Rect world, {bool animate = true}) {
+    refitOnResize = false;
+    if (viewport.isEmpty) return;
+    final free = Size(
+      viewport.width - insets.horizontal,
+      viewport.height - insets.vertical,
+    );
+    var zoom = view.value.zoom;
+    if (zoom < 0.6) zoom = 1.0;
+    if (world.width * zoom > free.width * 0.85) {
+      zoom = free.width * 0.85 / world.width;
+    }
+    if (world.height * zoom > free.height * 0.85) {
+      zoom = free.height * 0.85 / world.height;
+    }
+    zoom = zoom.clamp(ViewState.minZoom, ViewState.maxZoom);
+    final c = world.center;
+    final target = ViewState(
+      x: _focus.dx - c.dx * zoom,
+      y: _focus.dy - c.dy * zoom,
+      zoom: zoom,
+    );
+    animate ? animateTo(target) : setView(target);
+  }
+
   /// Centre the first page, at fit zoom. Used when a document opens.
   void fitFirst() {
     final s = scene.value;

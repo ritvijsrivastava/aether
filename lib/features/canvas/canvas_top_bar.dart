@@ -22,6 +22,8 @@ class CanvasTopBar extends ConsumerWidget {
     this.canRedo = false,
     this.onUndo,
     this.onRedo,
+    this.onCopy,
+    this.copied = false,
   });
 
   final WindowClass windowClass;
@@ -31,11 +33,13 @@ class CanvasTopBar extends ConsumerWidget {
   final bool canUndo, canRedo;
   final VoidCallback? onUndo, onRedo;
 
-  void _copy(BuildContext context) {
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(const SnackBar(content: Text('Nothing to copy yet.')));
-  }
+  /// Copy the Extract list as Markdown. Null while no document is open.
+  final VoidCallback? onCopy;
+
+  /// True for a moment after a copy: the labelled button reads "Copied".
+  final bool copied;
+
+  void _copy(BuildContext context) => onCopy?.call();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -146,13 +150,13 @@ class CanvasTopBar extends ConsumerWidget {
           const SizedBox(width: AetherTokens.s1),
           if (labelled)
             FilledButton(
-              onPressed: () => _copy(context),
-              child: const Text('Copy as Markdown'),
+              onPressed: onCopy == null ? null : () => _copy(context),
+              child: Text(copied ? 'Copied' : 'Copy as Markdown'),
             )
           else
             IconButton.filled(
-              tooltip: 'Copy as Markdown',
-              onPressed: () => _copy(context),
+              tooltip: copied ? 'Copied' : 'Copy as Markdown',
+              onPressed: onCopy == null ? null : () => _copy(context),
               icon: AetherIcon(AetherIcons.doc, color: t.onIndigo),
             ),
         ],

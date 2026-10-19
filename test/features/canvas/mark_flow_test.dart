@@ -12,6 +12,7 @@ import 'package:aether/domain/model/models.dart';
 import 'package:aether/domain/ops/op.dart';
 import 'package:aether/domain/text/page_text.dart';
 import 'package:aether/features/canvas/canvas_view.dart';
+import 'package:aether/features/canvas/engine/view_state.dart';
 import 'package:aether/features/canvas/pdf/pdf_source.dart';
 import 'package:aether/features/library/import/pdf_importer.dart';
 import 'package:aether/features/library/import/pdf_inspector.dart';
@@ -19,6 +20,7 @@ import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart' show SystemChannels;
 import 'package:flutter/widgets.dart' show RepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -157,6 +159,95 @@ void main() {
     expect(saved.single.meaning, Meaning.claim);
     expect(saved.single.rects, hasLength(3));
     expect(saved.single.pageId, c.scene.value.cards.first.id);
+
+    // Extract lists it, quoted, and tapping it takes the canvas there.
+    await tester.pump();
+    expect(find.text('1 item'), findsOneWidget);
+    expect(
+      find.textContaining('programming model and an associated'),
+      findsOneWidget,
+    );
+    final b = saved.single.bounds;
+    final card = c.scene.value.cards.first;
+    // Look somewhere else first: far down the document, zoomed out.
+    c.setView(const ViewState(x: -300, y: -6000, zoom: 0.4));
+    await tester.pump();
+    await tester.tap(
+      find.textContaining('programming model and an associated'),
+    );
+    await tester.pump(); // starts the move
+    await tester.pump(const Duration(seconds: 1)); // and finishes it
+    final centre = c.view.value.worldToScreen(
+      card.rect.topLeft + Offset((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2),
+    );
+    final free = Offset(
+      c.insets.left + (c.viewport.width - c.insets.horizontal) / 2,
+      c.insets.top + (c.viewport.height - c.insets.vertical) / 2,
+    );
+    expect((centre - free).distance, lessThan(2), reason: 'centred in view');
+    expect(c.view.value.zoom, 1.0, reason: 'from far out it comes in to 100%');
+    await tester.pump(const Duration(seconds: 2)); // the outline finishes
+
+    // Copy as Markdown puts the quoted list on the clipboard.
+    String? clip;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clip = (call.arguments as Map)['text'] as String;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await tester.tap(find.text('Copy as Markdown'));
+    await tester.pump();
+    expect(
+      clip,
+      '# mapreduce\n\n## Claim\n- "programming model and an associated '
+      'implementation for processing and generating large data sets." '
+      '(p. 1)\n',
+    );
+    expect(find.text('Copied'), findsOneWidget, reason: 'the button says so');
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('Copy as Markdown'), findsOneWidget);
+
+    // Delete takes it off the page and out of storage; Undo brings it back.
+    await tester.tap(find.byTooltip('Delete highlight'));
+    await tester.pump();
+    expect(find.text('0 items'), findsOneWidget);
+    for (var i = 0; i < 100; i++) {
+      var n = -1;
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+        n = (await store.entities(kind: EntityKind.mark, docId: docId)).length;
+      });
+      if (n == 0) break;
+    }
+    expect(
+      await tester.runAsync(
+        () => store.entities(kind: EntityKind.mark, docId: docId),
+      ),
+      isEmpty,
+    );
+    // The Copy message slides away, then the Delete one slides in.
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 250));
+    }
+    await tester.tap(find.text('Undo').last);
+    for (var i = 0; i < 100 && find.text('1 item').evaluate().isEmpty; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 25)),
+      );
+      await tester.pump(const Duration(milliseconds: 25));
+    }
+    expect(find.text('1 item'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 7)); // the snackbar goes
 
     // A picture of it, for looking at: AETHER_SCREENSHOTS=/some/dir flutter test ...
     final shots = Platform.environment['AETHER_SCREENSHOTS'];
