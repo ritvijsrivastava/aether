@@ -1,0 +1,362 @@
+import 'dart:typed_data';
+
+import 'package:meta/meta.dart';
+
+import '../../core/geometry/box.dart';
+import '../ops/entity_state.dart';
+import '../ops/op.dart';
+import 'ink_codec.dart';
+
+/// The three built-in meanings. Stable string ids; user-defined meanings are a
+/// later feature and will arrive as `category` entities without a migration.
+enum Meaning {
+  claim,
+  method,
+  question;
+
+  static Meaning parse(String? id) =>
+      Meaning.values.firstWhere((m) => m.id == id, orElse: () => Meaning.claim);
+
+  String get id => name;
+
+  String get label => switch (this) {
+    Meaning.claim => 'Claim',
+    Meaning.method => 'Method',
+    Meaning.question => 'Question',
+  };
+}
+
+enum MarkType { highlight, ink, note }
+
+/// Field names used in op values. Kept in one place so writers and readers
+/// cannot drift apart.
+abstract final class F {
+  static const title = 'title';
+  static const sourceHash = 'sourceHash';
+  static const pageCount = 'pageCount';
+  static const docId = 'docId';
+  static const pageId = 'pageId';
+  static const index = 'index';
+  static const width = 'width';
+  static const height = 'height';
+  static const cardX = 'cardX';
+  static const cardY = 'cardY';
+  static const type = 'type';
+  static const meaning = 'meaning';
+  static const startChar = 'startChar';
+  static const endChar = 'endChar';
+  static const quote = 'quote';
+  static const contextBefore = 'contextBefore';
+  static const contextAfter = 'contextAfter';
+  static const rects = 'rects';
+  static const points = 'points';
+  static const color = 'color';
+  static const x = 'x';
+  static const y = 'y';
+  static const text = 'text';
+  static const fromNoteId = 'fromNoteId';
+  static const toHighlightId = 'toHighlightId';
+  static const bx0 = 'bx0';
+  static const by0 = 'by0';
+  static const bx1 = 'bx1';
+  static const by1 = 'by1';
+}
+
+@immutable
+class Document {
+  const Document({
+    required this.id,
+    required this.title,
+    required this.sourceHash,
+    required this.pageCount,
+  });
+
+  factory Document.fromState(EntityState s) => Document(
+    id: s.id,
+    title: s.field<String>(F.title) ?? 'Untitled',
+    sourceHash: s.field<String>(F.sourceHash) ?? '',
+    pageCount: (s.field<num>(F.pageCount) ?? 0).toInt(),
+  );
+
+  final String id;
+  final String title;
+  final String sourceHash;
+  final int pageCount;
+
+  static const kind = EntityKind.document;
+
+  Map<String, Object?> toFields() => {
+    F.title: title,
+    F.sourceHash: sourceHash,
+    F.pageCount: pageCount,
+  };
+}
+
+/// One PDF page as a movable card on the canvas.
+@immutable
+class PageRef {
+  const PageRef({
+    required this.id,
+    required this.docId,
+    required this.index,
+    required this.width,
+    required this.height,
+    required this.cardX,
+    required this.cardY,
+  });
+
+  factory PageRef.fromState(EntityState s) => PageRef(
+    id: s.id,
+    docId: s.field<String>(F.docId) ?? '',
+    index: (s.field<num>(F.index) ?? 0).toInt(),
+    width: (s.field<num>(F.width) ?? 612).toDouble(),
+    height: (s.field<num>(F.height) ?? 792).toDouble(),
+    cardX: (s.field<num>(F.cardX) ?? 0).toDouble(),
+    cardY: (s.field<num>(F.cardY) ?? 0).toDouble(),
+  );
+
+  final String id;
+  final String docId;
+  final int index;
+  final double width, height;
+  final double cardX, cardY;
+
+  static const kind = EntityKind.page;
+
+  Map<String, Object?> toFields() => {
+    F.docId: docId,
+    F.index: index,
+    F.width: width,
+    F.height: height,
+    F.cardX: cardX,
+    F.cardY: cardY,
+  };
+}
+
+/// Base for everything the user draws or writes. Stored in page space when
+/// [pageId] is set, in canvas space otherwise.
+@immutable
+sealed class Mark {
+  const Mark({required this.id, required this.docId, this.pageId});
+
+  final String id;
+  final String docId;
+  final String? pageId;
+
+  MarkType get type;
+  Box get bounds;
+
+  static const kind = EntityKind.mark;
+
+  /// Fields shared by all marks, including the indexed bounds columns.
+  @protected
+  Map<String, Object?> baseFields() => {
+    F.type: type.name,
+    F.docId: docId,
+    F.pageId: pageId,
+    F.bx0: bounds.x0,
+    F.by0: bounds.y0,
+    F.bx1: bounds.x1,
+    F.by1: bounds.y1,
+  };
+
+  Map<String, Object?> toFields();
+
+  static Mark fromState(EntityState s) {
+    final docId = s.field<String>(F.docId) ?? '';
+    final pageId = s.field<String>(F.pageId);
+    switch (MarkType.values.byName(s.field<String>(F.type) ?? 'note')) {
+      case MarkType.highlight:
+        return Highlight(
+          id: s.id,
+          docId: docId,
+          pageId: pageId,
+          meaning: Meaning.parse(s.field<String>(F.meaning)),
+          startChar: (s.field<num>(F.startChar) ?? 0).toInt(),
+          endChar: (s.field<num>(F.endChar) ?? 0).toInt(),
+          quote: s.field<String>(F.quote) ?? '',
+          contextBefore: s.field<String>(F.contextBefore) ?? '',
+          contextAfter: s.field<String>(F.contextAfter) ?? '',
+          rects: [
+            for (final r in (s.field<List<dynamic>>(F.rects) ?? const []))
+              Box.fromJson(r as List<dynamic>),
+          ],
+        );
+      case MarkType.ink:
+        return Ink(
+          id: s.id,
+          docId: docId,
+          pageId: pageId,
+          samples: InkCodec.decode(s.field<String>(F.points) ?? ''),
+          width: (s.field<num>(F.width) ?? 2.5).toDouble(),
+          color: (s.field<num>(F.color) ?? 0xFF2B2723).toInt(),
+        );
+      case MarkType.note:
+        return Note(
+          id: s.id,
+          docId: docId,
+          pageId: pageId,
+          x: (s.field<num>(F.x) ?? 0).toDouble(),
+          y: (s.field<num>(F.y) ?? 0).toDouble(),
+          width: (s.field<num>(F.width) ?? Note.defaultWidth).toDouble(),
+          text: s.field<String>(F.text) ?? '',
+        );
+    }
+  }
+}
+
+class Highlight extends Mark {
+  const Highlight({
+    required super.id,
+    required super.docId,
+    super.pageId,
+    required this.meaning,
+    required this.startChar,
+    required this.endChar,
+    required this.quote,
+    this.contextBefore = '',
+    this.contextAfter = '',
+    required this.rects,
+  });
+
+  final Meaning meaning;
+  final int startChar, endChar;
+
+  /// The quoted text as it was at creation time.
+  final String quote;
+
+  /// About 24 characters either side, for re-anchoring if the text layer changes.
+  final String contextBefore, contextAfter;
+
+  /// One rect per visual line, in page space.
+  final List<Box> rects;
+
+  @override
+  MarkType get type => MarkType.highlight;
+
+  @override
+  Box get bounds => rects.isEmpty
+      ? const Box(0, 0, 0, 0)
+      : rects.reduce((a, b) => a.union(b));
+
+  @override
+  Map<String, Object?> toFields() => {
+    ...baseFields(),
+    F.meaning: meaning.id,
+    F.startChar: startChar,
+    F.endChar: endChar,
+    F.quote: quote,
+    F.contextBefore: contextBefore,
+    F.contextAfter: contextAfter,
+    F.rects: [for (final r in rects) r.toJson()],
+  };
+}
+
+class Ink extends Mark {
+  const Ink({
+    required super.id,
+    required super.docId,
+    super.pageId,
+    required this.samples,
+    this.width = 2.5,
+    this.color = 0xFF2B2723,
+  });
+
+  /// `x, y, pressure` triplets.
+  final Float32List samples;
+  final double width;
+
+  /// ARGB.
+  final int color;
+
+  int get pointCount => samples.length ~/ InkCodec.stride;
+
+  @override
+  MarkType get type => MarkType.ink;
+
+  @override
+  Box get bounds {
+    if (samples.isEmpty) return const Box(0, 0, 0, 0);
+    var x0 = samples[0], y0 = samples[1], x1 = x0, y1 = y0;
+    for (var i = 0; i < samples.length; i += InkCodec.stride) {
+      final x = samples[i], y = samples[i + 1];
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+    final pad = width / 2;
+    return Box(x0 - pad, y0 - pad, x1 + pad, y1 + pad);
+  }
+
+  @override
+  Map<String, Object?> toFields() => {
+    ...baseFields(),
+    F.points: InkCodec.encode(samples),
+    F.width: width,
+    F.color: color,
+  };
+}
+
+class Note extends Mark {
+  const Note({
+    required super.id,
+    required super.docId,
+    super.pageId,
+    required this.x,
+    required this.y,
+    this.width = defaultWidth,
+    this.text = '',
+  });
+
+  static const double defaultWidth = 220;
+  static const double minHeight = 96;
+
+  final double x, y, width;
+  final String text;
+
+  @override
+  MarkType get type => MarkType.note;
+
+  @override
+  Box get bounds => Box(x, y, x + width, y + minHeight);
+
+  @override
+  Map<String, Object?> toFields() => {
+    ...baseFields(),
+    F.x: x,
+    F.y: y,
+    F.width: width,
+    F.text: text,
+  };
+}
+
+/// Connects a note to a highlight. A note may have many links.
+@immutable
+class Link {
+  const Link({
+    required this.id,
+    required this.docId,
+    required this.fromNoteId,
+    required this.toHighlightId,
+  });
+
+  factory Link.fromState(EntityState s) => Link(
+    id: s.id,
+    docId: s.field<String>(F.docId) ?? '',
+    fromNoteId: s.field<String>(F.fromNoteId) ?? '',
+    toHighlightId: s.field<String>(F.toHighlightId) ?? '',
+  );
+
+  final String id;
+  final String docId;
+  final String fromNoteId, toHighlightId;
+
+  static const kind = EntityKind.link;
+
+  Map<String, Object?> toFields() => {
+    F.docId: docId,
+    F.fromNoteId: fromNoteId,
+    F.toHighlightId: toHighlightId,
+  };
+}

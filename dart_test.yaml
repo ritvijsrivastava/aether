@@ -1,0 +1,6 @@
+tags:
+  # Pixel goldens are rendered on the development machine (Linux). Run with
+  #   flutter test --tags golden            (verify)
+  #   flutter test --tags golden --update-goldens   (re-record after a deliberate change)
+  # Skip them elsewhere with: flutter test --exclude-tags golden
+  golden:

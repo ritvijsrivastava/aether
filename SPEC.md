@@ -93,6 +93,7 @@ lib/
 | IDs | `uuid` (v7) | Or tiny in-house UUIDv7. |
 | Files/paths | `path_provider`, `file_picker` | Import via system picker; drag-and-drop on Linux (`desktop_drop`). |
 | Window mgmt | `window_manager` (Linux) | Min size, title. |
+| Icons | `path_drawing` | Draws the prototype's SVG stroke icons from path data; no icon font. |
 | Fonts | bundled assets | Figtree + open serif; **no runtime font fetching**. |
 | Clipboard | Flutter `Clipboard` | Rich/Markdown via plain text. |
 | Share | `share_plus` (Android) | Export file. |
@@ -158,6 +159,9 @@ Op { opId (UUIDv7), deviceId, hlc, entityId, entityKind, kind: create|setField|d
 - **[OPEN, later]** Choice of CRDT library/transport is a separate spike at sync time; this spec only guarantees ids, HLCs, tombstones, and the op log exist.
 
 ### 4.6 Persistence schema (Drift/SQLite)
+
+**As built (M1):** documents, pages, marks, links and categories share **one `entities` table** (id, kind, indexed `doc_id`/`page_id`/`mark_type`/bounds columns, JSON `fields` and `field_hlcs`, `life_hlc`, `deleted`, `created_hlc`) instead of the separate typed tables listed below, because they share one merge rule (last-writer-wins per field) and one materializer. Typed models (`Document`, `PageRef`, `Highlight`, `Ink`, `Note`, `Link`) are read views over an entity. `ops`, `pdf_files`, `device`, `settings` and `view_states` exist as specified. Ink points are stored base64 inside op values for now; large strokes can move to a blob table later without changing callers. The schema is dumped to `drift_schemas/` and guarded by a migration test.
+
 Tables: `documents`, `page_refs`, `pdf_files`, `categories`, `marks` (one row per mark: `id, doc_id, page_id, kind, category_id, payload BLOB/JSON, bounds_x0..y1, updated_hlc, deleted_hlc`), `links`, `ops` (append-only), `device`, `settings`, `view_state` (local-only), plus an R-tree/indexed bounds columns for fast region queries. Ink payloads are packed binary blobs, not JSON.
 - WAL mode; write transactions batched per user action.
 - **Autosave** means every command commits its op + snapshot rows in one transaction immediately (sub-millisecond), not on a timer. Ink in progress is held in memory and committed on pointer-up; the partial stroke is also journaled every ~250 ms so a crash loses at most one in-flight stroke's tail.

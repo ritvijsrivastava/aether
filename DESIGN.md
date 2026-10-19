@@ -8,11 +8,12 @@ colors:
   paper: "#fffdfa"
   ink: "#2b2723"
   ink-muted: "#605d5d"
-  ink-subtle: "#7d7979"
+  ink-subtle: "#6f6b6b"
   rule-strong: "#bab6b6"
   hairline: "rgba(60,50,40,.12)"
   hover-wash: "rgba(60,50,40,.07)"
   grid-dot: "rgba(60,50,40,.20)"
+  danger: "#ae1800"
   indigo: "#5b5bd6"
   indigo-pressed: "#4a4ac0"
   indigo-wash: "#e6e6fb"
@@ -123,7 +124,7 @@ components:
     rounded: "{rounded.paper}"
 ---
 
-<!-- Provenance: extracted from the prototype `Aether.dc.html` (the only visual authority). No Flutter code exists yet, so this is a scan of the incumbent prototype, not of the implementation. Dark theme values and every item under "Flutter corrections" are PROPOSED and unconfirmed. Re-run /impeccable document once the Flutter UI exists to replace this with measured tokens and generate the .impeccable/design.json sidecar. -->
+<!-- Provenance: extracted from the prototype `Aether.dc.html` (the only visual authority) and updated at M1 with what shipped: tokens live in lib/ui/theme/tokens.dart and are verified by test/ui/contrast_test.dart. Values here were checked against the running Android build. Re-run /impeccable document after the canvas exists to regenerate the sidecar. -->
 
 # Design System: Aether
 
@@ -165,7 +166,8 @@ Reserved exclusively for annotation. They never appear as UI chrome.
 - **Panel Ivory** (#fbf9f6): floating panels, toolbars, the Extract panel.
 - **Paper White** (#fffdfa): document cards. The brightest surface in the app.
 - **Warm Ink** (#2b2723): all primary text, ink strokes, selected chips.
-- **Muted Ink** (#605d5d) and **Faint Ink** (#7d7979): secondary text, captions.
+- **Muted Ink** (#605d5d) and **Faint Ink** (#6f6b6b): secondary text, captions. Faint Ink was darkened from the prototype's #7d7979, which measured 4.09:1 on the panel and failed AA for small text.
+- **Alarm Red** (#ae1800): destructive actions and errors only. Taken from the prototype's only red (its link hover colour); not a mark colour.
 - **Rule Grey** (#bab6b6): table rules inside documents.
 - **Hairline** (rgba(60,50,40,.12)): the only divider; between bars and panels.
 - **Grid Dot** (rgba(60,50,40,.20)): the canvas dot grid.
@@ -177,8 +179,10 @@ Reserved exclusively for annotation. They never appear as UI chrome.
 
 **The Warm Neutral Rule.** Every neutral carries the brown hue. No pure grey, no pure black, no pure white outside the paper surface.
 
-### Dark theme (PROPOSED, unconfirmed)
-Dark is a first-class scheme on Android. Derived from the warm neutrals, not inverted: desk #201e1d, canvas #2d2b2b, panel #363332, ink #f3f2f2, muted ink #bab6b6, indigo lifted to ≈#8a8af0 for contrast, mark colors kept at the same hue with ≈ +0 lightness so highlights stay legible over both page modes. Document cards keep paper white by default (figures and scans stay truthful) with an optional "dim page" mode. Final values are decided and contrast-checked at M1.
+### Dark theme (final, M1; contrast verified by test)
+Dark is a first-class scheme, derived from the warm neutrals rather than inverted. Desk #201e1d, Stone Canvas #2a2827, Panel #2d2b2a, Warm Ink #f3f2f2 (12.6:1 on the panel), Muted Ink #bab6b6 (7.0), Faint Ink #9a9696 (4.8). Indigo lifts to #9d9df2 with dark text #1b1a2e (6.9) on filled controls, and #a5a5f5 as indigo text (6.2). Alarm Red lifts to #ff9783. Document cards stay Paper White (#fffdfa) by default, so figures and scans stay truthful; an optional "dim page" mode is a later setting. The three meaning colours and the sticky note do not change between themes; their text is always the dark #2b2723.
+
+**Meaning swatches are glyph discs.** The three meaning colours alone measure only 1.5 to 2.3:1 against the panel (below the 3:1 needed for a shape), so a swatch is a coloured disc carrying its glyph (circle for Claim, diamond for Method, triangle for Question) in dark ink, which clears 6:1 on every colour. The glyph, not the colour edge, carries the meaning. This is enforced by a test that fails if the colours ever pass alone.
 
 ## Typography
 
