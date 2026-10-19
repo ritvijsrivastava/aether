@@ -76,6 +76,10 @@ class HighlightLayer extends ChangeNotifier {
   Highlight? hitTest(String pageId, double x, double y, double zoom) =>
       _index.hitTest(pageId, x, y, zoom);
 
+  /// The highlight nearest page point ([x], [y]) within [maxDist], or null.
+  Highlight? nearest(String pageId, double x, double y, double maxDist) =>
+      _index.nearest(pageId, x, y, maxDist);
+
   /// Highlights a circle of radius [r] at page point ([x], [y]) touches.
   List<Highlight> touching(String pageId, double x, double y, double r) =>
       _index.touching(pageId, x, y, r);

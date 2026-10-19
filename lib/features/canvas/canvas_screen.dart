@@ -28,6 +28,9 @@ import 'ink/ink_options.dart';
 import 'ink/ink_tool.dart';
 import 'input/pen_config.dart';
 import 'input/tool_gestures.dart';
+import 'links/link_remove_overlay.dart';
+import 'links/link_tool.dart';
+import 'links/links_layer.dart';
 import 'marks/flash.dart';
 import 'notes/note_tool.dart';
 import 'notes/notes_overlay.dart';
@@ -85,6 +88,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   MarkToolController? _markTool;
   final LiveInk _liveInk = LiveInk();
   final EraserState _eraser = EraserState();
+  final LiveLink _liveLink = LiveLink();
   double _lastKeyboardInset = 0;
   PageTextService? _textService;
   late final FlashController _flash = FlashController(this);
@@ -221,6 +225,15 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _controller.tools = ToolRouter({
       CanvasTool.mark: MarkHandler(tool),
       CanvasTool.ink: inkTool,
+      CanvasTool.link: LinkToolController(
+        view: _controller.view,
+        scene: _controller.scene,
+        notes: session.notes,
+        highlights: session.highlights,
+        links: session.links,
+        live: _liveLink,
+        sink: session,
+      ),
       CanvasTool.note: NoteToolController(
         view: _controller.view,
         scene: _controller.scene,
@@ -316,6 +329,12 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     );
   }
 
+  /// Delete or Backspace: remove what is selected (a link, for now).
+  void _deleteSelection(DocumentSession session) {
+    final id = session.links.selectedId;
+    if (id != null) session.deleteLink(id);
+  }
+
   void _warmText() => _markTool?.warmVisible(viewport: _controller.viewport);
 
   /// First layout is known: restore the remembered view, or show page one.
@@ -333,6 +352,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _markTool?.dispose();
     _liveInk.dispose();
     _eraser.dispose();
+    _liveLink.dispose();
     _live.dispose();
     _flash.dispose();
     _copiedTimer?.cancel();
@@ -363,6 +383,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     }
     // Choosing the Mark tool is the moment its text is about to be needed.
     ref.listen(canvasUiProvider.select((u) => u.tool), (_, tool) {
+      if (tool != CanvasTool.link) _session?.links.select(null);
       if (tool == CanvasTool.mark) _warmText();
     });
     final settings = ref.watch(settingsProvider).value ?? const AppSettings();
@@ -394,14 +415,35 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       ink: session?.ink,
       liveInk: _liveInk,
       eraser: _eraser,
+      links: session?.links,
+      notes: session?.notes,
+      liveLink: _liveLink,
+      onDelete: session == null ? null : () => _deleteSelection(session),
       overlay: session == null
           ? null
-          : NotesOverlay(
-              view: _controller.view,
-              scene: _controller.scene,
-              notes: session.notes,
-              actions: session,
-              viewport: () => _controller.viewport,
+          : Stack(
+              fit: StackFit.expand,
+              children: [
+                NotesOverlay(
+                  view: _controller.view,
+                  scene: _controller.scene,
+                  notes: session.notes,
+                  actions: session,
+                  viewport: () => _controller.viewport,
+                  interactive:
+                      ui.tool == CanvasTool.pan ||
+                      ui.tool == CanvasTool.mark ||
+                      ui.tool == CanvasTool.note,
+                ),
+                LinkRemoveOverlay(
+                  view: _controller.view,
+                  scene: _controller.scene,
+                  links: session.links,
+                  notes: session.notes,
+                  highlights: session.highlights,
+                  onRemove: session.deleteLink,
+                ),
+              ],
             ),
       pen: PenConfig.forPlatform(defaultTargetPlatform),
       fingerDraws: settings.fingerDraws,

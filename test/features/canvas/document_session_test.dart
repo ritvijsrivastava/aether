@@ -1028,4 +1028,204 @@ void main() {
       expect(s.notes.byId(id)?.text, 'typing');
     });
   });
+
+  group('links', () {
+    final text = layoutText(['the quick brown', 'fox jumps over.']);
+
+    Future<DocumentSession> opened() async {
+      final s = open();
+      await s.load();
+      return s;
+    }
+
+    Future<Set<String>> storedLinks() async => {
+      for (final e in await store.entities(kind: EntityKind.link, docId: docId))
+        e.id,
+    };
+
+    /// A saved note and a highlight to link.
+    Future<({DocumentSession s, String note, String hl, String page})>
+    setup() async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first.id;
+      final note = s.beginNote(pageId: page, x: 300, y: 300);
+      s.editNoteText(note, 'why?');
+      await s.noteBlurred(note);
+      final hl = s.addHighlight(
+        pageId: page,
+        selection: TextSelector.between(text, 1, 1)!,
+        meaning: Meaning.claim,
+        text: text,
+      );
+      await s.settled();
+      return (s: s, note: note, hl: hl, page: page);
+    }
+
+    test('a link is saved, undoable, and survives a reopen', () async {
+      final x = await setup();
+      x.s.addLink(x.note, x.hl);
+      expect(x.s.links.count, 1, reason: 'shows at once');
+      await x.s.settled();
+      expect((await storedLinks()).length, 1);
+      expect(x.s.bus.undoLabel, 'Link');
+      final again = await opened();
+      expect(again.links.count, 1);
+      expect(again.links.all.single.fromNoteId, x.note);
+      await x.s.undo();
+      expect(x.s.links.count, 0);
+      expect(await storedLinks(), isEmpty);
+      await x.s.redo();
+      expect(x.s.links.count, 1);
+    });
+
+    test(
+      'the same pair is linked once; a note can link many highlights',
+      () async {
+        final x = await setup();
+        final h2 = x.s.addHighlight(
+          pageId: x.page,
+          selection: TextSelector.between(text, 3, 3)!,
+          meaning: Meaning.method,
+          text: text,
+        );
+        x.s.addLink(x.note, x.hl);
+        x.s.addLink(x.note, x.hl);
+        x.s.addLink(x.note, h2);
+        await x.s.settled();
+        expect(x.s.links.count, 2);
+        expect((await storedLinks()).length, 2);
+      },
+    );
+
+    test('a link needs both ends to exist', () async {
+      final x = await setup();
+      x.s.addLink('no-note', x.hl);
+      x.s.addLink(x.note, 'no-highlight');
+      expect(x.s.links.count, 0);
+    });
+
+    test('removing a link is undoable', () async {
+      final x = await setup();
+      x.s.addLink(x.note, x.hl);
+      await x.s.settled();
+      final id = x.s.links.all.single.id;
+      x.s.deleteLink(id);
+      expect(x.s.links.count, 0);
+      await x.s.settled();
+      expect(await storedLinks(), isEmpty);
+      await x.s.undo();
+      expect(x.s.links.count, 1);
+      expect((await storedLinks()).length, 1);
+    });
+
+    test(
+      'deleting the note takes its links, and one undo brings both back',
+      () async {
+        final x = await setup();
+        x.s.addLink(x.note, x.hl);
+        await x.s.settled();
+        x.s.deleteNote(x.note);
+        expect(
+          x.s.links.count,
+          0,
+          reason: 'a link to nothing is not left behind',
+        );
+        await x.s.settled();
+        expect(await storedLinks(), isEmpty);
+        await x.s.undo();
+        expect(x.s.notes.byId(x.note), isNotNull);
+        expect(x.s.links.count, 1);
+      },
+    );
+
+    test('deleting the highlight takes its links too', () async {
+      final x = await setup();
+      x.s.addLink(x.note, x.hl);
+      await x.s.settled();
+      x.s.deleteHighlight(x.hl);
+      expect(x.s.links.count, 0);
+      await x.s.settled();
+      expect(await storedLinks(), isEmpty);
+      await x.s.undo();
+      expect(x.s.highlights.byId(x.hl), isNotNull);
+      expect(x.s.links.count, 1);
+    });
+
+    test('erasing the highlight takes its links in the same step', () async {
+      final x = await setup();
+      x.s.addLink(x.note, x.hl);
+      await x.s.settled();
+      x.s.highlights.remove(x.hl); // what the eraser tool does first
+      x.s.commitErase(deleted: {x.hl}, created: const []);
+      expect(x.s.links.count, 0);
+      await x.s.settled();
+      expect(await storedLinks(), isEmpty);
+      await x.s.undo();
+      expect(x.s.links.count, 1);
+      expect(x.s.highlights.byId(x.hl), isNotNull);
+    });
+
+    test(
+      'widening a word to its sentence keeps the link on the sentence',
+      () async {
+        final x = await setup();
+        x.s.addLink(x.note, x.hl);
+        await x.s.settled();
+        final sentence = x.s.replaceHighlight(
+          oldId: x.hl,
+          pageId: x.page,
+          selection: TextSelector.sentenceAt(text, 1)!,
+          meaning: Meaning.claim,
+          text: text,
+        );
+        expect(x.s.links.all.single.toHighlightId, sentence);
+        await x.s.settled();
+        final again = await opened();
+        expect(again.links.all.single.toHighlightId, sentence);
+        await x.s.undo();
+        expect(
+          x.s.links.all.single.toHighlightId,
+          x.hl,
+          reason: 'undo moves it back',
+        );
+      },
+    );
+
+    test('a note still being typed is saved before it is linked', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first.id;
+      final hl = s.addHighlight(
+        pageId: page,
+        selection: TextSelector.between(text, 1, 1)!,
+        meaning: Meaning.claim,
+        text: text,
+      );
+      final note = s.beginNote(pageId: page, x: 5, y: 5);
+      s.editNoteText(note, 'just typed');
+      s.addLink(note, hl);
+      await s.settled();
+      expect(
+        (await store.entities(
+          kind: EntityKind.mark,
+          docId: docId,
+        )).where((e) => e.field<String>(F.type) == 'note').length,
+        1,
+      );
+      expect((await storedLinks()).length, 1);
+    });
+
+    test('an empty draft cannot be linked', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first.id;
+      final hl = s.addHighlight(
+        pageId: page,
+        selection: TextSelector.between(text, 1, 1)!,
+        meaning: Meaning.claim,
+        text: text,
+      );
+      final note = s.beginNote(pageId: page, x: 5, y: 5);
+      s.addLink(note, hl);
+      expect(s.links.count, 0);
+    });
+  });
 }

@@ -27,6 +27,7 @@ class NotesOverlay extends StatelessWidget {
     required this.notes,
     required this.actions,
     required this.viewport,
+    this.interactive = true,
   });
 
   final ValueNotifier<ViewState> view;
@@ -36,6 +37,10 @@ class NotesOverlay extends StatelessWidget {
 
   /// The canvas size, for building only what is in view.
   final Size Function() viewport;
+
+  /// False while a tool that draws across notes (Ink, Erase, Link, Select) is
+  /// active: the notes then let pointers through to it.
+  final bool interactive;
 
   /// Where a note's top-left is in world space, or null if its page is gone.
   static Offset? worldOrigin(Note n, Scene s) {
@@ -81,7 +86,10 @@ class NotesOverlay extends StatelessWidget {
             ),
           );
         }
-        return Stack(clipBehavior: Clip.hardEdge, children: children);
+        return IgnorePointer(
+          ignoring: !interactive,
+          child: Stack(clipBehavior: Clip.hardEdge, children: children),
+        );
       },
     );
   }

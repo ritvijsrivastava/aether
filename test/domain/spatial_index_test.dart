@@ -214,6 +214,21 @@ void main() {
       expect(i.touching('p', 130, 200, 4), isEmpty);
     });
 
+    test('nearest finds the closest highlight within reach, or none', () {
+      final i = HighlightIndex()
+        ..put(hl('near', 'p', const [Box(100, 100, 200, 110)]))
+        ..put(hl('far', 'p', const [Box(100, 300, 200, 310)]));
+      expect(i.nearest('p', 150, 125, 30)?.id, 'near');
+      expect(i.nearest('p', 150, 125, 10), isNull, reason: '15 away, reach 10');
+      expect(i.nearest('p', 150, 290, 30)?.id, 'far');
+      expect(
+        i.nearest('p', 150, 200, 100)?.id,
+        'near',
+        reason: 'closer of the two',
+      );
+      expect(i.nearest('other', 150, 105, 30), isNull);
+    });
+
     test('putting a highlight again replaces it', () {
       final i = HighlightIndex()
         ..put(hl('a', 'p', const [Box(0, 0, 100, 10)]))

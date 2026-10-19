@@ -564,4 +564,166 @@ void main() {
       1,
     );
   }, skip: skip != null);
+
+  testWidgets(
+    'dragging from a note to a highlight with the Link tool links them',
+    (tester) async {
+      final db = AetherDatabase(NativeDatabase.memory());
+      addTearDown(() => tester.runAsync(db.close));
+      final store = DriftOpStore(db);
+      final tmp = Directory.systemTemp.createTempSync('aether_linkflow_');
+      addTearDown(() => tmp.deleteSync(recursive: true));
+      late PdfStorage storage;
+      late String docId, hash;
+      await tester.runAsync(() async {
+        storage = await PdfStorage.open(Directory('${tmp.path}/lib'));
+        var t = 1000;
+        final importer = PdfImporter(
+          store: store,
+          bus: CommandBus(
+            store: store,
+            clock: HlcClock('imp', now: () => t++),
+            ids: SequentialIdGenerator('b'),
+          ),
+          storage: storage,
+          inspector: const PdfiumInspector(),
+          db: db,
+          ids: SequentialIdGenerator('doc'),
+        );
+        docId = (await importer.import(const ImportRequest(_paper))).docId;
+        hash = Document.fromState((await store.entity(docId))!).sourceHash;
+      });
+      await pumpApp(
+        tester,
+        size: const Size(1280, 800),
+        db: db,
+        location: '/doc/$docId',
+        storage: storage,
+      );
+      await pumpUntil(tester, find.byType(CanvasView));
+      final c = tester.widget<CanvasView>(find.byType(CanvasView)).controller;
+      for (var i = 0; i < 400 && c.tools == null; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 25)),
+        );
+        await tester.pump(const Duration(milliseconds: 25));
+      }
+      await tester.pump(const Duration(milliseconds: 500));
+
+      late PageText page;
+      await tester.runAsync(() async {
+        final pdf = await openPdfFile(storage.pdfPath(hash));
+        page = await PageTextService(
+          docKey: 'x',
+          extractor: PdfrxTextExtractor(pdf.document),
+        ).pageText(0);
+        await pdf.dispose();
+      });
+      final origin = tester.getTopLeft(find.byType(CanvasView));
+      Offset onScreen(int w) {
+        final b = page.words[w].box;
+        final card = c.scene.value.cards.first;
+        final v = c.view.value;
+        final world =
+            card.rect.topLeft + Offset((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2);
+        return origin + world * v.zoom + Offset(v.x, v.y);
+      }
+
+      int word(String t) => [
+        for (var i = 0; i < page.words.length; i++)
+          if (page.quote(page.words[i].start, page.words[i].end) == t) i,
+      ].first;
+
+      // A highlight.
+      final from = onScreen(word('programming'));
+      final to = onScreen(word('sets.'));
+      final g = await tester.startGesture(
+        from,
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryButton,
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 400)),
+      );
+      await g.moveTo(to);
+      await g.up();
+      await tester.pump();
+      for (var i = 0; i < 200; i++) {
+        var n = 0;
+        await tester.runAsync(() async {
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+          n = (await store.entities(
+            kind: EntityKind.mark,
+            docId: docId,
+          )).length;
+        });
+        if (n > 0) break;
+      }
+
+      // A note, in the empty space to the right of the page.
+      await tester.tap(find.text('Note'));
+      await tester.pump();
+      final spot = origin + const Offset(820, 150);
+      final n = await tester.startGesture(
+        spot,
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryButton,
+      );
+      await n.up();
+      await tester.pump();
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'check this claim');
+      await tester.pump();
+      final away = await tester.startGesture(
+        origin + const Offset(1000, 700),
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryButton,
+      );
+      await away.up();
+      await tester.pump();
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pump();
+
+      // Link tool: drag from the note to the highlight.
+      await tester.tap(find.text('Link'));
+      await tester.pump();
+      final noteRect = tester.getRect(find.byType(NoteCard));
+      final l = await tester.startGesture(
+        noteRect.center,
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryButton,
+      );
+      await l.moveTo(
+        Offset.lerp(noteRect.center, onScreen(word('large')), 0.5)!,
+      );
+      await l.moveTo(onScreen(word('large'))); // a word inside the highlight
+      await tester.pump();
+      await l.up();
+      await tester.pump();
+
+      List<Link> saved = [];
+      for (var i = 0; i < 200 && saved.isEmpty; i++) {
+        await tester.runAsync(() async {
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+          saved = [
+            for (final e in await store.entities(
+              kind: EntityKind.link,
+              docId: docId,
+            ))
+              Link.fromState(e),
+          ];
+        });
+      }
+      expect(saved, hasLength(1));
+      final marks = (await tester.runAsync(
+        () => store.entities(kind: EntityKind.mark, docId: docId),
+      ))!;
+      final kinds = {for (final e in marks) e.id: e.field<String>(F.type)};
+      expect(kinds[saved.single.fromNoteId], 'note');
+      expect(kinds[saved.single.toHighlightId], 'highlight');
+    },
+    skip: skip != null,
+  );
 }

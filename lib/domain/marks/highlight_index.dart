@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../../core/geometry/box.dart';
 import '../model/models.dart';
 import 'spatial_grid.dart';
@@ -101,5 +103,29 @@ class HighlightIndex {
       }
     }
     return out;
+  }
+
+  /// The highlight nearest to page point ([x], [y]) whose line rects come
+  /// within [maxDist] page points, or null: for snapping a link to a target.
+  Highlight? nearest(String pageId, double x, double y, double maxDist) {
+    final grid = _pages[pageId];
+    if (grid == null) return null;
+    Highlight? best;
+    var bestD = maxDist;
+    for (final id in grid.query(
+      Box(x - maxDist, y - maxDist, x + maxDist, y + maxDist),
+    )) {
+      final h = _byId[id]!;
+      for (final r in h.rects) {
+        final nx = x.clamp(r.x0, r.x1), ny = y.clamp(r.y0, r.y1);
+        final dx = x - nx, dy = y - ny;
+        final d = math.sqrt(dx * dx + dy * dy);
+        if (d <= bestD) {
+          bestD = d;
+          best = h;
+        }
+      }
+    }
+    return best;
   }
 }

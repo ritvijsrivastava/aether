@@ -10,9 +10,11 @@ import 'engine/painters.dart';
 import 'erase/erase_tool.dart';
 import 'ink/ink_layer.dart';
 import 'marks/flash.dart';
+import 'notes/notes_layer.dart';
 import 'marks/mark_layers.dart';
 import 'input/input_arbiter.dart';
 import 'input/pen_config.dart';
+import 'links/links_layer.dart';
 
 /// The interactive surface: grid, cards, drag handles, and the pointer and
 /// keyboard handling that drives a [CanvasController].
@@ -32,6 +34,10 @@ class CanvasView extends StatefulWidget {
     this.liveInk,
     this.eraser,
     this.overlay,
+    this.links,
+    this.notes,
+    this.liveLink,
+    this.onDelete,
     this.pen = const PenConfig(),
     this.fingerDraws = false,
     this.onReady,
@@ -62,6 +68,14 @@ class CanvasView extends StatefulWidget {
 
   /// Widgets drawn above the canvas and handling their own pointers (notes).
   final Widget? overlay;
+
+  /// Link lines and the one being dragged out, drawn under the notes.
+  final LinksLayer? links;
+  final NotesLayer? notes;
+  final LiveLink? liveLink;
+
+  /// Delete or Backspace: remove what is selected.
+  final VoidCallback? onDelete;
 
   /// Pen button bits and pressure curve for this device.
   final PenConfig pen;
@@ -183,6 +197,11 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
     if (ctrl && k == LogicalKeyboardKey.keyZ) {
       final redo = HardwareKeyboard.instance.isShiftPressed;
       (redo ? widget.onRedo : widget.onUndo)?.call();
+      return KeyEventResult.handled;
+    }
+    if ((k == LogicalKeyboardKey.delete || k == LogicalKeyboardKey.backspace) &&
+        widget.onDelete != null) {
+      widget.onDelete!();
       return KeyEventResult.handled;
     }
     if (ctrl && k == LogicalKeyboardKey.keyY) {
@@ -327,6 +346,31 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
                             view: c.view,
                             scene: c.scene,
                             live: widget.liveInk!,
+                          ),
+                        ),
+                      ),
+                    if (widget.links != null &&
+                        widget.notes != null &&
+                        widget.highlights != null)
+                      RepaintBoundary(
+                        child: CustomPaint(
+                          painter: LinksPainter(
+                            view: c.view,
+                            scene: c.scene,
+                            links: widget.links!,
+                            notes: widget.notes!,
+                            highlights: widget.highlights!,
+                            tokens: t,
+                          ),
+                        ),
+                      ),
+                    if (widget.liveLink != null)
+                      RepaintBoundary(
+                        child: CustomPaint(
+                          painter: LiveLinkPainter(
+                            view: c.view,
+                            live: widget.liveLink!,
+                            tokens: t,
                           ),
                         ),
                       ),
