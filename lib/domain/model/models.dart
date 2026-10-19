@@ -192,6 +192,7 @@ sealed class Mark {
           x: (s.field<num>(F.x) ?? 0).toDouble(),
           y: (s.field<num>(F.y) ?? 0).toDouble(),
           width: (s.field<num>(F.width) ?? Note.defaultWidth).toDouble(),
+          height: (s.field<num>(F.height) ?? Note.defaultHeight).toDouble(),
           text: s.field<String>(F.text) ?? '',
         );
     }
@@ -299,20 +300,43 @@ class Note extends Mark {
     required this.x,
     required this.y,
     this.width = defaultWidth,
+    this.height = defaultHeight,
     this.text = '',
   });
 
   static const double defaultWidth = 220;
-  static const double minHeight = 96;
+  static const double defaultHeight = 120;
 
-  final double x, y, width;
+  /// The smallest a note may be resized to (page points).
+  static const double minWidth = 140, minHeight = 80;
+
+  /// Top-left in page space ([pageId] set) or canvas space (null).
+  final double x, y;
+  final double width, height;
   final String text;
+
+  Note copyWith({
+    double? x,
+    double? y,
+    double? width,
+    double? height,
+    String? text,
+  }) => Note(
+    id: id,
+    docId: docId,
+    pageId: pageId,
+    x: x ?? this.x,
+    y: y ?? this.y,
+    width: width ?? this.width,
+    height: height ?? this.height,
+    text: text ?? this.text,
+  );
 
   @override
   MarkType get type => MarkType.note;
 
   @override
-  Box get bounds => Box(x, y, x + width, y + minHeight);
+  Box get bounds => Box(x, y, x + width, y + height);
 
   @override
   Map<String, Object?> toFields() => {
@@ -320,6 +344,7 @@ class Note extends Mark {
     F.x: x,
     F.y: y,
     F.width: width,
+    F.height: height,
     F.text: text,
   };
 }

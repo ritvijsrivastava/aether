@@ -14,6 +14,7 @@ import 'package:aether/domain/text/page_text.dart';
 import 'package:aether/features/canvas/canvas_ui_state.dart';
 import 'package:aether/features/canvas/canvas_view.dart';
 import 'package:aether/features/canvas/ink/ink_options.dart';
+import 'package:aether/features/canvas/notes/notes_overlay.dart';
 import 'package:aether/features/canvas/engine/view_state.dart';
 import 'package:aether/features/canvas/pdf/pdf_source.dart';
 import 'package:aether/features/library/import/pdf_importer.dart';
@@ -23,6 +24,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart' show SystemChannels;
+import 'package:flutter/material.dart' show TextField;
 import 'package:flutter/widgets.dart' show RepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -445,5 +447,121 @@ void main() {
       });
     }
     expect(back, 1);
+  }, skip: skip != null);
+
+  testWidgets('placing a note, typing in it and clicking away saves it', (
+    tester,
+  ) async {
+    final db = AetherDatabase(NativeDatabase.memory());
+    addTearDown(() => tester.runAsync(db.close));
+    final store = DriftOpStore(db);
+    final tmp = Directory.systemTemp.createTempSync('aether_noteflow_');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    late PdfStorage storage;
+    late String docId;
+    await tester.runAsync(() async {
+      storage = await PdfStorage.open(Directory('${tmp.path}/lib'));
+      var t = 1000;
+      final importer = PdfImporter(
+        store: store,
+        bus: CommandBus(
+          store: store,
+          clock: HlcClock('imp', now: () => t++),
+          ids: SequentialIdGenerator('b'),
+        ),
+        storage: storage,
+        inspector: const PdfiumInspector(),
+        db: db,
+        ids: SequentialIdGenerator('doc'),
+      );
+      docId = (await importer.import(const ImportRequest(_paper))).docId;
+    });
+    await pumpApp(
+      tester,
+      size: const Size(1280, 800),
+      db: db,
+      location: '/doc/$docId',
+      storage: storage,
+    );
+    await pumpUntil(tester, find.byType(CanvasView));
+    final c = tester.widget<CanvasView>(find.byType(CanvasView)).controller;
+    for (var i = 0; i < 400 && c.tools == null; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 25)),
+      );
+      await tester.pump(const Duration(milliseconds: 25));
+    }
+    await tester.pump(const Duration(milliseconds: 500));
+
+    await tester.tap(find.text('Note'));
+    await tester.pump();
+    final origin = tester.getTopLeft(find.byType(CanvasView));
+    final at = origin + const Offset(450, 250);
+    final g = await tester.startGesture(
+      at,
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await g.up();
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(NoteCard), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'Why does this scale?');
+    await tester.pump();
+    // Click on empty canvas: the note loses focus and is saved.
+    final away = await tester.startGesture(
+      origin + const Offset(1100, 700),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await away.up();
+    await tester.pump();
+
+    List<Note> saved = [];
+    for (var i = 0; i < 200 && saved.isEmpty; i++) {
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+        saved = [
+          for (final e in await store.entities(
+            kind: EntityKind.mark,
+            docId: docId,
+          ))
+            if (Mark.fromState(e) case final Note n) n,
+        ];
+      });
+    }
+    expect(saved, hasLength(1));
+    expect(saved.single.text, 'Why does this scale?');
+    expect(saved.single.pageId, c.scene.value.cards.first.id);
+
+    // An empty note placed and abandoned leaves nothing behind.
+    final g2 = await tester.startGesture(
+      origin + const Offset(300, 500),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await g2.up();
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(NoteCard), findsNWidgets(2));
+    final away2 = await tester.startGesture(
+      origin + const Offset(1100, 700),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await away2.up();
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(NoteCard), findsOneWidget);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
+    expect(
+      (await tester.runAsync(
+        () => store.entities(kind: EntityKind.mark, docId: docId),
+      ))!.length,
+      1,
+    );
   }, skip: skip != null);
 }

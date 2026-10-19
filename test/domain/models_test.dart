@@ -115,6 +115,40 @@ void main() {
     expect((lb.fromNoteId, lb.toHighlightId), ('n1', 'h1'));
   });
 
+  test(
+    'a Note keeps its size, and an old note without one gets the default',
+    () {
+      const n = Note(
+        id: 'n2',
+        docId: 'd1',
+        pageId: 'p1',
+        x: 10,
+        y: 20,
+        width: 300,
+        height: 150,
+        text: 'hi',
+      );
+      final back =
+          Mark.fromState(stateOf(EntityKind.mark, 'n2', n.toFields())) as Note;
+      expect((back.width, back.height), (300.0, 150.0));
+      expect(back.bounds.width, 300);
+      expect(back.bounds.height, 150);
+
+      final old = Map<String, Object?>.of(n.toFields())..remove(F.height);
+      final oldBack =
+          Mark.fromState(stateOf(EntityKind.mark, 'n2', old)) as Note;
+      expect(oldBack.height, Note.defaultHeight);
+    },
+  );
+
+  test('Note.copyWith changes only what it is given', () {
+    const n = Note(id: 'n', docId: 'd', pageId: 'p', x: 1, y: 2, text: 'a');
+    final m = n.copyWith(x: 9, text: 'b');
+    expect((m.x, m.y, m.text, m.pageId, m.id), (9.0, 2.0, 'b', 'p', 'n'));
+    expect(m.width, n.width);
+    expect(n.copyWith().height, n.height);
+  });
+
   test('Document and PageRef round-trip', () {
     const d = Document(
       id: 'd1',

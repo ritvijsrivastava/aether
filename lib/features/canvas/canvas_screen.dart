@@ -29,6 +29,8 @@ import 'ink/ink_tool.dart';
 import 'input/pen_config.dart';
 import 'input/tool_gestures.dart';
 import 'marks/flash.dart';
+import 'notes/note_tool.dart';
+import 'notes/notes_overlay.dart';
 import 'marks/mark_layers.dart';
 import 'marks/mark_tool.dart';
 import 'engine/canvas_controller.dart';
@@ -83,6 +85,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   MarkToolController? _markTool;
   final LiveInk _liveInk = LiveInk();
   final EraserState _eraser = EraserState();
+  double _lastKeyboardInset = 0;
   PageTextService? _textService;
   late final FlashController _flash = FlashController(this);
   ExtractController? _extract;
@@ -218,6 +221,11 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _controller.tools = ToolRouter({
       CanvasTool.mark: MarkHandler(tool),
       CanvasTool.ink: inkTool,
+      CanvasTool.note: NoteToolController(
+        view: _controller.view,
+        scene: _controller.scene,
+        sink: session,
+      ),
       CanvasTool.erase: EraseToolController(
         view: _controller.view,
         scene: _controller.scene,
@@ -292,6 +300,22 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     });
   }
 
+  /// The soft keyboard came up while a note is being edited: pan so the note
+  /// stays in the part of the canvas the keyboard leaves free.
+  void _revealEditingNote() {
+    final session = _session;
+    if (session == null || !mounted) return;
+    final id = session.notes.editingId;
+    final n = id == null ? null : session.notes.byId(id);
+    if (n == null) return;
+    final o = NotesOverlay.worldOrigin(n, _controller.scene.value);
+    if (o == null) return;
+    _controller.reveal(
+      o & Size(n.width, n.height),
+      animate: !MediaQuery.disableAnimationsOf(context),
+    );
+  }
+
   void _warmText() => _markTool?.warmVisible(viewport: _controller.viewport);
 
   /// First layout is known: restore the remembered view, or show page one.
@@ -327,6 +351,16 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     final size = MediaQuery.sizeOf(context);
     final cls = WindowClass.of(size.width);
     final ui = ref.watch(canvasUiProvider);
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    if (keyboard != _lastKeyboardInset) {
+      final grew = keyboard > _lastKeyboardInset;
+      _lastKeyboardInset = keyboard;
+      if (grew) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _revealEditingNote(),
+        );
+      }
+    }
     // Choosing the Mark tool is the moment its text is about to be needed.
     ref.listen(canvasUiProvider.select((u) => u.tool), (_, tool) {
       if (tool == CanvasTool.mark) _warmText();
@@ -360,6 +394,15 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       ink: session?.ink,
       liveInk: _liveInk,
       eraser: _eraser,
+      overlay: session == null
+          ? null
+          : NotesOverlay(
+              view: _controller.view,
+              scene: _controller.scene,
+              notes: session.notes,
+              actions: session,
+              viewport: () => _controller.viewport,
+            ),
       pen: PenConfig.forPlatform(defaultTargetPlatform),
       fingerDraws: settings.fingerDraws,
       onReady: _onReady,

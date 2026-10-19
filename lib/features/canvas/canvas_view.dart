@@ -31,6 +31,7 @@ class CanvasView extends StatefulWidget {
     this.ink,
     this.liveInk,
     this.eraser,
+    this.overlay,
     this.pen = const PenConfig(),
     this.fingerDraws = false,
     this.onReady,
@@ -58,6 +59,9 @@ class CanvasView extends StatefulWidget {
 
   /// The ring shown under the pen while erasing.
   final EraserState? eraser;
+
+  /// Widgets drawn above the canvas and handling their own pointers (notes).
+  final Widget? overlay;
 
   /// Pen button bits and pressure curve for this device.
   final PenConfig pen;
@@ -229,7 +233,7 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
             if (mounted) widget.onReady?.call();
           });
         }
-        return Focus(
+        final surface = Focus(
           focusNode: _focus,
           autofocus: true,
           onKeyEvent: _onKey,
@@ -349,6 +353,13 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
               ),
             ),
           ),
+        );
+        // Overlay widgets (the notes) sit above the pointer handling, as
+        // siblings of it, so a touch on one never reaches the canvas gestures.
+        if (widget.overlay == null) return surface;
+        return Stack(
+          fit: StackFit.expand,
+          children: [surface, widget.overlay!],
         );
       },
     );

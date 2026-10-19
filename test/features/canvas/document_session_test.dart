@@ -81,6 +81,7 @@ void main() {
   DocumentSession open({
     String? id,
     Duration delay = const Duration(milliseconds: 40),
+    Duration noteDelay = const Duration(milliseconds: 30),
   }) {
     final controller = CanvasController(scene: const Scene([]))
       ..viewport = const Size(1000, 800);
@@ -93,6 +94,7 @@ void main() {
       clock: HlcClock('dev', now: () => 5000 + clockTick++),
       ids: SequentialIdGenerator('s${clockTick++}'),
       viewSaveDelay: delay,
+      noteEditDelay: noteDelay,
     );
     // Flushes a pending view save before the database is closed.
     addTearDown(session.dispose);
@@ -827,6 +829,203 @@ void main() {
       s.commitErase(deleted: {a}, created: const []);
       await s.settled();
       expect(s.ink.byId(a), isNotNull, reason: 'it was never really erased');
+    });
+  });
+
+  group('notes', () {
+    Future<DocumentSession> opened() async {
+      final s = open();
+      await s.load();
+      return s;
+    }
+
+    Future<List<Note>> storedNotes() async => [
+      for (final e in await store.entities(kind: EntityKind.mark, docId: docId))
+        if (Mark.fromState(e) case final Note n) n,
+    ];
+
+    Future<void> pause([int ms = 80]) =>
+        Future<void>.delayed(Duration(milliseconds: ms));
+
+    test(
+      'placing a note makes an empty draft and asks for the keyboard',
+      () async {
+        final s = await opened();
+        final page = s.controller.scene.value.cards.first;
+        final id = s.beginNote(pageId: page.id, x: 30, y: 40);
+        expect(s.notes.isDraft(id), isTrue);
+        expect(s.notes.focusId, id);
+        expect(s.notes.byId(id)!.text, '');
+        await s.settled();
+        expect(await storedNotes(), isEmpty, reason: 'nothing is saved yet');
+        expect(s.bus.canUndo, isFalse);
+      },
+    );
+
+    test('an empty note that loses focus vanishes without a trace', () async {
+      final s = await opened();
+      final id = s.beginNote(x: 5, y: 5);
+      await s.noteBlurred(id);
+      expect(s.notes.byId(id), isNull);
+      await s.settled();
+      expect(await storedNotes(), isEmpty);
+      expect(
+        s.bus.canUndo,
+        isFalse,
+        reason: 'no undo step for a discarded draft',
+      );
+    });
+
+    test('typing is saved once, when typing pauses', () async {
+      final s = await opened();
+      final id = s.beginNote(
+        pageId: s.controller.scene.value.cards.first.id,
+        x: 30,
+        y: 40,
+      );
+      s.editNoteText(id, 'W');
+      s.editNoteText(id, 'Why');
+      s.editNoteText(id, 'Why 3%?');
+      expect(await storedNotes(), isEmpty, reason: 'still typing');
+      await pause();
+      await s.settled();
+      final saved = (await storedNotes()).single;
+      expect(saved.text, 'Why 3%?');
+      expect((saved.x, saved.y), (30.0, 40.0));
+      expect(s.notes.isDraft(id), isFalse);
+      expect(s.bus.undoDepth, 1, reason: 'one burst of typing, one step');
+      expect(s.bus.undoLabel, 'Note');
+    });
+
+    test('losing focus saves at once, without waiting for the pause', () async {
+      final s = await opened();
+      final id = s.beginNote(x: 5, y: 5);
+      s.editNoteText(id, 'quick');
+      await s.noteBlurred(id);
+      expect((await storedNotes()).single.text, 'quick');
+    });
+
+    test(
+      'later edits are separate steps; undo goes back one at a time',
+      () async {
+        final s = await opened();
+        final id = s.beginNote(x: 5, y: 5);
+        s.editNoteText(id, 'one');
+        await s.noteBlurred(id);
+        s.editNoteText(id, 'one two');
+        await pause();
+        await s.settled();
+        expect((await storedNotes()).single.text, 'one two');
+        expect(s.bus.undoLabel, 'Edit note');
+        await s.undo();
+        expect(s.notes.byId(id)!.text, 'one');
+        expect((await storedNotes()).single.text, 'one');
+        await s.undo();
+        expect(s.notes.byId(id), isNull, reason: 'the creation is undone too');
+        expect(await storedNotes(), isEmpty);
+      },
+    );
+
+    test(
+      'moving and resizing save as one step at the end of the drag',
+      () async {
+        final s = await opened();
+        final id = s.beginNote(x: 5, y: 5);
+        s.editNoteText(id, 'hi');
+        await s.noteBlurred(id);
+        final before = s.bus.undoDepth;
+        for (var i = 1; i <= 10; i++) {
+          s.noteGeometryChanged(id, x: 5.0 + i * 3, y: 5.0 + i);
+        }
+        expect(s.notes.byId(id)!.x, 35, reason: 'shows at once');
+        expect((await storedNotes()).single.x, 5, reason: 'not saved mid-drag');
+        await s.noteGeometryDone(id);
+        expect((await storedNotes()).single.x, 35);
+        expect(s.bus.undoDepth, before + 1);
+        s.noteGeometryChanged(id, width: 300, height: 200);
+        await s.noteGeometryDone(id);
+        final n = (await storedNotes()).single;
+        expect((n.width, n.height), (300.0, 200.0));
+        await s.undo();
+        expect((await storedNotes()).single.width, Note.defaultWidth);
+      },
+    );
+
+    test('moving a draft that has no text saves nothing', () async {
+      final s = await opened();
+      final id = s.beginNote(x: 5, y: 5);
+      s.noteGeometryChanged(id, x: 50);
+      await s.noteGeometryDone(id);
+      await s.settled();
+      expect(await storedNotes(), isEmpty);
+    });
+
+    test(
+      'delete is undoable, and a saved note emptied then blurred is deleted',
+      () async {
+        final s = await opened();
+        final a = s.beginNote(x: 5, y: 5);
+        s.editNoteText(a, 'keep me');
+        await s.noteBlurred(a);
+        s.deleteNote(a);
+        await s.settled();
+        expect(await storedNotes(), isEmpty);
+        await s.undo();
+        expect((await storedNotes()).single.text, 'keep me');
+        expect(s.notes.byId(a), isNotNull);
+
+        s.editNoteText(a, '');
+        await s.noteBlurred(a);
+        await s.settled();
+        expect(await storedNotes(), isEmpty, reason: 'emptied, then discarded');
+        await s.undo();
+        expect((await storedNotes()).single.text, 'keep me');
+      },
+    );
+
+    test(
+      'notes come back when the document is reopened, free ones too',
+      () async {
+        final s = await opened();
+        final page = s.controller.scene.value.cards.first;
+        final a = s.beginNote(pageId: page.id, x: 1, y: 2);
+        s.editNoteText(a, 'on page');
+        final b = s.beginNote(x: 300, y: 400);
+        s.editNoteText(b, 'free');
+        await s.noteBlurred(a);
+        await s.noteBlurred(b);
+        final again = await opened();
+        expect(again.notes.count, 2);
+        expect(again.notes.forPage(page.id).single.text, 'on page');
+        expect(again.notes.forPage(null).single.text, 'free');
+      },
+    );
+
+    test(
+      'leaving the screen right after typing still saves the text',
+      () async {
+        final s = open(noteDelay: const Duration(seconds: 5));
+        await s.load();
+        final id = s.beginNote(x: 5, y: 5);
+        s.editNoteText(id, 'typed just now');
+        await s.dispose();
+        expect((await storedNotes()).single.text, 'typed just now');
+      },
+    );
+
+    test('an undo elsewhere does not lose a draft being typed into', () async {
+      final s = await opened();
+      s.addInk(
+        pageId: s.controller.scene.value.cards.first.id,
+        samples: Float32List.fromList([0, 0, 1, 9, 9, 1]),
+        width: 2,
+        color: 1,
+      );
+      await s.settled();
+      final id = s.beginNote(x: 5, y: 5);
+      s.editNoteText(id, 'typing');
+      await s.undo(); // takes back the ink
+      expect(s.notes.byId(id)?.text, 'typing');
     });
   });
 }

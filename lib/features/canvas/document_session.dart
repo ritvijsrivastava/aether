@@ -21,6 +21,8 @@ import 'ink/ink_layer.dart';
 import 'erase/erase_tool.dart';
 import 'ink/ink_tool.dart';
 import 'marks/mark_layers.dart';
+import 'notes/note_tool.dart';
+import 'notes/notes_layer.dart';
 import 'marks/mark_tool.dart';
 
 /// An open document: its pages on the canvas, its own undo history, and its
@@ -29,7 +31,8 @@ import 'marks/mark_tool.dart';
 /// Card moves made by dragging are saved as undoable commands; undo and redo
 /// reload the page positions into the canvas. The view (pan and zoom) is saved
 /// shortly after it stops changing, and restored on the next open.
-class DocumentSession implements MarkSink, InkSink, EraseSink {
+class DocumentSession
+    implements MarkSink, InkSink, EraseSink, NoteSink, NoteActions {
   DocumentSession({
     required this.docId,
     required this.store,
@@ -38,6 +41,7 @@ class DocumentSession implements MarkSink, InkSink, EraseSink {
     required HlcClock clock,
     required this.ids,
     this.viewSaveDelay = const Duration(milliseconds: 600),
+    this.noteEditDelay = const Duration(milliseconds: 800),
   }) : bus = CommandBus(store: store, clock: clock, ids: ids),
        _factory = CommandFactory(store) {
     controller.onCardMoved = (id, delta) =>
@@ -52,6 +56,9 @@ class DocumentSession implements MarkSink, InkSink, EraseSink {
   final IdGenerator ids;
   final CommandBus bus;
   final Duration viewSaveDelay;
+
+  /// Typing in a note is saved after this much quiet (or when it loses focus).
+  final Duration noteEditDelay;
   final CommandFactory _factory;
 
   Document? document;
@@ -62,6 +69,9 @@ class DocumentSession implements MarkSink, InkSink, EraseSink {
 
   /// The document's ink strokes.
   final InkLayer ink = InkLayer();
+
+  /// The document's notes, drafts included.
+  final NotesLayer notes = NotesLayer();
 
   Future<void> _tail = Future.value();
   Timer? _viewTimer;
@@ -84,14 +94,17 @@ class DocumentSession implements MarkSink, InkSink, EraseSink {
     final entities = await store.entities(kind: EntityKind.mark, docId: docId);
     final all = <Highlight>[];
     final strokes = <Ink>[];
+    final saved = <Note>[];
     for (final e in entities) {
       final m = Mark.fromState(e);
       if (m is Highlight) all.add(m);
       if (m is Ink) strokes.add(m);
+      if (m is Note) saved.add(m);
     }
     if (!_disposed) {
       highlights.replaceAll(all);
       ink.replaceAll(strokes);
+      notes.replaceSaved(saved);
     }
   }
 
@@ -240,6 +253,114 @@ class DocumentSession implements MarkSink, InkSink, EraseSink {
   @override
   String newId() => ids.next();
 
+  // --- notes ------------------------------------------------------------------
+
+  final Map<String, Timer> _noteTimers = {};
+
+  @override
+  String beginNote({String? pageId, required double x, required double y}) {
+    final id = ids.next();
+    notes.add(
+      Note(id: id, docId: docId, pageId: pageId, x: x, y: y),
+      draft: true,
+    );
+    notes.requestFocus(id);
+    return id;
+  }
+
+  /// The text of a note changed. It shows at once; it is saved when typing
+  /// pauses, so one burst of typing is one undo step.
+  @override
+  void editNoteText(String id, String text) {
+    final n = notes.byId(id);
+    if (n == null || n.text == text) return;
+    notes.update(n.copyWith(text: text));
+    _noteTimers[id]?.cancel();
+    _noteTimers[id] = Timer(noteEditDelay, () => saveNote(id));
+  }
+
+  /// Writes a note's current state: creates it the first time (a draft with
+  /// text), edits it afterwards. A note with no text is not written.
+  Future<void> saveNote(String id) {
+    _noteTimers.remove(id)?.cancel();
+    return _enqueue(() async {
+      final n = notes.byId(id);
+      if (n == null) return;
+      try {
+        if (notes.isDraft(id)) {
+          if (n.text.trim().isEmpty) return;
+          notes.promote(id);
+          await bus.run(
+            _factory.create(EntityKind.mark, id, n.toFields(), label: 'Note'),
+          );
+        } else {
+          await bus.run(
+            await _factory.setFields(id, n.toFields(), label: 'Edit note'),
+          );
+        }
+      } catch (e, st) {
+        debugPrint('Saving note $id failed: $e\n$st');
+      }
+    });
+  }
+
+  /// A note is being moved or resized: it shows at once; see
+  /// [noteGeometryDone] for the save.
+  @override
+  void noteGeometryChanged(
+    String id, {
+    double? x,
+    double? y,
+    double? width,
+    double? height,
+  }) {
+    final n = notes.byId(id);
+    if (n == null) return;
+    notes.update(n.copyWith(x: x, y: y, width: width, height: height));
+  }
+
+  /// A drag of a note is over: one undo step for the whole move or resize.
+  @override
+  Future<void> noteGeometryDone(String id) =>
+      notes.isDraft(id) ? Future.value() : saveNote(id);
+
+  /// The note lost the keyboard: save what was typed; an empty note is thrown
+  /// away (with no trace if it was never saved).
+  @override
+  Future<void> noteBlurred(String id) async {
+    final n = notes.byId(id);
+    if (n == null) return;
+    if (n.text.trim().isEmpty) {
+      _noteTimers.remove(id)?.cancel();
+      if (notes.isDraft(id)) {
+        notes.remove(id);
+      } else {
+        deleteNote(id);
+      }
+      return;
+    }
+    await saveNote(id);
+  }
+
+  /// Deletes a note; undoable.
+  @override
+  void deleteNote(String id) {
+    final n = notes.byId(id);
+    if (n == null) return;
+    final wasDraft = notes.isDraft(id);
+    _noteTimers.remove(id)?.cancel();
+    notes.remove(id);
+    if (wasDraft) return;
+    _enqueue(() async {
+      try {
+        await bus.run(await _factory.delete(id, label: 'Delete note'));
+      } catch (e, st) {
+        debugPrint('Deleting note $id failed: $e\n$st');
+        notes.add(n);
+      }
+    });
+  }
+
   /// Saves one erase as a single undo step. The page already shows the result;
   /// if the save fails the page is reloaded from what was really stored.
   @override
@@ -334,8 +455,11 @@ class DocumentSession implements MarkSink, InkSink, EraseSink {
     controller.view.removeListener(_viewChanged);
     controller.onCardMoved = null;
     _viewTimer?.cancel();
-    // Leaving the screen right after a mark must not lose it: let every
-    // queued save finish before closing the queue.
+    // Leaving the screen right after a mark must not lose it: save pending
+    // note text, then let every queued save finish before closing the queue.
+    for (final id in _noteTimers.keys.toList()) {
+      unawaited(saveNote(id));
+    }
     await _tail;
     await _saveView();
     _disposed = true;
