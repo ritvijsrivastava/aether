@@ -54,7 +54,7 @@ void main() {
     await pumpApp(
       tester,
       size: const Size(1280, 720),
-      location: '/doc/specimen',
+      location: '/doc/synthetic-30',
     );
     await tester.tap(find.text('Copy as Markdown'));
     await tester.pump();

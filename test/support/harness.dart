@@ -21,6 +21,10 @@ class FakeSettings extends SettingsNotifier {
       state = AsyncData((state.value ?? initial).copyWith(fingerDraws: v));
 
   @override
+  Future<void> setPerfHud(bool v) async =>
+      state = AsyncData((state.value ?? initial).copyWith(perfHud: v));
+
+  @override
   Future<void> setLeftHanded(bool v) async =>
       state = AsyncData((state.value ?? initial).copyWith(leftHanded: v));
 }

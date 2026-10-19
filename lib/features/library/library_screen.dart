@@ -125,9 +125,16 @@ class _EmptyLibrary extends StatelessWidget {
               ),
               if (kDebugMode) ...[
                 const SizedBox(height: AetherTokens.s4),
-                TextButton(
-                  onPressed: () => context.push('/doc/specimen'),
-                  child: const Text('Open the design specimen (debug)'),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: AetherTokens.s2,
+                  children: [
+                    for (final n in const [30, 500])
+                      TextButton(
+                        onPressed: () => context.push('/doc/synthetic-$n'),
+                        child: Text('Open $n-page test canvas (debug)'),
+                      ),
+                  ],
                 ),
               ],
             ],

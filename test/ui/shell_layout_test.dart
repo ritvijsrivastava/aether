@@ -27,7 +27,7 @@ void main() {
             await pumpApp(
               tester,
               size: entry.value,
-              location: '/doc/specimen',
+              location: '/doc/synthetic-30',
               brightness: b,
               textScale: scale,
             );
@@ -77,7 +77,7 @@ void main() {
       await pumpApp(
         tester,
         size: const Size(360, 800),
-        location: '/doc/specimen',
+        location: '/doc/synthetic-30',
       );
       expect(find.text('More'), findsOneWidget);
       expect(find.text('Mark'), findsOneWidget);
@@ -93,7 +93,7 @@ void main() {
       await pumpApp(
         tester,
         size: const Size(840, 600),
-        location: '/doc/specimen',
+        location: '/doc/synthetic-30',
       );
       for (final tool in CanvasTool.values) {
         expect(
@@ -112,13 +112,13 @@ void main() {
       await pumpApp(
         tester,
         size: const Size(599, 800),
-        location: '/doc/specimen',
+        location: '/doc/synthetic-30',
       );
       expect(find.text('More'), findsOneWidget);
       await pumpApp(
         tester,
         size: const Size(600, 800),
-        location: '/doc/specimen',
+        location: '/doc/synthetic-30',
       );
       expect(find.text('More'), findsNothing);
     });
@@ -127,7 +127,7 @@ void main() {
       await pumpApp(
         tester,
         size: const Size(360, 800),
-        location: '/doc/specimen',
+        location: '/doc/synthetic-30',
       );
       await tester.tap(find.text('More'));
       await tester.pumpAndSettle();
@@ -140,7 +140,7 @@ void main() {
       await pumpApp(
         tester,
         size: const Size(1280, 720),
-        location: '/doc/specimen',
+        location: '/doc/synthetic-30',
       );
       await tester.tap(find.text('Ink'));
       await tester.pump();
@@ -154,13 +154,13 @@ void main() {
       await pumpApp(
         tester,
         size: const Size(1280, 720),
-        location: '/doc/specimen',
+        location: '/doc/synthetic-30',
       );
       final rightHandedX = tester.getCenter(find.text('Mark')).dx;
       await pumpApp(
         tester,
         size: const Size(1280, 720),
-        location: '/doc/specimen',
+        location: '/doc/synthetic-30',
         settings: const AppSettings(leftHanded: true),
       );
       expect(
@@ -177,7 +177,7 @@ void main() {
       const Size(1280, 720),
     ]) {
       testWidgets('${size.width.toInt()} wide', (tester) async {
-        await pumpApp(tester, size: size, location: '/doc/specimen');
+        await pumpApp(tester, size: size, location: '/doc/synthetic-30');
         final handle = tester.ensureSemantics();
         final small = <String>[];
         for (final e in tester.allElements) {

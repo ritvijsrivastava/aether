@@ -81,6 +81,17 @@ class SettingsScreen extends ConsumerWidget {
                   style: text.caption.copyWith(color: t.inkMuted),
                 ),
               ),
+              section('Diagnostics'),
+              SwitchListTile(
+                value: s.perfHud,
+                onChanged: n.setPerfHud,
+                title: Text('Performance overlay', style: text.title),
+                subtitle: Text(
+                  'Shows frame times and the display refresh rate over the canvas. '
+                  'Use a profile build for honest numbers.',
+                  style: text.caption.copyWith(color: t.inkMuted),
+                ),
+              ),
               section('About'),
               ListTile(
                 title: Text('Licenses', style: text.title),

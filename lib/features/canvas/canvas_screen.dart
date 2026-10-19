@@ -10,50 +10,133 @@ import '../../ui/widgets/panel_surface.dart';
 import '../extract/extract_panel.dart';
 import 'canvas_top_bar.dart';
 import 'canvas_ui_state.dart';
-import 'specimen_stage.dart';
+import 'canvas_view.dart';
+import 'engine/canvas_controller.dart';
+import 'engine/page_surface.dart';
+import 'engine/scene.dart';
+import 'engine/view_state.dart';
+import 'perf_hud.dart';
 import 'tool_palette.dart';
 import 'zoom_pill.dart';
+
+/// Test documents that need no PDF: `/doc/synthetic-30`, `/doc/synthetic-500`.
+/// Numbered placeholder pages of mixed sizes, for judging the engine.
+const String syntheticPrefix = 'synthetic-';
+
+int? syntheticCount(String docId) => docId.startsWith(syntheticPrefix)
+    ? int.tryParse(docId.substring(syntheticPrefix.length))
+    : null;
+
+Scene syntheticScene(int pages) {
+  const letter = Size(612, 792),
+      landscape = Size(792, 612),
+      a4 = Size(595, 842);
+  return Scene.row([
+    for (var i = 0; i < pages; i++)
+      i % 11 == 10 ? landscape : (i % 7 == 6 ? a4 : letter),
+  ]);
+}
 
 /// The document workspace. Layout adapts to the window class:
 /// compact = full-bleed canvas + bottom toolbar + Extract sheet;
 /// medium/expanded = tool rail + side Extract panel.
-class CanvasScreen extends ConsumerWidget {
+class CanvasScreen extends ConsumerStatefulWidget {
   const CanvasScreen({super.key, required this.docId});
   final String docId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CanvasScreen> createState() => _CanvasScreenState();
+}
+
+class _CanvasScreenState extends ConsumerState<CanvasScreen>
+    with SingleTickerProviderStateMixin {
+  late final CanvasController _controller;
+  late final PageSurface _surface;
+
+  @override
+  void initState() {
+    super.initState();
+    final n = syntheticCount(widget.docId);
+    _controller = CanvasController(
+      scene: n == null ? const Scene([]) : syntheticScene(n),
+    )..attach(this);
+    _surface = SyntheticPageSurface();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final cls = WindowClass.of(size.width);
     final ui = ref.watch(canvasUiProvider);
-    final left = ref.watch(settingsProvider).value?.leftHanded ?? false;
+    final settings = ref.watch(settingsProvider).value ?? const AppSettings();
     final landscape = size.width > size.height;
     final extractOpen =
         ui.extractOpen ?? (cls == WindowClass.expanded || landscape);
 
-    final docs = ref.watch(documentsProvider).value ?? const [];
-    final doc = docs.where((d) => d.id == docId).firstOrNull;
-    final title = doc?.title ?? 'Design specimen';
-    final pages = doc?.pageCount ?? 0;
+    // Fit and zoom aim at the area the floating controls leave free.
+    _controller.insets = cls == WindowClass.compact
+        ? const EdgeInsets.only(top: 64, bottom: 84)
+        : EdgeInsets.fromLTRB(
+            settings.leftHanded ? 0 : 88,
+            24, // room for the drag handle above the page
+            settings.leftHanded ? 88 : 0,
+            56, // room for the zoom pill
+          );
 
-    final bar = CanvasTopBar(
-      windowClass: cls,
-      title: title,
-      pageCount: pages,
-      extractVisible: extractOpen,
+    final docs = ref.watch(documentsProvider).value ?? const [];
+    final doc = docs.where((d) => d.id == widget.docId).firstOrNull;
+    final n = syntheticCount(widget.docId);
+    final title =
+        doc?.title ?? (n != null ? 'Synthetic test, $n pages' : 'Document');
+    final pages = doc?.pageCount ?? n ?? 0;
+
+    final canvasView = CanvasView(
+      controller: _controller,
+      surface: _surface,
+      tool: ui.tool,
+      fingerDraws: settings.fingerDraws,
+      onReady: _controller.fitFirst,
     );
+    final canvas = settings.perfHud
+        ? Stack(
+            fit: StackFit.expand,
+            children: [
+              canvasView,
+              const Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: EdgeInsets.only(top: AetherTokens.s2),
+                  child: PerfHud(),
+                ),
+              ),
+            ],
+          )
+        : canvasView;
 
     return Scaffold(
       body: Column(
         children: [
-          bar,
+          CanvasTopBar(
+            windowClass: cls,
+            title: title,
+            pageCount: pages,
+            extractVisible: extractOpen,
+          ),
           Expanded(
             child: cls == WindowClass.compact
-                ? const _CompactBody()
+                ? _CompactBody(controller: _controller, canvas: canvas)
                 : _WideBody(
+                    controller: _controller,
+                    canvas: canvas,
                     expanded: cls == WindowClass.expanded,
                     extractOpen: extractOpen,
-                    leftHanded: left,
+                    leftHanded: settings.leftHanded,
                   ),
           ),
         ],
@@ -62,13 +145,33 @@ class CanvasScreen extends ConsumerWidget {
   }
 }
 
+class _Zoom extends StatelessWidget {
+  const _Zoom(this.controller);
+  final CanvasController controller;
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<ViewState>(
+    valueListenable: controller.view,
+    builder: (context, v, _) => ZoomPill(
+      zoom: v.zoom,
+      onZoomOut: () => controller.zoomBy(0.8),
+      onZoomIn: () => controller.zoomBy(1.25),
+      onFit: controller.fitPage,
+    ),
+  );
+}
+
 class _WideBody extends ConsumerWidget {
   const _WideBody({
+    required this.controller,
+    required this.canvas,
     required this.expanded,
     required this.extractOpen,
     required this.leftHanded,
   });
 
+  final CanvasController controller;
+  final Widget canvas;
   final bool expanded, extractOpen, leftHanded;
 
   @override
@@ -82,9 +185,7 @@ class _WideBody extends ConsumerWidget {
       borderRadius: BorderRadius.circular(AetherTokens.rPanel),
       child: Stack(
         children: [
-          const Positioned.fill(
-            child: SpecimenStage(leftInset: 88, topInset: 8),
-          ),
+          Positioned.fill(child: canvas),
           Positioned(
             left: leftHanded ? null : AetherTokens.s4,
             right: leftHanded ? AetherTokens.s4 : null,
@@ -99,7 +200,7 @@ class _WideBody extends ConsumerWidget {
             right: leftHanded ? null : AetherTokens.s4,
             left: leftHanded ? AetherTokens.s4 : null,
             bottom: AetherTokens.s4,
-            child: const ZoomPill(),
+            child: _Zoom(controller),
           ),
         ],
       ),
@@ -114,7 +215,7 @@ class _WideBody extends ConsumerWidget {
               alignment: Alignment.centerLeft,
               minWidth: panelW,
               maxWidth: panelW,
-              child: PanelSurface(child: const ExtractPanel()),
+              child: const PanelSurface(child: ExtractPanel()),
             )
           : null,
     );
@@ -142,19 +243,16 @@ class _WideBody extends ConsumerWidget {
         : [Expanded(child: stage), handle, panel];
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        AetherTokens.s3,
-        AetherTokens.s3,
-        extractOpen ? AetherTokens.s3 : AetherTokens.s3,
-        AetherTokens.s3,
-      ),
+      padding: const EdgeInsets.all(AetherTokens.s3),
       child: Row(children: children),
     );
   }
 }
 
 class _CompactBody extends ConsumerWidget {
-  const _CompactBody();
+  const _CompactBody({required this.controller, required this.canvas});
+  final CanvasController controller;
+  final Widget canvas;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -165,13 +263,11 @@ class _CompactBody extends ConsumerWidget {
         Expanded(
           child: Stack(
             children: [
-              const Positioned.fill(
-                child: SpecimenStage(leftInset: 0, topInset: 56),
-              ),
-              const Positioned(
+              Positioned.fill(child: canvas),
+              Positioned(
                 top: AetherTokens.s3,
                 right: AetherTokens.s3,
-                child: ZoomPill(),
+                child: _Zoom(controller),
               ),
               if (ui.tool == CanvasTool.mark)
                 const Positioned(

@@ -36,6 +36,7 @@ class AppSettings {
     this.themeMode = ThemeMode.system,
     this.fingerDraws = false,
     this.leftHanded = false,
+    this.perfHud = false,
   });
 
   final ThemeMode themeMode;
@@ -46,14 +47,19 @@ class AppSettings {
   /// Mirrors the tool rail and Extract panel.
   final bool leftHanded;
 
+  /// Shows frame times over the canvas (for judging smoothness on a device).
+  final bool perfHud;
+
   AppSettings copyWith({
     ThemeMode? themeMode,
     bool? fingerDraws,
     bool? leftHanded,
+    bool? perfHud,
   }) => AppSettings(
     themeMode: themeMode ?? this.themeMode,
     fingerDraws: fingerDraws ?? this.fingerDraws,
     leftHanded: leftHanded ?? this.leftHanded,
+    perfHud: perfHud ?? this.perfHud,
   );
 }
 
@@ -61,6 +67,7 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
   static const _theme = 'themeMode';
   static const _finger = 'fingerDraws';
   static const _left = 'leftHanded';
+  static const _hud = 'perfHud';
 
   @override
   Future<AppSettings> build() async {
@@ -73,6 +80,7 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
       ),
       fingerDraws: await db.setting(_finger) == '1',
       leftHanded: await db.setting(_left) == '1',
+      perfHud: await db.setting(_hud) == '1',
     );
   }
 
@@ -86,6 +94,11 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
   Future<void> setFingerDraws(bool v) async {
     state = AsyncData(_cur.copyWith(fingerDraws: v));
     await ref.read(databaseProvider).putSetting(_finger, v ? '1' : '0');
+  }
+
+  Future<void> setPerfHud(bool v) async {
+    state = AsyncData(_cur.copyWith(perfHud: v));
+    await ref.read(databaseProvider).putSetting(_hud, v ? '1' : '0');
   }
 
   Future<void> setLeftHanded(bool v) async {
