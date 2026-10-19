@@ -17,6 +17,7 @@ Status: DRAFT for review. Nothing here is implemented. Companion documents: `PRO
 ### 1.2 Non-goals for v1
 - Handwriting-to-text conversion **[DECIDED: deferred]**. A recognizer interface is reserved (section 9.6) but unimplemented.
 - OCR for scanned PDFs, non-PDF sources (web articles, slide decks, images).
+- **Right-to-left and bidirectional text** **[DECIDED: not in v1, 2026-10-19]**. Selection and highlights are built and tested for left-to-right text only. On RTL pages, selection may jump or split words; this goes in the release notes. Revisit after v1.
 - Cloud sync, accounts, collaboration (data model is ready; transport is not built).
 - Web, iOS, Windows, macOS builds.
 - Editing the PDF itself or writing annotations back into the PDF file (export of flattened PDF is v1.1).
@@ -451,7 +452,7 @@ Engineering practices: profile-mode traces in CI-like runs; `RepaintBoundary` au
 | Integration | import PDF, mark, restart app, marks present, undo works | `integration_test` on Linux desktop and Android device |
 | Performance | scripted pan/zoom/ink on synthetic big docs, frame timings | `flutter drive` timeline summaries, thresholds from section 13 |
 | Manual device pass | S Pen on Tab S9 (pressure, hover, button, palm); Wacom on Linux; phone layout | checklist per milestone, with `adb exec-out screencap` and Linux screenshots as evidence |
-Fixture PDFs: a text-heavy paper, a two-column paper, a scanned (no text) page, an encrypted PDF, a huge PDF (500 pages), a PDF with unusual fonts/RTL. **Supplied by the owner:** `test/fixtures/mapreduce/mapreduce.pdf` (Dean and Ghemawat, "MapReduce", 13 pages, US Letter 612x792 pt, two-column body with a single-column title block, figures and tables, produced by QuarkXPress). It is flagged as RC4-encrypted with an empty user password (copying allowed, editing not), so it doubles as the "encrypted PDF" case: the importer must open owner-password-only files silently and only prompt when a user password is actually required. It is a third-party paper, so it is a local test fixture and should not be committed or redistributed. Still to generate: a scanned (no text) page, a user-password PDF, a 500-page PDF, and an RTL/unusual-fonts PDF. The sample document remains original content. **[OPEN for the remaining cases]**
+Fixture PDFs: a text-heavy paper, a two-column paper, a scanned (no text) page, an encrypted PDF, a huge PDF (500 pages), a PDF with unusual fonts (RTL is a v1 non-goal). **Supplied by the owner:** `test/fixtures/mapreduce/mapreduce.pdf` (Dean and Ghemawat, "MapReduce", 13 pages, US Letter 612x792 pt, two-column body with a single-column title block, figures and tables, produced by QuarkXPress). It is flagged as RC4-encrypted with an empty user password (copying allowed, editing not), so it doubles as the "encrypted PDF" case: the importer must open owner-password-only files silently and only prompt when a user password is actually required. It is a third-party paper, so it is a local test fixture and should not be committed or redistributed. Still to generate: a scanned (no text) page, a user-password PDF, a 500-page PDF, and an RTL/unusual-fonts PDF. The sample document remains original content. **[OPEN for the remaining cases]**
 
 ---
 
@@ -487,10 +488,10 @@ Each milestone ends with a **review stop** where you try it on the Tab S9 and/or
 | **M1** Shell, theme, data foundations | Tokens, theme extension, bundled fonts, light/dark, adaptive scaffold (3 classes) with placeholder content, Library with empty state, Drift schema, ids/HLC/op log with tests | Layouts correct at 360, 600, 840, 1280 dp and at 1.3x and 2.0x text scale; dark theme contrast test passes; migrations and op log tests green |
 | **M2** Canvas engine | View transform, pan/pinch/wheel/keys, grid, card drag, PDF tile renderer with LOD, import flow, zoom pill, fit | Open a 200-page PDF; pan/zoom at the section 13 budgets on S9 and Linux; no blank pages |
 | **M3** Text and marks | Text layer extraction, word/line snapping, multi-line highlights, Extract list with filters, jump, Markdown copy | Drag-select matches expected text on fixture PDFs; Extract matches marks exactly; export golden tests |
-| **M3.1** Follow-ups (small, no review stop) | Register items R1 to R4: rotated-page correctness, missing fixtures, text no longer queues behind tiles, selection perf check | Rotated PDF highlights land on the right words (test); scanned, rotated and RTL fixtures exist; text for visible pages is ready before first touch on the S9 |
+| **M3.1** Follow-ups (small, no review stop) | Register items R1 to R4: rotated-page correctness, missing fixtures (scanned, rotated), text no longer queues behind tiles, selection perf check | Rotated PDF highlights land on the right words (test); scanned and rotated fixtures exist; text for visible pages is ready before first touch on the S9 |
 | **M4** Ink, notes, links, select, undo | Pressure ink, prediction, erase (whole + partial), notes (move/resize), links (multi, snap), lasso + actions, full command stack; **plus register items R5 to R13** | Undo/redo property tests; ink budgets met; palm rejection verified on S9 |
 | **M5** Persistence and library | Autosave, crash recovery, reopen, library (thumbnails, search, rename, recently deleted), JSON backup, share/save; **plus register items R14 to R19** | Kill -9 mid-stroke loses at most the tail of one stroke; round-trip export/import identical |
-| **M6** Polish, accessibility, release | Screen-reader pass, keyboard pass, motion, empty/error states, settings, perf profiling, release builds (APK split + Linux bundle); **plus register items R20 to R31** | All budgets in section 13; a11y checklist; no analyzer warnings; release artifacts install and run on both |
+| **M6** Polish, accessibility, release | Screen-reader pass, keyboard pass, motion, empty/error states, settings, perf profiling, release builds (APK split + Linux bundle); **plus register items R20 to R31 (R22 closed)** | All budgets in section 13; a11y checklist; no analyzer warnings; release artifacts install and run on both |
 
 **Stop rules:** after M2 (is the canvas feel right?) and after M4 (is the pen feel right?) I stop for your hands-on review before building on top.
 
@@ -502,7 +503,7 @@ Everything an earlier milestone report or this spec marked "later", "unverified"
 | ID | Item | Came from | Owner | Done when |
 |---|---|---|---|---|
 | R1 | Rotated pages: highlight rects use pdfrx's rotation handling with no test | M3 | M3.1 | A page with `/Rotate` 90, 180, 270 gets highlights on the right words (fixture + test) |
-| R2 | Fixtures still missing: scanned (no text) page, rotated page, RTL / unusual fonts (SPEC 15) | M0, §19.10 | M3.1 | Generated, git-ignored, listed in `docs`, used by tests |
+| R2 | Fixtures still missing: scanned (no text) page, rotated page, unusual fonts (SPEC 15; RTL dropped with R22) | M0, §19.10 | M3.1 | Generated, git-ignored, listed in `docs`, used by tests |
 | R3 | Text extraction can queue behind tile renders after a big zoom (one pdfium worker) | M3 | M3.1 | Visible pages' text is requested before tiles after a view change; first mark after a zoom starts selecting without a wait on the S9 |
 | R4 | Drag-select hit-test under 1 ms and mark commit under 5 ms on the UI isolate (§13) never measured | M3 | M3.1 | Benchmark test on real page text; numbers in the report |
 | R5 | Eraser end (`invertedStylus`) never observed on Linux; treated as a toolbar tool | M0 | M4 | Re-tested on Wacom under Wayland; erase works from toolbar and, if reported, from the pen end |
@@ -522,7 +523,7 @@ Everything an earlier milestone report or this spec marked "later", "unverified"
 | R19 | A password-protected PDF asks again after the app restarts (password cache is per session) | M2 | M5 | Decision recorded: keep (and say so in the empty/error copy) or store in the platform keystore |
 | R20 | Column-aware reading order for odd layouts (content-stream order is right for the two fixtures) | M0, M3, §20 | M6 | Implemented, or written into the release notes as a known limitation with an example |
 | R21 | Free-rectangle highlights show "Image region" in Extract; a page-crop thumbnail was proposed (6.2) | M3 | M6 | Thumbnail shown in Extract and in the screen-reader label, or the proposal is dropped in writing |
-| R22 | Right-to-left text is not handled specially | M3 | M6 | Added to the v1 non-goals (1.2) and release notes, or selection tested on the RTL fixture |
+| R22 | Right-to-left text is not handled specially | M3 | **Closed (owner decision)** | Declared a v1 non-goal in 1.2; release notes say so. No fixture or code needed |
 | R23 | Multiply blend cost on the S9 measured only with 8 highlights; flat-fill fallback undecided | M3 | M6 | Measured on a page with many highlights; keep multiply or switch by setting, written down |
 | R24 | Predictive back enabled but never exercised on a device | M1 | M6 | Back from Canvas, sheets and menus checked on the S9 |
 | R25 | Linux minimum window size (800x520) never resized by hand; HiDPI and Wayland checks | M1, §17 | M6 | Done and noted in the M6 report |
@@ -556,7 +557,7 @@ Deferred past v1 on purpose (unchanged): handwriting conversion, OCR, flattened 
 7. **Georgia/Source Serif substitution** and Figtree licensing: both open-licensed (OFL) but should be confirmed when bundling.
 8. **Dynamic color/dark mode** values are proposals; DESIGN.md dark theme is unconfirmed.
 9. **Sync-readiness is a promise about the schema, not a tested feature.** Until a second device exists, merge behavior is unproven; keep the op-log tests strict.
-10. **Fixture PDFs**: a two-column paper, a 166-page math paper, encrypted, 200 and 500 page files exist; scanned, rotated and RTL do not (register R2).
+10. **Fixture PDFs**: a two-column paper, a 166-page math paper, encrypted, 200 and 500 page files exist; scanned and rotated do not (register R2).
 
 ---
 

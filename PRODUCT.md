@@ -52,7 +52,7 @@ In v1 [confirmed unless marked]:
 - Extract panel: all marks as quoted items, filter by meaning and by notes, tap to jump, delete, copy as Markdown.
 - Local persistence with autosave; a document library.
 
-Explicitly **deferred**: handwriting-to-text conversion [confirmed], OCR for scanned PDFs, non-PDF sources, cloud sync, accounts, collaboration.
+Explicitly **deferred**: handwriting-to-text conversion [confirmed], right-to-left and bidirectional text [confirmed, 2026-10-19], OCR for scanned PDFs, non-PDF sources, cloud sync, accounts, collaboration.
 
 Constraints:
 
