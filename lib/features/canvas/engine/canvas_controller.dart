@@ -7,14 +7,15 @@ import 'package:flutter/physics.dart' show FrictionSimulation;
 import 'package:flutter/scheduler.dart';
 
 import '../input/input_arbiter.dart';
-import '../marks/mark_tool.dart';
+import '../input/tool_gestures.dart';
+import '../canvas_ui_state.dart' show CanvasTool;
 import 'scene.dart';
 import 'view_state.dart';
 
 /// Owns the canvas view and scene and implements the gestures the arbiter
 /// asks for. Painters listen to [view] and [scene] directly, so a pan or a
 /// card drag repaints layers without rebuilding any widget.
-class CanvasController implements GestureSink, MarkGestures {
+class CanvasController implements GestureSink {
   CanvasController({required Scene scene, ViewState view = const ViewState()})
     : scene = ValueNotifier<Scene>(scene),
       view = ValueNotifier<ViewState>(view);
@@ -34,9 +35,9 @@ class CanvasController implements GestureSink, MarkGestures {
   /// [fitFirst] and cleared by anything the user does.
   bool refitOnResize = false;
 
-  /// Receives the Mark tool's drag. Set once a document's text is ready; the
-  /// calls are ignored until then.
-  MarkGestures? marks;
+  /// Receives the active tool's drags. Set once a document is open; until then
+  /// tool drags are ignored.
+  ToolGestures? tools;
 
   /// Called after a card drag ends, with the card and its total world shift.
   void Function(String cardId, Offset delta)? onCardMoved;
@@ -122,19 +123,19 @@ class CanvasController implements GestureSink, MarkGestures {
     }
   }
 
-  // --- mark tool ---------------------------------------------------------------
+  // --- tools ---------------------------------------------------------------------
 
   @override
-  void markStart(Offset screen) => marks?.markStart(screen);
+  void toolStart(CanvasTool tool, ToolPoint p) => tools?.toolStart(tool, p);
 
   @override
-  void markMove(Offset screen) => marks?.markMove(screen);
+  void toolMove(ToolPoint p) => tools?.toolMove(p);
 
   @override
-  void markEnd(Offset screen) => marks?.markEnd(screen);
+  void toolEnd(ToolPoint p) => tools?.toolEnd(p);
 
   @override
-  void markCancel() => marks?.markCancel();
+  void toolCancel() => tools?.toolCancel();
 
   // --- zoom and fit ---------------------------------------------------------
 

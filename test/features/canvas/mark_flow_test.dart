@@ -78,7 +78,7 @@ void main() {
     final view = tester.widget<CanvasView>(find.byType(CanvasView));
     final c = view.controller;
     // The pages appear first; marking is ready once the PDF itself is open.
-    for (var i = 0; i < 400 && c.marks == null; i++) {
+    for (var i = 0; i < 400 && c.tools == null; i++) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 25)),
       );

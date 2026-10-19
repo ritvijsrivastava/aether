@@ -8,6 +8,7 @@ import '../../../domain/text/page_text.dart';
 import '../../../domain/text/page_text_source.dart';
 import '../../../domain/text/text_selection.dart';
 import '../engine/scene.dart';
+import '../input/tool_gestures.dart';
 import '../engine/view_state.dart';
 import 'mark_layers.dart';
 
@@ -17,6 +18,21 @@ abstract interface class MarkGestures {
   void markMove(Offset screen);
   void markEnd(Offset screen);
   void markCancel();
+}
+
+/// Plugs the Mark tool into the tool router.
+class MarkHandler implements ToolHandler {
+  MarkHandler(this.marks);
+  final MarkGestures marks;
+
+  @override
+  void start(ToolPoint p) => marks.markStart(p.position);
+  @override
+  void move(ToolPoint p) => marks.markMove(p.position);
+  @override
+  void end(ToolPoint p) => marks.markEnd(p.position);
+  @override
+  void cancel() => marks.markCancel();
 }
 
 /// Where a finished highlight goes. Both return the new highlight's id

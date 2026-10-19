@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart' show CustomPainter;
 
 import '../../../core/geometry/box.dart';
+import '../../../domain/marks/highlight_index.dart';
 import '../../../domain/model/models.dart';
 import '../../../domain/text/text_selection.dart';
 import '../../../ui/theme/tokens.dart';
@@ -68,6 +69,12 @@ abstract final class HighlightPaint {
 class HighlightLayer extends ChangeNotifier {
   final Map<String, List<Highlight>> _byPage = {};
   final Map<String, Highlight> _byId = {};
+  final HighlightIndex _index = HighlightIndex();
+
+  /// The highlight under page point ([x], [y]) at [zoom], within a fingertip's
+  /// reach and at least 16 screen px tall, or null.
+  Highlight? hitTest(String pageId, double x, double y, double zoom) =>
+      _index.hitTest(pageId, x, y, zoom);
 
   /// All highlights, in no particular order.
   Iterable<Highlight> get all => _byId.values;
@@ -80,6 +87,7 @@ class HighlightLayer extends ChangeNotifier {
   void replaceAll(Iterable<Highlight> highlights) {
     _byPage.clear();
     _byId.clear();
+    _index.clear();
     for (final h in highlights) {
       _insert(h);
     }
@@ -94,6 +102,7 @@ class HighlightLayer extends ChangeNotifier {
   void remove(String id) {
     final h = _byId.remove(id);
     if (h == null) return;
+    _index.remove(id);
     _byPage[h.pageId]?.removeWhere((x) => x.id == id);
     notifyListeners();
   }
@@ -102,6 +111,7 @@ class HighlightLayer extends ChangeNotifier {
     final old = _byId[h.id];
     if (old != null) _byPage[old.pageId]?.removeWhere((x) => x.id == h.id);
     _byId[h.id] = h;
+    _index.put(h);
     if (h.pageId != null) (_byPage[h.pageId!] ??= []).add(h);
   }
 

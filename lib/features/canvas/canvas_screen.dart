@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io' show File, Platform;
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +21,8 @@ import 'canvas_top_bar.dart';
 import 'canvas_ui_state.dart';
 import 'canvas_view.dart';
 import 'document_session.dart';
+import 'input/pen_config.dart';
+import 'input/tool_gestures.dart';
 import 'marks/flash.dart';
 import 'marks/mark_layers.dart';
 import 'marks/mark_tool.dart';
@@ -196,7 +199,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       onDelete: (h) => session.deleteHighlight(h.id),
       onUndo: session.undo,
     );
-    _controller.marks = tool;
+    _controller.tools = ToolRouter({CanvasTool.mark: MarkHandler(tool)});
     _controller.view.addListener(_warmText);
     _history = session.bus.changes.listen((_) {
       if (mounted) setState(() {});
@@ -274,7 +277,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   @override
   void dispose() {
     _controller.view.removeListener(_warmText);
-    _controller.marks = null;
+    _controller.tools = null;
     _markTool?.dispose();
     _live.dispose();
     _flash.dispose();
@@ -324,6 +327,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       highlights: session?.highlights,
       live: _live,
       flash: _flash,
+      pen: PenConfig.forPlatform(defaultTargetPlatform),
       fingerDraws: settings.fingerDraws,
       onReady: _onReady,
       onUndo: session?.undo,

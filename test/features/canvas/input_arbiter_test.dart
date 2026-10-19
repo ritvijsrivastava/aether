@@ -1,6 +1,9 @@
 import 'dart:ui';
 
+import 'package:aether/features/canvas/canvas_ui_state.dart';
 import 'package:aether/features/canvas/input/input_arbiter.dart';
+import 'package:aether/features/canvas/input/pen_config.dart';
+import 'package:aether/features/canvas/input/tool_gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class Rec implements GestureSink {
@@ -47,35 +50,44 @@ class Rec implements GestureSink {
   void cardDragEnd() => log.add('cardEnd');
 
   final List<Offset> marks = [];
+  final List<ToolPoint> points = [];
+  final List<CanvasTool> tools = [];
   @override
-  void markStart(Offset p) {
-    marks.add(p);
+  void toolStart(CanvasTool t, ToolPoint p) {
+    tools.add(t);
+    points.add(p);
+    marks.add(p.position);
     log.add('markStart');
   }
 
   @override
-  void markMove(Offset p) {
-    marks.add(p);
+  void toolMove(ToolPoint p) {
+    points.add(p);
+    marks.add(p.position);
     log.add('markMove');
   }
 
   @override
-  void markEnd(Offset p) {
-    marks.add(p);
+  void toolEnd(ToolPoint p) {
+    points.add(p);
+    marks.add(p.position);
     log.add('markEnd');
   }
 
   @override
-  void markCancel() => log.add('markCancel');
+  void toolCancel() => log.add('markCancel');
 
   int count(String s) => log.where((e) => e == s).length;
 }
 
 class Ctx implements ArbiterContext {
   @override
-  bool panTool = false;
+  CanvasTool tool = CanvasTool.note; // no drag-consuming tool by default
   @override
-  bool markTool = false;
+  PenConfig pen = const PenConfig();
+  bool get panTool => tool == CanvasTool.pan;
+  set panTool(bool v) => tool = v ? CanvasTool.pan : CanvasTool.note;
+  set markTool(bool v) => tool = v ? CanvasTool.mark : CanvasTool.note;
   @override
   bool spaceHeld = false;
   @override
@@ -94,6 +106,7 @@ PointerSample s(
   int ms, {
   int buttons = 0,
   double radius = 0,
+  double? pressure,
 }) => PointerSample(
   id: id,
   kind: k,
@@ -101,6 +114,7 @@ PointerSample s(
   time: Duration(milliseconds: ms),
   buttons: buttons,
   radiusMajor: radius,
+  pressure: pressure,
 );
 
 const touch = PointerDeviceKind.touch;
@@ -338,9 +352,10 @@ void main() {
       expect(rec.count('markStart'), 0);
     });
 
-    test('the eraser end of a pen does not mark', () {
+    test('the eraser end of a pen erases instead of marking', () {
       a.down(s(9, PointerDeviceKind.invertedStylus, 10, 10, 0, buttons: 1));
-      expect(rec.count('markStart'), 0);
+      a.up(s(9, PointerDeviceKind.invertedStylus, 10, 10, 5));
+      expect(rec.tools, [CanvasTool.erase]);
     });
 
     test('Space, the Pan tool or the middle button pan instead', () {
@@ -417,6 +432,89 @@ void main() {
       a.down(s(9, pen, 10, 10, 0, buttons: 1));
       expect(rec.count('markStart'), 0);
       expect(rec.log, contains('cardStart:card1'));
+    });
+  });
+
+  group('pen pipeline', () {
+    setUp(() => ctx.tool = CanvasTool.ink);
+
+    test('a pen applies the chosen tool, carrying its pressure', () {
+      a.down(s(9, pen, 100, 100, 0, buttons: 1, pressure: 0.3));
+      a.move(s(9, pen, 110, 100, 2, buttons: 1, pressure: 0.5));
+      a.up(s(9, pen, 120, 100, 4, pressure: 0.2));
+      expect(rec.tools, [CanvasTool.ink]);
+      expect([for (final p in rec.points) p.pressure], [0.3, 0.5, 0.2]);
+      expect(rec.points.first.kind, pen);
+    });
+
+    test('every sample of a fast stroke reaches the tool, none dropped', () {
+      a.down(s(9, pen, 0, 0, 0, buttons: 1, pressure: 0.4));
+      // 500 Hz at 120 Hz: about 4 samples per frame, 40 frames.
+      for (var i = 1; i <= 160; i++) {
+        a.move(s(9, pen, i * 2.0, 0, i * 2, buttons: 1, pressure: 0.4));
+      }
+      a.up(s(9, pen, 322, 0, 322));
+      expect(rec.count('markMove'), 160);
+      expect(rec.points.length, 162);
+      expect(rec.points[80].position, const Offset(160, 0));
+    });
+
+    test(
+      'the S Pen button (bit 2) held at touch-down erases for that stroke',
+      () {
+        ctx.pen = const PenConfig(buttons: PenButtonMap.sPen);
+        a.down(s(9, pen, 100, 100, 0, buttons: 2));
+        a.up(s(9, pen, 100, 100, 5));
+        // The next stroke, without the button, is back to the chosen tool.
+        a.down(s(9, pen, 100, 100, 100, buttons: 1));
+        a.up(s(9, pen, 100, 100, 105));
+        expect(rec.tools, [CanvasTool.erase, CanvasTool.ink]);
+      },
+    );
+
+    test('Wacom: button 1 (bit 4) erases, button 2 (bit 2) does not', () {
+      ctx.pen = const PenConfig(buttons: PenButtonMap.wacom);
+      a.down(s(9, pen, 100, 100, 0, buttons: 5)); // tip + button 1
+      a.up(s(9, pen, 100, 100, 5));
+      a.down(s(9, pen, 100, 100, 100, buttons: 3)); // tip + button 2
+      a.up(s(9, pen, 100, 100, 105));
+      expect(rec.tools, [CanvasTool.erase, CanvasTool.ink]);
+    });
+
+    test('a button pressed mid-stroke does not switch the tool', () {
+      a.down(s(9, pen, 100, 100, 0, buttons: 1));
+      a.move(s(9, pen, 110, 100, 5, buttons: 3));
+      a.up(s(9, pen, 120, 100, 10));
+      expect(rec.tools, [CanvasTool.ink]);
+    });
+
+    test('a mouse and a finger never use the pen button rules', () {
+      a.down(s(1, mouse, 10, 10, 0, buttons: 3)); // primary + secondary
+      a.up(s(1, mouse, 10, 10, 5));
+      expect(rec.tools, [CanvasTool.ink]);
+    });
+
+    test('the eraser end erases even under the Pan tool', () {
+      ctx.tool = CanvasTool.pan;
+      a.down(s(9, PointerDeviceKind.invertedStylus, 10, 10, 0, buttons: 1));
+      a.up(s(9, PointerDeviceKind.invertedStylus, 10, 10, 5));
+      expect(rec.tools, [CanvasTool.erase]);
+      expect(rec.pan, Offset.zero);
+    });
+
+    test('under the Pan tool the pen button does not erase; the pen pans', () {
+      ctx.tool = CanvasTool.pan;
+      a.down(s(9, pen, 100, 100, 0, buttons: 2));
+      a.move(s(9, pen, 130, 100, 5, buttons: 2));
+      a.up(s(9, pen, 130, 100, 10));
+      expect(rec.tools, [CanvasTool.erase]);
+    });
+
+    test('a pen with no pressure reports null (constant width)', () {
+      a.down(s(9, pen, 100, 100, 0, buttons: 1));
+      a.up(s(9, pen, 100, 100, 5));
+      expect(rec.points.first.pressure, isNull);
+      expect(rec.points.first.widthFactor(PressureCurve.soft), 1.0);
     });
   });
 }

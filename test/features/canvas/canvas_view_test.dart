@@ -7,10 +7,11 @@ import 'package:aether/features/canvas/engine/page_surface.dart';
 import 'package:aether/features/canvas/engine/painters.dart';
 import 'package:aether/features/canvas/engine/scene.dart';
 import 'package:aether/features/canvas/engine/view_state.dart';
+import 'package:aether/features/canvas/input/tool_gestures.dart';
 import 'package:aether/features/canvas/marks/mark_tool.dart';
 import 'package:aether/ui/theme/theme.dart';
 import 'package:aether/ui/theme/tokens.dart';
-import 'package:flutter/gestures.dart' show kPrimaryButton;
+import 'package:flutter/gestures.dart' show kPrimaryButton, kPrimaryStylusButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter/services.dart';
@@ -62,6 +63,23 @@ class RecordingMarks implements MarkGestures {
   void markEnd(Offset p) => log.add('end ${p.dx.round()},${p.dy.round()}');
   @override
   void markCancel() => log.add('cancel');
+}
+
+class RecordingTools implements ToolGestures {
+  final List<(CanvasTool, ToolPoint)> starts = [];
+  final List<ToolPoint> points = [];
+  @override
+  void toolStart(CanvasTool tool, ToolPoint p) {
+    starts.add((tool, p));
+    points.add(p);
+  }
+
+  @override
+  void toolMove(ToolPoint p) => points.add(p);
+  @override
+  void toolEnd(ToolPoint p) => points.add(p);
+  @override
+  void toolCancel() {}
 }
 
 void main() {
@@ -234,7 +252,7 @@ void main() {
     ) async {
       final c = await pumpCanvas(tester);
       final marks = RecordingMarks();
-      c.marks = marks;
+      c.tools = ToolRouter({CanvasTool.mark: MarkHandler(marks)});
       final before = c.view.value;
       final g = await tester.startGesture(
         const Offset(500, 400),
@@ -249,7 +267,7 @@ void main() {
     testWidgets('a mouse drag with the primary button marks', (tester) async {
       final c = await pumpCanvas(tester);
       final marks = RecordingMarks();
-      c.marks = marks;
+      c.tools = ToolRouter({CanvasTool.mark: MarkHandler(marks)});
       final g = await tester.startGesture(
         const Offset(300, 300),
         kind: PointerDeviceKind.mouse,
@@ -265,7 +283,7 @@ void main() {
       testWidgets('the ${tool.label} tool does not mark', (tester) async {
         final c = await pumpCanvas(tester, tool: tool);
         final marks = RecordingMarks();
-        c.marks = marks;
+        c.tools = ToolRouter({CanvasTool.mark: MarkHandler(marks)});
         final g = await tester.startGesture(
           const Offset(500, 400),
           kind: PointerDeviceKind.stylus,
@@ -279,7 +297,7 @@ void main() {
     testWidgets('a finger does not mark by default', (tester) async {
       final c = await pumpCanvas(tester);
       final marks = RecordingMarks();
-      c.marks = marks;
+      c.tools = ToolRouter({CanvasTool.mark: MarkHandler(marks)});
       final g = await tester.startGesture(
         const Offset(500, 400),
         kind: PointerDeviceKind.touch,
@@ -292,7 +310,7 @@ void main() {
     testWidgets('with "finger draws" on, a finger marks', (tester) async {
       final c = await pumpCanvas(tester, fingerDraws: true);
       final marks = RecordingMarks();
-      c.marks = marks;
+      c.tools = ToolRouter({CanvasTool.mark: MarkHandler(marks)});
       final g = await tester.startGesture(
         const Offset(500, 400),
         kind: PointerDeviceKind.touch,
@@ -305,7 +323,7 @@ void main() {
     testWidgets('Escape drops a mark in progress', (tester) async {
       final c = await pumpCanvas(tester);
       final marks = RecordingMarks();
-      c.marks = marks;
+      c.tools = ToolRouter({CanvasTool.mark: MarkHandler(marks)});
       final g = await tester.startGesture(
         const Offset(500, 400),
         kind: PointerDeviceKind.stylus,
@@ -336,6 +354,109 @@ void main() {
         RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
         SystemMouseCursors.text,
       );
+    });
+  });
+
+  group('pen events', () {
+    Future<RecordingTools> stroke(
+      WidgetTester tester,
+      PointerDeviceKind kind, {
+      required double pressure,
+      required double min,
+      required double max,
+      int buttons = kPrimaryButton,
+      CanvasTool tool = CanvasTool.ink,
+    }) async {
+      final c = await pumpCanvas(tester, tool: tool);
+      final rec = RecordingTools();
+      c.tools = rec;
+      PointerEvent ev(PointerEvent Function() make) => make();
+      await tester.sendEventToBinding(
+        ev(
+          () => PointerDownEvent(
+            kind: kind,
+            pointer: 5,
+            position: const Offset(400, 300),
+            buttons: buttons,
+            pressure: pressure,
+            pressureMin: min,
+            pressureMax: max,
+          ),
+        ),
+      );
+      await tester.sendEventToBinding(
+        PointerMoveEvent(
+          kind: kind,
+          pointer: 5,
+          position: const Offset(420, 300),
+          buttons: buttons,
+          pressure: pressure,
+          pressureMin: min,
+          pressureMax: max,
+        ),
+      );
+      await tester.sendEventToBinding(
+        PointerUpEvent(
+          kind: kind,
+          pointer: 5,
+          position: const Offset(430, 300),
+          pressureMin: min,
+          pressureMax: max,
+        ),
+      );
+      return rec;
+    }
+
+    testWidgets('a pen reports pressure normalised to 0 to 1', (tester) async {
+      final rec = await stroke(
+        tester,
+        PointerDeviceKind.stylus,
+        pressure: 0.4,
+        min: 0,
+        max: 0.8,
+      );
+      expect(rec.starts.single.$1, CanvasTool.ink);
+      expect(rec.points.first.pressure, closeTo(0.5, 1e-9));
+    });
+
+    testWidgets('a pen with a fixed pressure range reports none (X11)', (
+      tester,
+    ) async {
+      final rec = await stroke(
+        tester,
+        PointerDeviceKind.stylus,
+        pressure: 1,
+        min: 1,
+        max: 1,
+      );
+      expect(rec.points.first.pressure, isNull);
+    });
+
+    testWidgets('a mouse reports none even with a pressure range', (
+      tester,
+    ) async {
+      final rec = await stroke(
+        tester,
+        PointerDeviceKind.mouse,
+        pressure: 1,
+        min: 0,
+        max: 1,
+      );
+      expect(rec.points.first.pressure, isNull);
+    });
+
+    testWidgets('a pen button held at touch-down switches to Erase', (
+      tester,
+    ) async {
+      final rec = await stroke(
+        tester,
+        PointerDeviceKind.stylus,
+        pressure: 0.4,
+        min: 0,
+        max: 1,
+        buttons: kPrimaryStylusButton,
+      );
+      expect(rec.starts.single.$1, CanvasTool.erase);
     });
   });
 }

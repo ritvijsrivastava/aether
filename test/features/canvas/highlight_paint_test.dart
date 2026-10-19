@@ -180,6 +180,19 @@ void main() {
     });
   });
 
+  test('HighlightLayer answers hit tests and stays in step with edits', () {
+    final layer = HighlightLayer();
+    final a = highlight(Meaning.claim, const [Box(100, 200, 300, 208)]);
+    layer.add(a);
+    expect(layer.hitTest('p0', 150, 204, 1)?.id, a.id);
+    expect(layer.hitTest('p1', 150, 204, 1), isNull);
+    layer.remove(a.id);
+    expect(layer.hitTest('p0', 150, 204, 1), isNull);
+    layer.add(a);
+    layer.replaceAll([]);
+    expect(layer.hitTest('p0', 150, 204, 1), isNull);
+  });
+
   test('HighlightLayer keeps pages apart and replaces by id', () {
     final layer = HighlightLayer();
     final a = highlight(Meaning.claim, const [Box(0, 0, 10, 10)]);

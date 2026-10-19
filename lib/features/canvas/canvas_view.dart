@@ -10,6 +10,7 @@ import 'engine/painters.dart';
 import 'marks/flash.dart';
 import 'marks/mark_layers.dart';
 import 'input/input_arbiter.dart';
+import 'input/pen_config.dart';
 
 /// The interactive surface: grid, cards, drag handles, and the pointer and
 /// keyboard handling that drives a [CanvasController].
@@ -25,6 +26,7 @@ class CanvasView extends StatefulWidget {
     this.highlights,
     this.live,
     this.flash,
+    this.pen = const PenConfig(),
     this.fingerDraws = false,
     this.onReady,
     this.onUndo,
@@ -43,6 +45,9 @@ class CanvasView extends StatefulWidget {
 
   /// The outline shown on a highlight after jumping to it from Extract.
   final FlashController? flash;
+
+  /// Pen button bits and pressure curve for this device.
+  final PenConfig pen;
   final bool fingerDraws;
 
   /// Called once the first non-empty layout is known (to fit the first page).
@@ -67,10 +72,11 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
 
   // --- ArbiterContext -------------------------------------------------------
 
+  bool get _panTool => widget.tool == CanvasTool.pan;
   @override
-  bool get panTool => widget.tool == CanvasTool.pan;
+  CanvasTool get tool => widget.tool;
   @override
-  bool get markTool => widget.tool == CanvasTool.mark;
+  PenConfig get pen => widget.pen;
   @override
   bool get spaceHeld => _space;
   @override
@@ -99,16 +105,34 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
     time: e.timeStamp,
     buttons: e.buttons,
     radiusMajor: e.radiusMajor,
+    pressure: _pressure(e),
   );
 
+  /// Pressure from 0 to 1, or null when the device has none to give: only a
+  /// pen reports it, and a pen under X11 shows up as a mouse with a constant
+  /// pressure, which is not information.
+  static double? _pressure(PointerEvent e) {
+    final pen =
+        e.kind == PointerDeviceKind.stylus ||
+        e.kind == PointerDeviceKind.invertedStylus;
+    if (!pen || e.pressureMax <= e.pressureMin) return null;
+    return ((e.pressure - e.pressureMin) / (e.pressureMax - e.pressureMin))
+        .clamp(0.0, 1.0);
+  }
+
   void _updateCursor(Offset p) {
-    final MouseCursor c = _space || panTool
+    final MouseCursor c = _space || _panTool
         ? SystemMouseCursors.grab
         : handleAt(p) != null
         ? SystemMouseCursors.grab
-        : markTool
-        ? SystemMouseCursors.text
-        : SystemMouseCursors.basic;
+        : switch (widget.tool) {
+            CanvasTool.mark => SystemMouseCursors.text,
+            CanvasTool.ink ||
+            CanvasTool.erase ||
+            CanvasTool.link ||
+            CanvasTool.select => SystemMouseCursors.precise,
+            _ => SystemMouseCursors.basic,
+          };
     if (c != _cursor) setState(() => _cursor = c);
   }
 
