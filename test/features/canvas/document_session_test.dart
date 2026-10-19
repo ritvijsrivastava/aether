@@ -468,6 +468,21 @@ void main() {
       expect(s.highlights.count, 1);
     });
 
+    test(
+      'leaving the document right after marking still saves the mark',
+      () async {
+        final s = await opened();
+        s.addHighlight(
+          pageId: s.controller.scene.value.cards.first.id,
+          selection: pick(0, 0),
+          meaning: Meaning.claim,
+          text: text,
+        );
+        await s.dispose(); // no settled() first, as when the screen is popped
+        expect((await storedMarks()).length, 1);
+      },
+    );
+
     test('a failed save takes the highlight back off the page', () async {
       final flaky = FlakyStore(store);
       final controller = CanvasController(scene: const Scene([]))

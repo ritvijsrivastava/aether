@@ -263,14 +263,16 @@ A single pill (Panel Ivory, Float shadow) joining −, percent readout, +, and F
 ### Extract Panel
 - **Header:** 20px title with an item count baseline-aligned to its right; below it, wrapped filter chips (All, Claim, Method, Question, Notes).
 - **Filter chip:** pill, 12sp 600; unselected Stone Canvas, selected Warm Ink with Desk Cream text.
-- **Item:** 14px radius, 12px/14px padding, 4/8px margins. Header row: swatch, uppercase-free label, delete at the far end. Body 14sp/1.45. Linked notes show an indigo-ink quote line "↳ “…”" at 12sp. Hover Wash on hover/press; tap jumps the canvas to the mark.
+- **Item:** 14px radius, 12px/14px padding, 4/8px margins. Header row: meaning disc (22px, with its glyph), label, page ("p. 3", muted), delete at the far end (48dp target). The quote is reading content, so it is set in the document serif at 15sp/1.5, up to 6 lines. A free rectangle reads "Image region" in muted sans (a page crop thumbnail is not built yet). Items sit on Desk Cream inside the Ivory panel (tone, not border). Delete is immediate with an Undo snackbar. Notes lines (below) arrive with M4. Linked notes show an indigo-ink quote line "↳ “…”" at 12sp. Hover Wash on hover/press; tap jumps the canvas to the mark.
 - **Empty state:** "Highlight or write to start collecting. Everything you mark lands here, quoted and ready to export." Muted Ink, 14sp, 24px/16px padding.
 
 ### Document Card
 Paper White, 8px radius, Paper shadow, page content at 1:1 (prototype 720×1000 logical px, Flutter uses PDF page proportions). A pill **drag handle** tab floats 10px above its top-left corner ("⠿ Paper · p. 1"), Panel Ivory with Handle shadow, 36px high (48dp hit area), grab cursor on desktop. Dragging the handle moves the card *and its marks together*.
 
 ### Highlights
-Rounded 5px bars in the meaning color at 50% opacity. Pages are PDF bitmaps with the text baked in, so highlights cannot go beneath the text; they multiply over the page tile (as the prototype does), measured per device, with a flat translucent fill as the fallback (see SPEC 5.4). Highlights snap to word and line boxes, wrap across lines, and have a minimum 16px height so thin text stays hit-testable.
+Rounded 5px (screen px, at any zoom) bars in the meaning color at 50% opacity. **As built (M3):** pages are PDF bitmaps with the text baked in, so highlights cannot go beneath the text; they are painted with `BlendMode.multiply` straight after the page's tiles in the same pass, so dark text stays dark and overlapping highlights darken like marker. This deviates from the "paint under text" ideal on purpose (SPEC 5.4); a flat translucent fill remains the fallback if a device misses its frame budget (not yet measured on the Tab S9). The highlight being dragged is drawn a little stronger (62%) in its own layer. Highlights snap to word boxes and wrap across lines with one even row per line; a row is never thinner than 6 pt (a fraction bar or dash still shows), and hit-testing will grow it to 16px when select and erase arrive (M4). A free rectangle (figure or scan, no text) is the same colour with a 1.5px edge in its own colour.
+
+**Jump flash.** Tapping an Extract item moves the canvas to the highlight (keeping a readable zoom, coming in to 100% from far out) and outlines it for 1.4s in Warm Ink, fading; with "remove animations" the outline holds at full strength instead of fading and the move is instant.
 
 ### Sticky Note
 Sticky Yellow, 14px radius, 220px default width (resizable in Flutter), Sticky shadow. Header: "Note" 10px label in the prototype (12sp in Flutter) and a delete control. Body is a borderless multiline text field, 15sp/1.4. Notes can be dragged by the header.

@@ -269,6 +269,9 @@ class DocumentSession implements MarkSink {
     controller.view.removeListener(_viewChanged);
     controller.onCardMoved = null;
     _viewTimer?.cancel();
+    // Leaving the screen right after a mark must not lose it: let every
+    // queued save finish before closing the queue.
+    await _tail;
     await _saveView();
     _disposed = true;
     bus.dispose();
