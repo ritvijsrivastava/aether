@@ -382,5 +382,68 @@ void main() {
       findsOneWidget,
       reason: 'ink is not in Extract',
     );
+
+    // The pen's eraser end wipes across it: the stroke goes, as one step.
+    const eraserId = 8;
+    await tester.sendEventToBinding(
+      PointerDownEvent(
+        kind: PointerDeviceKind.invertedStylus,
+        pointer: eraserId,
+        position: from + const Offset(60, -30),
+        buttons: kPrimaryButton,
+        pressureMin: 0,
+        pressureMax: 1,
+      ),
+    );
+    for (var i = 1; i <= 6; i++) {
+      await tester.sendEventToBinding(
+        PointerMoveEvent(
+          kind: PointerDeviceKind.invertedStylus,
+          pointer: eraserId,
+          position: from + Offset(60, -30.0 + i * 12),
+          buttons: kPrimaryButton,
+          pressureMin: 0,
+          pressureMax: 1,
+        ),
+      );
+    }
+    await tester.sendEventToBinding(
+      PointerUpEvent(
+        kind: PointerDeviceKind.invertedStylus,
+        pointer: eraserId,
+        position: from + const Offset(60, 42),
+        pressureMin: 0,
+        pressureMax: 1,
+      ),
+    );
+    await tester.pump();
+    for (var i = 0; i < 200; i++) {
+      var n = -1;
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+        n = (await store.entities(kind: EntityKind.mark, docId: docId)).length;
+      });
+      if (n == 0) break;
+    }
+    expect(
+      await tester.runAsync(
+        () => store.entities(kind: EntityKind.mark, docId: docId),
+      ),
+      isEmpty,
+      reason: 'erased from storage',
+    );
+    // Undo brings it back.
+    await tester.tap(find.byTooltip('Undo'));
+    var back = 0;
+    for (var i = 0; i < 200 && back == 0; i++) {
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+        back = (await store.entities(
+          kind: EntityKind.mark,
+          docId: docId,
+        )).length;
+      });
+    }
+    expect(back, 1);
   }, skip: skip != null);
 }

@@ -21,6 +21,8 @@ import 'canvas_top_bar.dart';
 import 'canvas_ui_state.dart';
 import 'canvas_view.dart';
 import 'document_session.dart';
+import 'erase/erase_options.dart';
+import 'erase/erase_tool.dart';
 import 'ink/ink_layer.dart';
 import 'ink/ink_options.dart';
 import 'ink/ink_tool.dart';
@@ -80,6 +82,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   final ValueNotifier<LiveMark?> _live = ValueNotifier(null);
   MarkToolController? _markTool;
   final LiveInk _liveInk = LiveInk();
+  final EraserState _eraser = EraserState();
   PageTextService? _textService;
   late final FlashController _flash = FlashController(this);
   ExtractController? _extract;
@@ -215,6 +218,15 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _controller.tools = ToolRouter({
       CanvasTool.mark: MarkHandler(tool),
       CanvasTool.ink: inkTool,
+      CanvasTool.erase: EraseToolController(
+        view: _controller.view,
+        scene: _controller.scene,
+        ink: session.ink,
+        highlights: session.highlights,
+        eraser: _eraser,
+        partial: () => ref.read(canvasUiProvider).erasePartial,
+        sink: session,
+      ),
     });
     _controller.view.addListener(_warmText);
     _history = session.bus.changes.listen((_) {
@@ -296,6 +308,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _controller.tools = null;
     _markTool?.dispose();
     _liveInk.dispose();
+    _eraser.dispose();
     _live.dispose();
     _flash.dispose();
     _copiedTimer?.cancel();
@@ -346,6 +359,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       flash: _flash,
       ink: session?.ink,
       liveInk: _liveInk,
+      eraser: _eraser,
       pen: PenConfig.forPlatform(defaultTargetPlatform),
       fingerDraws: settings.fingerDraws,
       onReady: _onReady,
@@ -510,6 +524,13 @@ class _WideBody extends ConsumerWidget {
               top: AetherTokens.s4 + 2 * 60,
               child: const InkOptions(),
             ),
+          if (ui.tool == CanvasTool.erase)
+            Positioned(
+              left: leftHanded ? null : 96,
+              right: leftHanded ? 96 : null,
+              top: AetherTokens.s4 + 3 * 60,
+              child: const EraseOptions(),
+            ),
           Positioned(
             right: leftHanded ? null : AetherTokens.s4,
             left: leftHanded ? AetherTokens.s4 : null,
@@ -594,6 +615,13 @@ class _CompactBody extends ConsumerWidget {
                   right: 0,
                   bottom: 88,
                   child: Center(child: MeaningStrip()),
+                ),
+              if (ui.tool == CanvasTool.erase)
+                const Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 88,
+                  child: Center(child: EraseOptions()),
                 ),
               if (ui.tool == CanvasTool.ink)
                 const Positioned(

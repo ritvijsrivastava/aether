@@ -11,6 +11,7 @@ Float32List stroke(List<(double, double, double)> pts) => Float32List.fromList([
 double w(double pressure) => 4 * pressure;
 
 void main() {
+  eraseTests();
   group('simplify', () {
     test('a straight line keeps only its ends', () {
       final s = stroke([for (var i = 0; i <= 50; i++) (i * 2.0, i * 1.0, 0.5)]);
@@ -258,6 +259,117 @@ void main() {
         isEmpty,
         reason: 'samples 200 ms apart say nothing about the next 16',
       );
+    });
+  });
+}
+
+void eraseTests() {
+  group('touches', () {
+    final line = stroke([(0, 0, 1), (100, 0, 1)]);
+
+    test('within radius plus half the width of the centre line', () {
+      expect(
+        InkGeometry.touches(line, 4, 50, 10, 8.5),
+        isTrue,
+      ); // 10 <= 8.5 + 2
+      expect(InkGeometry.touches(line, 4, 50, 10, 7.9), isFalse);
+    });
+
+    test('measures to the segment, not the infinite line', () {
+      expect(InkGeometry.touches(line, 4, 130, 0, 20), isFalse);
+      expect(InkGeometry.touches(line, 4, 110, 0, 10), isTrue);
+    });
+
+    test('a dot and an empty stroke', () {
+      expect(InkGeometry.touches(stroke([(5, 5, 1)]), 2, 8, 5, 2.5), isTrue);
+      expect(InkGeometry.touches(stroke([(5, 5, 1)]), 2, 20, 5, 2.5), isFalse);
+      expect(InkGeometry.touches(Float32List(0), 2, 0, 0, 50), isFalse);
+    });
+
+    test('touches a long straight segment with no sample near the circle', () {
+      // Simplified strokes have long segments; the middle still counts.
+      expect(
+        InkGeometry.touches(stroke([(0, 0, 1), (1000, 0, 1)]), 2, 500, 5, 6),
+        isTrue,
+      );
+    });
+  });
+
+  group('eraseSplit', () {
+    final line = stroke([(0, 0, 0.2), (100, 0, 1.0)]);
+
+    List<List<double>> pieces(List<Float32List> p) => [
+      for (final f in p) [for (final v in f) v.toDouble()],
+    ];
+
+    test('a circle that misses returns the stroke itself', () {
+      final out = InkGeometry.eraseSplit(line, 2, 50, 30, 5);
+      expect(out.length, 1);
+      expect(out.first, same(line));
+    });
+
+    test('a circle across the middle cuts it in two at the circle\'s edge', () {
+      final out = pieces(InkGeometry.eraseSplit(line, 0, 50, 0, 10));
+      expect(out.length, 2);
+      expect(out[0].sublist(0, 2), [0, 0]);
+      expect(out[0][out[0].length - 3], closeTo(40, 1e-4));
+      expect(out[1][0], closeTo(60, 1e-4));
+      expect(out[1][out[1].length - 3], closeTo(100, 1e-4));
+    });
+
+    test('the cut ends carry the pressure at that spot', () {
+      final out = pieces(InkGeometry.eraseSplit(line, 0, 50, 0, 10));
+      // Pressure rises 0.2 to 1.0 over 100 points: 0.52 at 40, 0.68 at 60.
+      expect(out[0].last, closeTo(0.52, 1e-4));
+      expect(out[1][2], closeTo(0.68, 1e-4));
+    });
+
+    test('half the stroke width widens the cut', () {
+      final out = pieces(InkGeometry.eraseSplit(line, 8, 50, 0, 10));
+      expect(out[0][out[0].length - 3], closeTo(36, 1e-4)); // reach 14
+      expect(out[1][0], closeTo(64, 1e-4));
+    });
+
+    test('wiping the end shortens the stroke to one piece', () {
+      final out = pieces(InkGeometry.eraseSplit(line, 0, 0, 0, 10));
+      expect(out.length, 1);
+      expect(out[0][0], closeTo(10, 1e-4));
+      expect(out[0][out[0].length - 3], 100);
+    });
+
+    test('a circle that covers it all leaves nothing', () {
+      expect(InkGeometry.eraseSplit(line, 0, 50, 0, 80), isEmpty);
+      expect(InkGeometry.eraseSplit(stroke([(5, 5, 1)]), 2, 5, 5, 3), isEmpty);
+    });
+
+    test('works across a corner and through several segments', () {
+      final z = stroke([(0, 0, 1), (100, 0, 1), (100, 100, 1), (0, 100, 1)]);
+      final out = pieces(InkGeometry.eraseSplit(z, 0, 100, 0, 10));
+      expect(out.length, 2, reason: 'the corner is wiped out');
+      expect(out[0].sublist(0, 2), [0, 0]);
+      expect(out[1][1], closeTo(10, 1e-4));
+      expect(out[1].sublist(out[1].length - 3, out[1].length - 1), [0, 100]);
+    });
+
+    test('keeps what is left of a stroke that is hit twice', () {
+      var parts = InkGeometry.eraseSplit(line, 0, 30, 0, 5);
+      expect(parts.length, 2);
+      // Wipe again, now across the right-hand piece.
+      final second = [
+        for (final p in parts) ...InkGeometry.eraseSplit(p, 0, 70, 0, 5),
+      ];
+      expect(second.length, 3);
+      final xs = [for (final p in second) (p[0], p[p.length - 3])];
+      expect(xs[0].$1, 0);
+      expect(xs[2].$2, 100);
+    });
+
+    test('drops slivers: no piece has fewer than two points', () {
+      for (var cx = 0.0; cx <= 100; cx += 7) {
+        for (final p in InkGeometry.eraseSplit(line, 2, cx, 0, 6)) {
+          expect(p.length ~/ 3, greaterThanOrEqualTo(2));
+        }
+      }
     });
   });
 }

@@ -61,6 +61,7 @@ class CanvasUiState {
     this.meaning = Meaning.claim,
     this.inkWidth = InkPalette.defaultWidth,
     this.inkColor = InkPalette.warmInk,
+    this.erasePartial = false,
     this.extractOpen,
     this.extractWidth = 340,
     this.filter = ExtractFilter.all,
@@ -73,6 +74,9 @@ class CanvasUiState {
   final double inkWidth;
   final int inkColor;
 
+  /// Erase only the part of a stroke under the eraser (off: whole strokes).
+  final bool erasePartial;
+
   /// null means "use the layout's default" (open in landscape, closed in portrait).
   final bool? extractOpen;
   final double extractWidth;
@@ -83,6 +87,7 @@ class CanvasUiState {
     Meaning? meaning,
     double? inkWidth,
     int? inkColor,
+    bool? erasePartial,
     bool? extractOpen,
     double? extractWidth,
     ExtractFilter? filter,
@@ -91,6 +96,7 @@ class CanvasUiState {
     meaning: meaning ?? this.meaning,
     inkWidth: inkWidth ?? this.inkWidth,
     inkColor: inkColor ?? this.inkColor,
+    erasePartial: erasePartial ?? this.erasePartial,
     extractOpen: extractOpen ?? this.extractOpen,
     extractWidth: extractWidth ?? this.extractWidth,
     filter: filter ?? this.filter,
@@ -112,6 +118,8 @@ class CanvasUiNotifier extends Notifier<CanvasUiState> {
   void setInkWidth(double w) => state = state.copyWith(
     inkWidth: w.clamp(InkPalette.minWidth, InkPalette.maxWidth),
   );
+
+  void setErasePartial(bool v) => state = state.copyWith(erasePartial: v);
 
   void setInkColor(int argb) => state = state.copyWith(inkColor: argb);
 

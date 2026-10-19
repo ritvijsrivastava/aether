@@ -76,6 +76,10 @@ class HighlightLayer extends ChangeNotifier {
   Highlight? hitTest(String pageId, double x, double y, double zoom) =>
       _index.hitTest(pageId, x, y, zoom);
 
+  /// Highlights a circle of radius [r] at page point ([x], [y]) touches.
+  List<Highlight> touching(String pageId, double x, double y, double r) =>
+      _index.touching(pageId, x, y, r);
+
   /// All highlights, in no particular order.
   Iterable<Highlight> get all => _byId.values;
   int get count => _byId.length;

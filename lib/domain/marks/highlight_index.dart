@@ -81,4 +81,25 @@ class HighlightIndex {
     }
     return best;
   }
+
+  /// Highlights with a line rect that a circle of radius [r] at ([x], [y])
+  /// touches, in page points. Exact, with none of the reach [hitTest] adds:
+  /// this is for the eraser, which must not take what it does not touch.
+  List<Highlight> touching(String pageId, double x, double y, double r) {
+    final grid = _pages[pageId];
+    if (grid == null) return const [];
+    final out = <Highlight>[];
+    for (final id in grid.query(Box(x - r, y - r, x + r, y + r))) {
+      final h = _byId[id]!;
+      for (final rect in h.rects) {
+        final nx = x.clamp(rect.x0, rect.x1), ny = y.clamp(rect.y0, rect.y1);
+        final dx = x - nx, dy = y - ny;
+        if (dx * dx + dy * dy <= r * r) {
+          out.add(h);
+          break;
+        }
+      }
+    }
+    return out;
+  }
 }

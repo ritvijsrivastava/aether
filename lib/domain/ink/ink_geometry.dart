@@ -249,4 +249,127 @@ abstract final class InkGeometry {
       y + vy * horizonMs * 0.9,
     ];
   }
+
+  /// Whether a circle of radius [r] at ([cx], [cy]) touches a stroke drawn
+  /// [width] wide: its centre line comes within `r + width / 2` of the centre.
+  static bool touches(
+    Float32List s,
+    double width,
+    double cx,
+    double cy,
+    double r,
+  ) {
+    final n = s.length ~/ _s;
+    if (n == 0) return false;
+    final reach = r + width / 2;
+    if (n == 1) {
+      final dx = s[0] - cx, dy = s[1] - cy;
+      return dx * dx + dy * dy <= reach * reach;
+    }
+    for (var i = 0; i + 1 < n; i++) {
+      final d = _segDistance(
+        cx,
+        cy,
+        s[i * _s],
+        s[i * _s + 1],
+        s[(i + 1) * _s],
+        s[(i + 1) * _s + 1],
+      );
+      if (d <= reach) return true;
+    }
+    return false;
+  }
+
+  /// What is left of a stroke after a circle of radius [r] at ([cx], [cy])
+  /// (grown by half the stroke [width]) is wiped across it: zero, one or two
+  /// or more pieces, cut exactly at the circle's edge (pressure interpolated),
+  /// each with at least two points. Returns `[s]` itself, unchanged, if the
+  /// circle does not touch it.
+  static List<Float32List> eraseSplit(
+    Float32List s,
+    double width,
+    double cx,
+    double cy,
+    double r,
+  ) {
+    final n = s.length ~/ _s;
+    final reach = r + width / 2;
+    if (!touches(s, width, cx, cy, r)) return [s];
+    if (n == 1) return const [];
+
+    final pieces = <List<double>>[];
+    var cur = <double>[];
+
+    bool inside(int i) {
+      final dx = s[i * _s] - cx, dy = s[i * _s + 1] - cy;
+      return dx * dx + dy * dy <= reach * reach;
+    }
+
+    void add(List<double> into, double x, double y, double p) => into
+      ..add(x)
+      ..add(y)
+      ..add(p);
+
+    if (!inside(0)) add(cur, s[0], s[1], s[2]);
+    for (var i = 0; i + 1 < n; i++) {
+      final ax = s[i * _s].toDouble(), ay = s[i * _s + 1].toDouble();
+      final ap = s[i * _s + 2].toDouble();
+      final bx = s[(i + 1) * _s].toDouble(),
+          by = s[(i + 1) * _s + 1].toDouble();
+      final bp = s[(i + 1) * _s + 2].toDouble();
+      final dx = bx - ax, dy = by - ay;
+      // Solve |A + t (B - A) - C|^2 = reach^2 for t.
+      final fx = ax - cx, fy = ay - cy;
+      final qa = dx * dx + dy * dy;
+      final qb = 2 * (fx * dx + fy * dy);
+      final qc = fx * fx + fy * fy - reach * reach;
+      double? t0, t1;
+      if (qa > 0) {
+        final disc = qb * qb - 4 * qa * qc;
+        if (disc >= 0) {
+          final sq = math.sqrt(disc);
+          final lo = (-qb - sq) / (2 * qa), hi = (-qb + sq) / (2 * qa);
+          if (hi >= 0 && lo <= 1) {
+            t0 = lo.clamp(0.0, 1.0);
+            t1 = hi.clamp(0.0, 1.0);
+          }
+        }
+      }
+      if (t0 == null || t1 == null) {
+        add(cur, bx, by, bp); // wholly outside
+        continue;
+      }
+      if (t0 > 0) {
+        add(cur, ax + dx * t0, ay + dy * t0, ap + (bp - ap) * t0);
+        pieces.add(cur);
+        cur = <double>[];
+      } else if (cur.isNotEmpty) {
+        // A was inside but a piece is open: cannot happen, close it anyway.
+        pieces.add(cur);
+        cur = <double>[];
+      }
+      if (t1 < 1) {
+        add(cur, ax + dx * t1, ay + dy * t1, ap + (bp - ap) * t1);
+        add(cur, bx, by, bp);
+      }
+    }
+    if (cur.isNotEmpty) pieces.add(cur);
+
+    final out = <Float32List>[];
+    for (final p in pieces) {
+      if (p.length ~/ _s >= 2 && _length(p) > 0.05) {
+        out.add(Float32List.fromList(p));
+      }
+    }
+    return out;
+  }
+
+  static double _length(List<double> p) {
+    var len = 0.0;
+    for (var i = _s; i < p.length; i += _s) {
+      final dx = p[i] - p[i - _s], dy = p[i + 1] - p[i - _s + 1];
+      len += math.sqrt(dx * dx + dy * dy);
+    }
+    return len;
+  }
 }

@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart' show CustomPainter;
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
 
 import '../../../core/geometry/box.dart';
+import '../../../domain/marks/spatial_grid.dart';
 import '../../../domain/ink/ink_geometry.dart';
 import '../../../domain/model/models.dart';
 import '../engine/scene.dart';
@@ -68,6 +69,19 @@ class InkLayer extends ChangeNotifier {
 
   final Map<String, _PageInk> _pages = {};
   final Map<String, Ink> _byId = {};
+  final Map<String, SpatialGrid> _grids = {};
+
+  /// Strokes a circle of radius [r] at ([x], [y]) touches, in the page's space
+  /// (or canvas space for a null [pageId]).
+  List<Ink> touching(String? pageId, double x, double y, double r) {
+    final grid = _grids[pageId ?? _free];
+    if (grid == null) return const [];
+    return [
+      for (final id in grid.query(Box(x - r, y - r, x + r, y + r)))
+        if (InkGeometry.touches(_byId[id]!.samples, _byId[id]!.width, x, y, r))
+          _byId[id]!,
+    ];
+  }
 
   /// How many page pictures have been (re)recorded; for tests and the HUD.
   int rebuilds = 0;
@@ -88,6 +102,7 @@ class InkLayer extends ChangeNotifier {
     }
     _pages.clear();
     _byId.clear();
+    _grids.clear();
     for (final i in inks) {
       _insert(i);
     }
@@ -102,6 +117,7 @@ class InkLayer extends ChangeNotifier {
   void remove(String id) {
     final ink = _byId.remove(id);
     if (ink == null) return;
+    _grids[ink.pageId ?? _free]?.remove(id);
     final page = _pages[ink.pageId ?? _free];
     if (page != null) {
       page.inks.removeWhere((i) => i.id == id);
@@ -118,8 +134,10 @@ class InkLayer extends ChangeNotifier {
       final p = _pages[old.pageId ?? _free];
       p?.inks.removeWhere((i) => i.id == ink.id);
       p?.dropBase();
+      _grids[old.pageId ?? _free]?.remove(old.id);
     }
     _byId[ink.id] = ink;
+    (_grids[ink.pageId ?? _free] ??= SpatialGrid()).put(ink.id, ink.bounds);
     final page = _pages[ink.pageId ?? _free] ??= _PageInk();
     page.inks.add(ink);
     final b = ink.bounds;

@@ -92,6 +92,25 @@ void main() {
       expect(layer.count, 0);
     });
 
+    test(
+      'finds the strokes a circle touches, per page and in canvas space',
+      () {
+        final layer = InkLayer()
+          ..add(ink('a', 'p0', [(0, 50, 1), (200, 50, 1)], width: 4))
+          ..add(ink('b', 'p0', [(0, 300, 1), (200, 300, 1)], width: 4))
+          ..add(ink('c', 'p1', [(0, 50, 1), (200, 50, 1)], width: 4))
+          ..add(ink('f', null, [(0, 50, 1), (200, 50, 1)], width: 4));
+        expect([for (final i in layer.touching('p0', 100, 55, 6)) i.id], ['a']);
+        expect(layer.touching('p0', 100, 150, 6), isEmpty);
+        expect([for (final i in layer.touching('p1', 100, 55, 6)) i.id], ['c']);
+        expect([for (final i in layer.touching(null, 100, 55, 6)) i.id], ['f']);
+        layer.remove('a');
+        expect(layer.touching('p0', 100, 55, 6), isEmpty);
+        layer.replaceAll([]);
+        expect(layer.touching('p1', 100, 55, 6), isEmpty);
+      },
+    );
+
     test('replaceAll swaps everything at once', () {
       final layer = InkLayer()..add(ink('a', 'p0', [(1, 1, 1), (2, 2, 1)]));
       layer.replaceAll([

@@ -697,4 +697,136 @@ void main() {
       expect(s.ink.count, 0);
     });
   });
+
+  group('erase', () {
+    Float32List line() => Float32List.fromList([0, 100, 0.5, 200, 100, 0.5]);
+
+    Future<DocumentSession> opened() async {
+      final s = open();
+      await s.load();
+      return s;
+    }
+
+    Future<Set<String>> storedIds() async => {
+      for (final e in await store.entities(kind: EntityKind.mark, docId: docId))
+        e.id,
+    };
+
+    test('one erase is one undo step that brings everything back', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first;
+      final a = s.addInk(pageId: page.id, samples: line(), width: 2, color: 1);
+      final b = s.addInk(pageId: page.id, samples: line(), width: 2, color: 2);
+      await s.settled();
+      expect(await storedIds(), {a, b});
+
+      // The tool has already taken both off the page; it asks to save that.
+      s.ink.remove(a);
+      s.ink.remove(b);
+      s.commitErase(deleted: {a, b}, created: const []);
+      await s.settled();
+      expect(await storedIds(), isEmpty);
+      expect(s.bus.undoLabel, 'Erase');
+
+      await s.undo();
+      expect(s.ink.count, 2, reason: 'one undo restores the whole wipe');
+      expect(await storedIds(), {a, b});
+      await s.redo();
+      expect(s.ink.count, 0);
+      expect(await storedIds(), isEmpty);
+    });
+
+    test('a partial erase saves the pieces and deletes the original', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first;
+      final a = s.addInk(pageId: page.id, samples: line(), width: 2, color: 1);
+      await s.settled();
+      final p1 = Ink(
+        id: s.newId(),
+        docId: docId,
+        pageId: page.id,
+        samples: Float32List.fromList([0, 100, 0.5, 80, 100, 0.5]),
+        width: 2,
+        color: 1,
+      );
+      final p2 = Ink(
+        id: s.newId(),
+        docId: docId,
+        pageId: page.id,
+        samples: Float32List.fromList([120, 100, 0.5, 200, 100, 0.5]),
+        width: 2,
+        color: 1,
+      );
+      s.ink.remove(a);
+      s.ink.add(p1);
+      s.ink.add(p2);
+      s.commitErase(deleted: {a}, created: [p1, p2]);
+      await s.settled();
+      expect(await storedIds(), {p1.id, p2.id});
+      // They survive a reopen.
+      final again = await opened();
+      expect(again.ink.count, 2);
+
+      await s.undo();
+      expect(await storedIds(), {
+        a,
+      }, reason: 'the original is back, pieces gone');
+      expect(s.ink.byId(a), isNotNull);
+      expect(s.ink.byId(p1.id), isNull);
+    });
+
+    test('a highlight and a stroke erased together undo together', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first;
+      final ink = s.addInk(
+        pageId: page.id,
+        samples: line(),
+        width: 2,
+        color: 1,
+      );
+      final h = s.addHighlight(
+        pageId: page.id,
+        selection: TextSelector.between(layoutText(['the quick']), 0, 0)!,
+        meaning: Meaning.claim,
+      );
+      await s.settled();
+      s.ink.remove(ink);
+      s.highlights.remove(h);
+      s.commitErase(deleted: {ink, h}, created: const []);
+      await s.settled();
+      expect(await storedIds(), isEmpty);
+      await s.undo();
+      expect(s.ink.count, 1);
+      expect(s.highlights.count, 1);
+    });
+
+    test('a failed save puts the page back as it really is', () async {
+      final flaky = FlakyStore(store);
+      final controller = CanvasController(scene: const Scene([]))
+        ..viewport = const Size(1000, 800);
+      addTearDown(controller.dispose);
+      final s = DocumentSession(
+        docId: docId,
+        store: flaky,
+        db: db,
+        controller: controller,
+        clock: HlcClock('dev', now: () => 9000 + clockTick++),
+        ids: SequentialIdGenerator('e${clockTick++}'),
+      );
+      addTearDown(s.dispose);
+      await s.load();
+      final a = s.addInk(
+        pageId: controller.scene.value.cards.first.id,
+        samples: line(),
+        width: 2,
+        color: 1,
+      );
+      await s.settled();
+      flaky.failCommits = true;
+      s.ink.remove(a);
+      s.commitErase(deleted: {a}, created: const []);
+      await s.settled();
+      expect(s.ink.byId(a), isNotNull, reason: 'it was never really erased');
+    });
+  });
 }

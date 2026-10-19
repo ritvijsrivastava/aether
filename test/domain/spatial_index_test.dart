@@ -192,6 +192,28 @@ void main() {
       expect(i.hitTest('p2', 50, 5, 1), isNull);
     });
 
+    test('touching is exact: no tolerance, no minimum height', () {
+      final i = HighlightIndex()..put(hl('a', 'p', [thin]));
+      expect(i.touching('p', 150, 204, 1).single.id, 'a');
+      expect(i.touching('p', 150, 215, 5), isEmpty, reason: '7 pt below, r 5');
+      expect(i.touching('p', 150, 213, 5).single.id, 'a', reason: '5 pt below');
+      expect(i.touching('p', 150, 204, 1).length, 1);
+      expect(i.touching('other', 150, 204, 5), isEmpty);
+    });
+
+    test('touching finds every line of a multi-line highlight, and many highlights', () {
+      final i = HighlightIndex()
+        ..put(
+          hl('m', 'p', const [
+            Box(100, 100, 300, 110),
+            Box(100, 300, 150, 310),
+          ]),
+        )
+        ..put(hl('n', 'p', const [Box(120, 305, 140, 312)]));
+      expect({for (final h in i.touching('p', 130, 306, 4)) h.id}, {'m', 'n'});
+      expect(i.touching('p', 130, 200, 4), isEmpty);
+    });
+
     test('putting a highlight again replaces it', () {
       final i = HighlightIndex()
         ..put(hl('a', 'p', const [Box(0, 0, 100, 10)]))

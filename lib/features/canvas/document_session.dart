@@ -18,6 +18,7 @@ import 'engine/canvas_controller.dart';
 import 'engine/scene.dart';
 import 'engine/view_state.dart';
 import 'ink/ink_layer.dart';
+import 'erase/erase_tool.dart';
 import 'ink/ink_tool.dart';
 import 'marks/mark_layers.dart';
 import 'marks/mark_tool.dart';
@@ -28,7 +29,7 @@ import 'marks/mark_tool.dart';
 /// Card moves made by dragging are saved as undoable commands; undo and redo
 /// reload the page positions into the canvas. The view (pan and zoom) is saved
 /// shortly after it stops changing, and restored on the next open.
-class DocumentSession implements MarkSink, InkSink {
+class DocumentSession implements MarkSink, InkSink, EraseSink {
   DocumentSession({
     required this.docId,
     required this.store,
@@ -234,6 +235,28 @@ class DocumentSession implements MarkSink, InkSink {
       }
     });
     return id;
+  }
+
+  @override
+  String newId() => ids.next();
+
+  /// Saves one erase as a single undo step. The page already shows the result;
+  /// if the save fails the page is reloaded from what was really stored.
+  @override
+  void commitErase({required Set<String> deleted, required List<Ink> created}) {
+    _enqueue(() async {
+      try {
+        final parts = <Command>[
+          for (final id in deleted) await _factory.delete(id),
+          for (final c in created)
+            _factory.create(EntityKind.mark, c.id, c.toFields()),
+        ];
+        await bus.run(Command.group('Erase', parts));
+      } catch (e, st) {
+        debugPrint('Saving an erase failed: $e\n$st');
+        await _reloadMarks();
+      }
+    });
   }
 
   /// Removes a highlight from the page at once; undoable.

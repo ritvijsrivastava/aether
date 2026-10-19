@@ -1,4 +1,5 @@
 import 'package:aether/features/canvas/canvas_ui_state.dart';
+import 'package:aether/features/canvas/erase/erase_options.dart';
 import 'package:aether/features/canvas/ink/ink_options.dart';
 import 'package:aether/ui/theme/theme.dart';
 import 'package:aether/ui/theme/tokens.dart';
@@ -108,4 +109,28 @@ void main() {
       lessThanOrEqualTo(360),
     );
   });
+
+  testWidgets(
+    'erase options: partial erase is off, and the switch turns it on',
+    (tester) async {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: MaterialApp(
+            theme: buildTheme(AetherTokens.light),
+            home: const Scaffold(body: Center(child: EraseOptions())),
+          ),
+        ),
+      );
+      expect(c.read(canvasUiProvider).erasePartial, isFalse);
+      expect(find.text('Erase part of a stroke'), findsOneWidget);
+      await tester.tap(find.byType(Switch));
+      await tester.pump();
+      expect(c.read(canvasUiProvider).erasePartial, isTrue);
+      final size = tester.getSize(find.byType(Switch));
+      expect(size.height, greaterThanOrEqualTo(40));
+    },
+  );
 }
