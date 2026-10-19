@@ -9,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 CanvasController make({int pages = 5, Size viewport = const Size(1000, 800)}) {
   final c =
       CanvasController(
-          scene: Scene.row([
+          scene: Scene.column([
             for (var i = 0; i < pages; i++) const Size(612, 792),
           ]),
         )
@@ -98,21 +98,21 @@ void main() {
   ) async {
     final c = make(pages: 20);
     c.setView(const ViewState(x: 0, y: 0));
-    c.panEnd(const Offset(-2000, 0));
+    c.panEnd(const Offset(0, -2000));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
-    final early = c.view.value.x;
+    final early = c.view.value.y;
     expect(early, lessThan(0));
     await tester.pump(const Duration(milliseconds: 100));
-    final step1 = early - c.view.value.x;
+    final step1 = early - c.view.value.y;
     // 2000 px/s at drag 0.135 decays below 1 px/s after about 3.8 s.
     for (var i = 0; i < 300; i++) {
       await tester.pump(const Duration(milliseconds: 16));
     }
     expect(c.isAnimating, isFalse);
-    expect(c.view.value.x, lessThan(early));
+    expect(c.view.value.y, lessThan(early));
     expect(
-      c.view.value.x,
+      c.view.value.y,
       greaterThan(-1500),
       reason: 'about 1000 px of travel in total',
     );
@@ -122,13 +122,13 @@ void main() {
   testWidgets('a fling into the edge stops at the edge', (tester) async {
     final c = make(pages: 2);
     c.setView(const ViewState());
-    c.panEnd(const Offset(-30000, 0));
+    c.panEnd(const Offset(0, -30000));
     for (var i = 0; i < 120; i++) {
       await tester.pump(const Duration(milliseconds: 16));
     }
     expect(c.isAnimating, isFalse);
     final r = c.view.value.worldRect(c.viewport);
-    expect(r.left, closeTo(c.scene.value.bounds.right, 1e-6));
+    expect(r.top, closeTo(c.scene.value.bounds.bottom, 1e-6));
   });
 
   testWidgets('a tiny release velocity does not start a fling', (tester) async {
@@ -164,7 +164,7 @@ void main() {
     // Other cards are untouched.
     expect(
       c.scene.value.cards[0].rect,
-      Scene.row([const Size(612, 792)]).cards[0].rect,
+      Scene.column([const Size(612, 792)]).cards[0].rect,
     );
   });
 

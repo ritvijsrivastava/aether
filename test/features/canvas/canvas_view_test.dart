@@ -25,7 +25,7 @@ Future<CanvasController> pumpCanvas(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final c = CanvasController(
-    scene: Scene.row([for (var i = 0; i < pages; i++) const Size(612, 792)]),
+    scene: Scene.column([for (var i = 0; i < pages; i++) const Size(612, 792)]),
     view: const ViewState(x: 200, y: 100),
   )..attach(tester);
   addTearDown(c.dispose);
@@ -205,7 +205,7 @@ void main() {
   ) async {
     final c = await pumpCanvas(tester, pages: 500);
     for (final z in [0.2, 0.5, 1.0, 3.0]) {
-      c.setView(ViewState(x: -2000 * z, y: 50, zoom: z));
+      c.setView(ViewState(x: 100, y: -3000 * z, zoom: z));
       await tester.pump();
       expect(tester.takeException(), isNull, reason: 'zoom $z');
     }

@@ -31,7 +31,7 @@ Scene syntheticScene(int pages) {
   const letter = Size(612, 792),
       landscape = Size(792, 612),
       a4 = Size(595, 842);
-  return Scene.row([
+  return Scene.column([
     for (var i = 0; i < pages; i++)
       i % 11 == 10 ? landscape : (i % 7 == 6 ? a4 : letter),
   ]);

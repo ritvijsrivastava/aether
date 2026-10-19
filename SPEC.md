@@ -145,7 +145,7 @@ Document { id, title, createdAt, updatedAt, sourceHash, pageCount, hlc }
 PageRef  { id, docId, index, width, height, cardX, cardY, hlc }   // card position on canvas
 PdfFile  { sourceHash (sha256), path, byteLength, importedAt }     // content-addressed, deduplicated
 ```
-Each PDF page is its own movable card (as in the prototype, which models "Paper p. 1" and "p. 2" as separate cards). Default import lays pages out in a row with 80px gaps; a "Stack vertically / grid" action re-flows them.
+Each PDF page is its own movable card (as in the prototype, which models "Paper p. 1" and "p. 2" as separate cards). Default import lays pages out in a column with 80 px gaps, centred; a "Grid" action to re-flow them is planned.
 
 ### 4.5 Operation log (the sync-ready core)
 All edits are **operations** appended to an append-only log; entity tables are materialized snapshots of the log for fast reads.
@@ -498,7 +498,7 @@ Each milestone ends with a **review stop** where you try it on the Tab S9 and/or
 ### M2 decisions (owner, 2026-10-19)
 - Review stop after **2a** (engine on synthetic pages) before any PDF code.
 - Panning is **clamped**: the viewport may roam up to one screen beyond the cards, never further (`ViewState.clamped`).
-- Imported pages land **in one row, left to right**, 80 px apart.
+- Imported pages land **in one column, top to bottom**, 80 px apart, centred on a shared vertical axis. (Changed from "one row, left to right" after hands-on review of 2a: a column reads like a document and makes the dot grid visible on both sides.)
 - Import paths in M2: file picker (both platforms), Linux drag and drop, and Android "Open with / Share to Aether".
 - "Fit" fits the page nearest the centre of the screen (not the whole document, which is meaningless for a 500-page row); Ctrl+0 is the same, Ctrl+1 is 100%.
 - The drag handle keeps a constant screen size at any zoom and is hidden when its card is under 90 px wide.

@@ -12,7 +12,7 @@ colors:
   rule-strong: "#bab6b6"
   hairline: "rgba(60,50,40,.12)"
   hover-wash: "rgba(60,50,40,.07)"
-  grid-dot: "rgba(60,50,40,.20)"
+  grid-dot: "rgba(60,50,40,.28)"
   danger: "#ae1800"
   indigo: "#5b5bd6"
   indigo-pressed: "#4a4ac0"
@@ -170,7 +170,7 @@ Reserved exclusively for annotation. They never appear as UI chrome.
 - **Alarm Red** (#ae1800): destructive actions and errors only. Taken from the prototype's only red (its link hover colour); not a mark colour.
 - **Rule Grey** (#bab6b6): table rules inside documents.
 - **Hairline** (rgba(60,50,40,.12)): the only divider; between bars and panels.
-- **Grid Dot** (rgba(60,50,40,.20)): the canvas dot grid.
+- **Grid Dot** (rgba(60,50,40,.28) light, rgba(243,242,242,.22) dark): the canvas dot grid. Raised from the prototype's .20 so it still reads around a full-height page.
 
 ### Named Rules
 **The Meaning-Color Rule.** Coral, amber, and blue appear only on user marks and their Extract swatches. Never on buttons, badges, status, or decoration. If a screen shows one with no mark behind it, it is wrong.
@@ -285,7 +285,7 @@ Warm Ink strokes, 2.5px default width (user-adjustable 1–8), round caps, quadr
 A dashed 1.5px indigo rounded rectangle around selected marks with a contextual pill action above it (Action shadow). In v1 the prototype's "Convert to text" action is **removed** (handwriting conversion is deferred); the pill hosts Move / Recolor / Delete.
 
 ### Canvas Surface
-Stone Canvas with a dot grid (Grid Dot, 1.2px dots, 32px pitch × zoom) that pans and scales with the view so it reads as an endless desk. Zoom range 20%–300%; Fit sizes the content to the viewport.
+Stone Canvas with a dot grid (Grid Dot, 2.4 px dots, 32 px pitch × zoom) that pans and scales with the view so it reads as an endless desk. When the dots would be closer than 14 px the pitch doubles, so the grid never turns to noise. Pages sit in one column, top to bottom, centred. Zoom range 20%–300%; Fit sizes the content to the viewport.
 
 ## Do's and Don'ts
 

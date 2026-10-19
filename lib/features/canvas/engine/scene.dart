@@ -22,13 +22,18 @@ class Card {
 class Scene {
   const Scene(this.cards);
 
-  /// Cards in a row, left to right, [gap] apart, all top-aligned.
-  factory Scene.row(
+  /// Cards in one column, top to bottom, [gap] apart, centred on a shared
+  /// vertical axis so mixed page widths read as one document.
+  factory Scene.column(
     List<Size> pageSizes, {
     double gap = 80,
     String Function(int index)? idOf,
   }) {
-    var x = 0.0;
+    final widest = pageSizes.fold<double>(
+      0,
+      (m, s) => s.width > m ? s.width : m,
+    );
+    var y = 0.0;
     final cards = <Card>[];
     for (var i = 0; i < pageSizes.length; i++) {
       final s = pageSizes[i];
@@ -36,10 +41,10 @@ class Scene {
         Card(
           id: idOf?.call(i) ?? 'page-$i',
           index: i,
-          rect: Rect.fromLTWH(x, 0, s.width, s.height),
+          rect: Rect.fromLTWH((widest - s.width) / 2, y, s.width, s.height),
         ),
       );
-      x += s.width + gap;
+      y += s.height + gap;
     }
     return Scene(cards);
   }
