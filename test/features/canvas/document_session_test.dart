@@ -13,6 +13,7 @@ import 'package:aether/domain/commands/command_bus.dart';
 import 'package:aether/domain/model/models.dart';
 import 'package:aether/core/geometry/box.dart';
 import 'package:aether/domain/ops/op.dart';
+import 'package:aether/features/canvas/select/selection.dart';
 import 'package:aether/domain/ops/op_store.dart';
 import 'package:aether/domain/text/page_text.dart';
 import 'package:aether/domain/text/text_selection.dart';
@@ -1226,6 +1227,183 @@ void main() {
       final note = s.beginNote(pageId: page, x: 5, y: 5);
       s.addLink(note, hl);
       expect(s.links.count, 0);
+    });
+  });
+
+  group('selection edits', () {
+    final text = layoutText(['the quick brown', 'fox jumps over.']);
+    Float32List line([double y = 100]) =>
+        Float32List.fromList([10, y, 0.5, 90, y, 0.5]);
+
+    Future<DocumentSession> opened() async {
+      final s = open();
+      await s.load();
+      return s;
+    }
+
+    Future<Set<String>> storedIds() async => {
+      for (final e in await store.entities(kind: EntityKind.mark, docId: docId))
+        e.id,
+    };
+
+    test('a move saves the new place of ink and notes as one step', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first.id;
+      final i = s.addInk(pageId: page, samples: line(), width: 2, color: 1);
+      final n = s.beginNote(pageId: page, x: 5, y: 5);
+      s.editNoteText(n, 'hi');
+      await s.noteBlurred(n);
+      await s.settled();
+      final depth = s.bus.undoDepth;
+      s.ink.add(s.ink.byId(i)!.translated(30, 10));
+      s.notes.update(s.notes.byId(n)!.copyWith(x: 35, y: 15));
+      s.commitMove([s.ink.byId(i)!, s.notes.byId(n)!]);
+      await s.settled();
+      expect(s.bus.undoDepth, depth + 1);
+      expect(s.bus.undoLabel, 'Move');
+      final again = await opened();
+      expect(again.ink.byId(i)!.samples[0], 40);
+      expect(again.notes.byId(n)!.x, 35);
+      await s.undo();
+      expect(s.ink.byId(i)!.samples[0], 10, reason: 'one undo moves both back');
+      expect(s.notes.byId(n)!.x, 5);
+    });
+
+    test(
+      'recoloring changes highlight meaning and ink colour in one step',
+      () async {
+        final s = await opened();
+        final page = s.controller.scene.value.cards.first.id;
+        final i = s.addInk(
+          pageId: page,
+          samples: line(),
+          width: 2,
+          color: 0xFF000000,
+        );
+        final h = s.addHighlight(
+          pageId: page,
+          selection: TextSelector.between(text, 1, 1)!,
+          meaning: Meaning.claim,
+          text: text,
+        );
+        await s.settled();
+        s.recolorMarks(
+          [MarkRef(MarkKind.ink, i), MarkRef(MarkKind.highlight, h)],
+          meaning: Meaning.question,
+          inkColor: 0xFFF4877E,
+        );
+        expect(s.highlights.byId(h)!.meaning, Meaning.question);
+        expect(s.ink.byId(i)!.color, 0xFFF4877E);
+        await s.settled();
+        expect(s.bus.undoLabel, 'Recolor');
+        final again = await opened();
+        expect(again.highlights.byId(h)!.meaning, Meaning.question);
+        expect(again.ink.byId(i)!.color, 0xFFF4877E);
+        await s.undo();
+        expect(s.highlights.byId(h)!.meaning, Meaning.claim);
+        expect(s.ink.byId(i)!.color, 0xFF000000);
+      },
+    );
+
+    test('recoloring to what it already is saves nothing', () async {
+      final s = await opened();
+      final h = s.addHighlight(
+        pageId: s.controller.scene.value.cards.first.id,
+        selection: TextSelector.between(text, 1, 1)!,
+        meaning: Meaning.claim,
+        text: text,
+      );
+      await s.settled();
+      final depth = s.bus.undoDepth;
+      s.recolorMarks([MarkRef(MarkKind.highlight, h)], meaning: Meaning.claim);
+      await s.settled();
+      expect(s.bus.undoDepth, depth);
+    });
+
+    test(
+      'deleting a mixed selection is one step, with links, and undoes whole',
+      () async {
+        final s = await opened();
+        final page = s.controller.scene.value.cards.first.id;
+        final i = s.addInk(pageId: page, samples: line(), width: 2, color: 1);
+        final h = s.addHighlight(
+          pageId: page,
+          selection: TextSelector.between(text, 1, 1)!,
+          meaning: Meaning.claim,
+          text: text,
+        );
+        final n = s.beginNote(pageId: page, x: 5, y: 5);
+        s.editNoteText(n, 'note');
+        await s.noteBlurred(n);
+        s.addLink(n, h);
+        await s.settled();
+        final depth = s.bus.undoDepth;
+        s.deleteMarks([
+          MarkRef(MarkKind.ink, i),
+          MarkRef(MarkKind.highlight, h),
+          MarkRef(MarkKind.note, n),
+        ]);
+        expect(
+          s.ink.count + s.highlights.count + s.notes.count + s.links.count,
+          0,
+        );
+        await s.settled();
+        expect(await storedIds(), isEmpty);
+        expect(
+          await store.entities(kind: EntityKind.link, docId: docId),
+          isEmpty,
+        );
+        expect(s.bus.undoDepth, depth + 1);
+        await s.undo();
+        expect(await storedIds(), {i, h, n});
+        expect(s.links.count, 1);
+      },
+    );
+
+    test('deleting marks that are not there is quietly nothing', () async {
+      final s = await opened();
+      final depth = s.bus.undoDepth;
+      s.deleteMarks([const MarkRef(MarkKind.ink, 'nope')]);
+      await s.settled();
+      expect(s.bus.undoDepth, depth);
+    });
+
+    test('Add note on a highlight links the note once it has text', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first.id;
+      final h = s.addHighlight(
+        pageId: page,
+        selection: TextSelector.between(text, 1, 1)!,
+        meaning: Meaning.claim,
+        text: text,
+      );
+      final n = s.beginNote(pageId: page, x: 5, y: 5, linkToHighlight: h);
+      expect(s.links.count, 0, reason: 'nothing to link yet');
+      s.editNoteText(n, 'my thought');
+      await s.noteBlurred(n);
+      await s.settled();
+      expect(s.links.count, 1);
+      expect(s.links.all.single.toHighlightId, h);
+      expect(
+        (await store.entities(kind: EntityKind.link, docId: docId)).length,
+        1,
+      );
+    });
+
+    test('an Add note that is left empty leaves no link', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first.id;
+      final h = s.addHighlight(
+        pageId: page,
+        selection: TextSelector.between(text, 1, 1)!,
+        meaning: Meaning.claim,
+        text: text,
+      );
+      final n = s.beginNote(pageId: page, x: 5, y: 5, linkToHighlight: h);
+      await s.noteBlurred(n);
+      await s.settled();
+      expect(s.links.count, 0);
+      expect(s.notes.count, 0);
     });
   });
 }

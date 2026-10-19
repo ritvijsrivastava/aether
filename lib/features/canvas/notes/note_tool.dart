@@ -10,7 +10,15 @@ import '../input/tool_gestures.dart';
 abstract interface class NoteSink {
   /// Puts an empty draft note at ([x], [y]) (page space, or canvas space for a
   /// null [pageId]) and focuses it. Returns its id.
-  String beginNote({String? pageId, required double x, required double y});
+  ///
+  /// With [linkToHighlight], the note is linked to that highlight as soon as
+  /// it has text and is saved.
+  String beginNote({
+    String? pageId,
+    required double x,
+    required double y,
+    String? linkToHighlight,
+  });
 }
 
 /// What a note on the page can ask of the document.

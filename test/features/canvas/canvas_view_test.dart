@@ -12,7 +12,7 @@ import 'package:aether/features/canvas/marks/mark_tool.dart';
 import 'package:aether/ui/theme/theme.dart';
 import 'package:aether/ui/theme/tokens.dart';
 import 'package:flutter/gestures.dart'
-    show kPrimaryButton, kPrimaryStylusButton;
+    show kPrimaryButton, kPrimaryStylusButton, kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter/services.dart';
@@ -26,6 +26,9 @@ Future<CanvasController> pumpCanvas(
   bool fingerDraws = false,
   int pages = 6,
   VoidCallback? onCopy,
+  void Function(Offset local, Offset global)? onContextMenu,
+  VoidCallback? onEscape,
+  VoidCallback? onDelete,
 }) async {
   tester.view.physicalSize = _size;
   tester.view.devicePixelRatio = 1;
@@ -45,6 +48,9 @@ Future<CanvasController> pumpCanvas(
           tool: tool,
           fingerDraws: fingerDraws,
           onCopy: onCopy,
+          onContextMenu: onContextMenu,
+          onEscape: onEscape,
+          onDelete: onDelete,
         ),
       ),
     ),
@@ -458,6 +464,108 @@ void main() {
         buttons: kPrimaryStylusButton,
       );
       expect(rec.starts.single.$1, CanvasTool.erase);
+    });
+  });
+
+  group('context menu and selection keys', () {
+    testWidgets(
+      'a right click with the mouse asks for the menu, and nothing else',
+      (tester) async {
+        final asked = <Offset>[];
+        final c = await pumpCanvas(
+          tester,
+          onContextMenu: (local, global) => asked.add(local),
+        );
+        final marks = RecordingMarks();
+        c.tools = ToolRouter({CanvasTool.mark: MarkHandler(marks)});
+        final g = await tester.startGesture(
+          const Offset(500, 400),
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryButton,
+        );
+        await g.up();
+        expect(asked, [const Offset(500, 400)]);
+        expect(marks.log, isEmpty, reason: 'a right click is not a mark');
+      },
+    );
+
+    testWidgets('a finger held still for half a second asks for the menu', (
+      tester,
+    ) async {
+      final asked = <Offset>[];
+      await pumpCanvas(tester, onContextMenu: (l, g) => asked.add(l));
+      final g = await tester.startGesture(
+        const Offset(500, 400),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(asked, isEmpty);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(asked, [const Offset(500, 400)]);
+      await g.up();
+    });
+
+    testWidgets(
+      'moving, lifting early, or a second finger is not a long press',
+      (tester) async {
+        final asked = <Offset>[];
+        await pumpCanvas(tester, onContextMenu: (l, g) => asked.add(l));
+        var g = await tester.startGesture(
+          const Offset(500, 400),
+          kind: PointerDeviceKind.touch,
+        );
+        await g.moveBy(const Offset(40, 0));
+        await tester.pump(const Duration(milliseconds: 700));
+        await g.up();
+        g = await tester.startGesture(
+          const Offset(500, 400),
+          kind: PointerDeviceKind.touch,
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+        await g.up();
+        await tester.pump(const Duration(milliseconds: 700));
+        final a = await tester.startGesture(
+          const Offset(400, 400),
+          kind: PointerDeviceKind.touch,
+          pointer: 11,
+        );
+        final b = await tester.startGesture(
+          const Offset(600, 400),
+          kind: PointerDeviceKind.touch,
+          pointer: 12,
+        );
+        await tester.pump(const Duration(milliseconds: 700));
+        await a.up();
+        await b.up();
+        expect(asked, isEmpty);
+      },
+    );
+
+    testWidgets('a pen or mouse held still does not open the menu', (
+      tester,
+    ) async {
+      final asked = <Offset>[];
+      await pumpCanvas(tester, onContextMenu: (l, g) => asked.add(l));
+      final g = await tester.startGesture(
+        const Offset(500, 400),
+        kind: PointerDeviceKind.stylus,
+      );
+      await tester.pump(const Duration(milliseconds: 800));
+      await g.up();
+      expect(asked, isEmpty);
+    });
+
+    testWidgets('Escape and Delete reach the screen', (tester) async {
+      var escapes = 0, deletes = 0;
+      await pumpCanvas(
+        tester,
+        onEscape: () => escapes++,
+        onDelete: () => deletes++,
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+      await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+      expect((escapes, deletes), (1, 2));
     });
   });
 }

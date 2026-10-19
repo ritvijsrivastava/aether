@@ -447,6 +447,50 @@ void main() {
       });
     }
     expect(back, 1);
+
+    // The Select tool: tap the stroke, then Delete in the pill.
+    await tester.tap(find.text('Select'));
+    await tester.pump();
+    final tap = await tester.startGesture(
+      from + const Offset(60, 8),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await tap.up();
+    await tester.pump();
+    expect(find.text('1 selected'), findsOneWidget);
+    await tester.tap(find.text('Delete'));
+    await tester.pump();
+    expect(find.text('1 selected'), findsNothing);
+    for (var i = 0; i < 200; i++) {
+      var n = -1;
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+        n = (await store.entities(kind: EntityKind.mark, docId: docId)).length;
+      });
+      if (n == 0) break;
+    }
+    expect(
+      await tester.runAsync(
+        () => store.entities(kind: EntityKind.mark, docId: docId),
+      ),
+      isEmpty,
+    );
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 250));
+    }
+    await tester.tap(find.text('Undo').last);
+    var again = 0;
+    for (var i = 0; i < 200 && again == 0; i++) {
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+        again = (await store.entities(
+          kind: EntityKind.mark,
+          docId: docId,
+        )).length;
+      });
+    }
+    expect(again, 1);
   }, skip: skip != null);
 
   testWidgets('placing a note, typing in it and clicking away saves it', (

@@ -4,7 +4,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:flutter/services.dart'
+    show Clipboard, ClipboardData, HardwareKeyboard;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
@@ -32,6 +33,10 @@ import 'links/link_remove_overlay.dart';
 import 'links/link_tool.dart';
 import 'links/links_layer.dart';
 import 'marks/flash.dart';
+import 'select/mark_hit.dart';
+import 'select/select_tool.dart';
+import 'select/selection.dart';
+import 'select/selection_view.dart';
 import 'notes/note_tool.dart';
 import 'notes/notes_overlay.dart';
 import 'marks/mark_layers.dart';
@@ -89,6 +94,9 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   final LiveInk _liveInk = LiveInk();
   final EraserState _eraser = EraserState();
   final LiveLink _liveLink = LiveLink();
+  final SelectionState _selection = SelectionState();
+  final LiveLasso _lasso = LiveLasso();
+  Listenable? _layerChanges;
   double _lastKeyboardInset = 0;
   PageTextService? _textService;
   late final FlashController _flash = FlashController(this);
@@ -225,6 +233,17 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _controller.tools = ToolRouter({
       CanvasTool.mark: MarkHandler(tool),
       CanvasTool.ink: inkTool,
+      CanvasTool.select: SelectToolController(
+        view: _controller.view,
+        scene: _controller.scene,
+        selection: _selection,
+        live: _lasso,
+        ink: session.ink,
+        highlights: session.highlights,
+        notes: session.notes,
+        shift: () => HardwareKeyboard.instance.isShiftPressed,
+        sink: session,
+      ),
       CanvasTool.link: LinkToolController(
         view: _controller.view,
         scene: _controller.scene,
@@ -250,6 +269,12 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       ),
     });
     _controller.view.addListener(_warmText);
+    // Marks that go away (deleted, undone) leave the selection.
+    _layerChanges = Listenable.merge([
+      session.highlights,
+      session.ink,
+      session.notes,
+    ])..addListener(_pruneSelection);
     _history = session.bus.changes.listen((_) {
       if (mounted) setState(() {});
     });
@@ -279,6 +304,51 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       ..reduceMotion = reduce
       ..show(Flash(card.id, h.rects, h.meaning));
     _extract?.collapseRequests.value++;
+  }
+
+  /// Ctrl+C: the selected quotes and notes as text; with nothing selected (or
+  /// only ink), the whole Extract list as Markdown.
+  Future<void> _copyKey() async {
+    final s = _session;
+    if (s != null && !_selection.isEmpty) {
+      final parts = <String>[];
+      final highlights = [
+        for (final id in _selection.idsOf(MarkKind.highlight))
+          ?s.highlights.byId(id),
+      ];
+      // In reading order: by page, then by place in the text.
+      final order = {
+        for (final c in _controller.scene.value.cards) c.id: c.index,
+      };
+      highlights.sort((a, b) {
+        final pa = order[a.pageId] ?? 1 << 30, pb = order[b.pageId] ?? 1 << 30;
+        return pa != pb ? pa.compareTo(pb) : a.startChar.compareTo(b.startChar);
+      });
+      for (final h in highlights) {
+        parts.add(h.startChar < 0 ? '(image region)' : h.quote);
+      }
+      for (final id in _selection.idsOf(MarkKind.note)) {
+        final n = s.notes.byId(id);
+        if (n != null && n.text.trim().isNotEmpty) parts.add(n.text.trim());
+      }
+      if (parts.isNotEmpty) {
+        await Clipboard.setData(ClipboardData(text: parts.join('\n\n')));
+        if (!mounted) return;
+        ScaffoldMessenger.maybeOf(context)
+          ?..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(
+                parts.length == 1
+                    ? 'Copied 1 item.'
+                    : 'Copied ${parts.length} items.',
+              ),
+            ),
+          );
+        return;
+      }
+    }
+    await _copyMarkdown();
   }
 
   /// Copy as Markdown: the whole Extract list, grouped by meaning.
@@ -329,10 +399,108 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     );
   }
 
-  /// Delete or Backspace: remove what is selected (a link, for now).
+  void _pruneSelection() {
+    final s = _session;
+    if (s == null) return;
+    _selection.prune(
+      (r) => switch (r.kind) {
+        MarkKind.highlight => s.highlights.byId(r.id) != null,
+        MarkKind.ink => s.ink.byId(r.id) != null,
+        MarkKind.note => s.notes.byId(r.id) != null,
+      },
+    );
+  }
+
+  /// Delete or Backspace: remove what is selected, with Undo offered.
   void _deleteSelection(DocumentSession session) {
+    if (!_selection.isEmpty) {
+      final n = _selection.count;
+      session.deleteMarks(_selection.refs);
+      _selection.clear();
+      ScaffoldMessenger.maybeOf(context)
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(n == 1 ? 'Deleted 1 mark' : 'Deleted $n marks'),
+            action: SnackBarAction(label: 'Undo', onPressed: session.undo),
+          ),
+        );
+      return;
+    }
     final id = session.links.selectedId;
     if (id != null) session.deleteLink(id);
+  }
+
+  /// Right-click, or a long press with a finger: a menu for the mark under it.
+  Future<void> _showContextMenu(Offset local, Offset global) async {
+    final session = _session;
+    if (session == null || !mounted) return;
+    final v = _controller.view.value;
+    final world = v.screenToWorld(local);
+    final hit = MarkHitTester(
+      scene: _controller.scene.value,
+      ink: session.ink,
+      highlights: session.highlights,
+      notes: session.notes,
+    );
+    final ref = hit.markAt(world, v.zoom);
+    if (ref != null) _selection.set([ref]);
+    final highlight = ref?.kind == MarkKind.highlight
+        ? session.highlights.byId(ref!.id)
+        : null;
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(global.dx, global.dy, 1, 1),
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        if (highlight != null) ...[
+          for (final m in Meaning.values)
+            CheckedPopupMenuItem<String>(
+              value: 'meaning:${m.id}',
+              checked: highlight.meaning == m,
+              child: Text(m.label),
+            ),
+          const PopupMenuDivider(),
+          const PopupMenuItem(value: 'note', child: Text('Add note')),
+          const PopupMenuItem(value: 'copy', child: Text('Copy quote')),
+        ] else if (ref == null)
+          const PopupMenuItem(value: 'note-here', child: Text('Add note here')),
+        if (ref != null)
+          const PopupMenuItem(value: 'delete', child: Text('Delete')),
+      ],
+    );
+    if (choice == null || !mounted) return;
+    if (choice.startsWith('meaning:')) {
+      session.recolorMarks([ref!], meaning: Meaning.parse(choice.substring(8)));
+    } else if (choice == 'delete') {
+      _deleteSelection(session);
+    } else if (choice == 'copy' && highlight != null) {
+      await Clipboard.setData(ClipboardData(text: highlight.quote));
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('Copied the quote.')));
+    } else if (choice == 'note' && highlight != null) {
+      final card = _controller.scene.value.byId(highlight.pageId ?? '');
+      if (card == null) return;
+      // Beside the highlight's last line, in the page's margin.
+      final b = highlight.bounds;
+      session.beginNote(
+        pageId: card.id,
+        x: b.x1 + 24,
+        y: b.y0,
+        linkToHighlight: highlight.id,
+      );
+    } else if (choice == 'note-here') {
+      final card = hit.scene.cards.where((c) => c.rect.contains(world));
+      final page = card.isEmpty ? null : card.last;
+      final at = page == null ? world : world - page.rect.topLeft;
+      session.beginNote(pageId: page?.id, x: at.dx, y: at.dy);
+    }
   }
 
   void _warmText() => _markTool?.warmVisible(viewport: _controller.viewport);
@@ -353,6 +521,9 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _liveInk.dispose();
     _eraser.dispose();
     _liveLink.dispose();
+    _layerChanges?.removeListener(_pruneSelection);
+    _selection.dispose();
+    _lasso.dispose();
     _live.dispose();
     _flash.dispose();
     _copiedTimer?.cancel();
@@ -384,6 +555,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     // Choosing the Mark tool is the moment its text is about to be needed.
     ref.listen(canvasUiProvider.select((u) => u.tool), (_, tool) {
       if (tool != CanvasTool.link) _session?.links.select(null);
+      if (tool != CanvasTool.select) _selection.clear();
       if (tool == CanvasTool.mark) _warmText();
     });
     final settings = ref.watch(settingsProvider).value ?? const AppSettings();
@@ -419,6 +591,13 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       notes: session?.notes,
       liveLink: _liveLink,
       onDelete: session == null ? null : () => _deleteSelection(session),
+      selection: _selection,
+      lasso: _lasso,
+      onContextMenu: session == null ? null : _showContextMenu,
+      onEscape: () {
+        _selection.clear();
+        _session?.links.select(null);
+      },
       overlay: session == null
           ? null
           : Stack(
@@ -435,6 +614,16 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
                       ui.tool == CanvasTool.mark ||
                       ui.tool == CanvasTool.note,
                 ),
+                MarkSelectionOverlay(
+                  view: _controller.view,
+                  scene: _controller.scene,
+                  selection: _selection,
+                  ink: session.ink,
+                  highlights: session.highlights,
+                  notes: session.notes,
+                  actions: _SelectionActions(this),
+                  viewport: () => _controller.viewport,
+                ),
                 LinkRemoveOverlay(
                   view: _controller.view,
                   scene: _controller.scene,
@@ -450,7 +639,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       onReady: _onReady,
       onUndo: session?.undo,
       onRedo: session?.redo,
-      onCopy: _copyMarkdown,
+      onCopy: _copyKey,
     );
     final canvas = Stack(
       fit: StackFit.expand,
@@ -822,5 +1011,29 @@ class _ExtractSheetState extends State<_ExtractSheet> {
         );
       },
     );
+  }
+}
+
+/// The selection pill's actions, run against the open document.
+class _SelectionActions implements SelectionActions {
+  _SelectionActions(this.state);
+  final _CanvasScreenState state;
+
+  @override
+  void recolorMeaning(Meaning m) {
+    final s = state._session;
+    if (s != null) s.recolorMarks(state._selection.refs, meaning: m);
+  }
+
+  @override
+  void recolorInk(int argb) {
+    final s = state._session;
+    if (s != null) s.recolorMarks(state._selection.refs, inkColor: argb);
+  }
+
+  @override
+  void deleteSelection() {
+    final s = state._session;
+    if (s != null) state._deleteSelection(s);
   }
 }

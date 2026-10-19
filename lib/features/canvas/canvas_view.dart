@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +13,9 @@ import 'erase/erase_tool.dart';
 import 'ink/ink_layer.dart';
 import 'marks/flash.dart';
 import 'notes/notes_layer.dart';
+import 'select/select_tool.dart';
+import 'select/selection.dart';
+import 'select/selection_view.dart';
 import 'marks/mark_layers.dart';
 import 'input/input_arbiter.dart';
 import 'input/pen_config.dart';
@@ -38,6 +43,10 @@ class CanvasView extends StatefulWidget {
     this.notes,
     this.liveLink,
     this.onDelete,
+    this.selection,
+    this.lasso,
+    this.onContextMenu,
+    this.onEscape,
     this.pen = const PenConfig(),
     this.fingerDraws = false,
     this.onReady,
@@ -76,6 +85,17 @@ class CanvasView extends StatefulWidget {
 
   /// Delete or Backspace: remove what is selected.
   final VoidCallback? onDelete;
+
+  /// The selected marks and the loop being drawn round them.
+  final SelectionState? selection;
+  final LiveLasso? lasso;
+
+  /// A right-click, or a long press with a finger, at a canvas position (local
+  /// and global).
+  final void Function(Offset local, Offset global)? onContextMenu;
+
+  /// Escape: clear what is selected.
+  final VoidCallback? onEscape;
 
   /// Pen button bits and pressure curve for this device.
   final PenConfig pen;
@@ -176,6 +196,7 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
     if (e is KeyUpEvent) return KeyEventResult.ignored;
     if (e.logicalKey == LogicalKeyboardKey.escape) {
       _arbiter.escape();
+      widget.onEscape?.call();
       return KeyEventResult.handled;
     }
     final c = widget.controller;
@@ -223,8 +244,49 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
     return KeyEventResult.ignored;
   }
 
+  // --- long press (a finger): the context menu ----------------------------------
+
+  Timer? _longPress;
+  int? _longPressPointer;
+  Offset _longPressStart = Offset.zero;
+  static const Duration _longPressTime = Duration(milliseconds: 500);
+  static const double _longPressSlop = 10;
+
+  void _watchLongPress(PointerDownEvent e) {
+    if (widget.onContextMenu == null) return;
+    // A second finger is a pinch: not a long press.
+    if (_longPressPointer != null) {
+      _stopLongPress(_longPressPointer!);
+      return;
+    }
+    if (e.kind != PointerDeviceKind.touch) return;
+    _longPressPointer = e.pointer;
+    _longPressStart = e.localPosition;
+    final global = e.position;
+    _longPress = Timer(_longPressTime, () {
+      _longPress = null;
+      _longPressPointer = null;
+      widget.onContextMenu?.call(_longPressStart, global);
+    });
+  }
+
+  void _longPressMoved(PointerMoveEvent e) {
+    if (e.pointer == _longPressPointer &&
+        (e.localPosition - _longPressStart).distance > _longPressSlop) {
+      _stopLongPress(e.pointer);
+    }
+  }
+
+  void _stopLongPress(int pointer) {
+    if (pointer != _longPressPointer) return;
+    _longPress?.cancel();
+    _longPress = null;
+    _longPressPointer = null;
+  }
+
   @override
   void dispose() {
+    _longPress?.cancel();
     _focus.dispose();
     super.dispose();
   }
@@ -262,11 +324,27 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
               behavior: HitTestBehavior.opaque,
               onPointerDown: (e) {
                 _focus.requestFocus();
+                if (e.kind == PointerDeviceKind.mouse &&
+                    e.buttons & kSecondaryButton != 0 &&
+                    widget.onContextMenu != null) {
+                  widget.onContextMenu!(e.localPosition, e.position);
+                  return;
+                }
+                _watchLongPress(e);
                 _arbiter.down(_sample(e));
               },
-              onPointerMove: (e) => _arbiter.move(_sample(e)),
-              onPointerUp: (e) => _arbiter.up(_sample(e)),
-              onPointerCancel: (e) => _arbiter.cancel(_sample(e)),
+              onPointerMove: (e) {
+                _longPressMoved(e);
+                _arbiter.move(_sample(e));
+              },
+              onPointerUp: (e) {
+                _stopLongPress(e.pointer);
+                _arbiter.up(_sample(e));
+              },
+              onPointerCancel: (e) {
+                _stopLongPress(e.pointer);
+                _arbiter.cancel(_sample(e));
+              },
               onPointerHover: (e) {
                 _arbiter.hover(_sample(e));
                 _updateCursor(e.localPosition);
@@ -360,6 +438,25 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
                             links: widget.links!,
                             notes: widget.notes!,
                             highlights: widget.highlights!,
+                            tokens: t,
+                          ),
+                        ),
+                      ),
+                    if (widget.selection != null &&
+                        widget.lasso != null &&
+                        widget.ink != null &&
+                        widget.highlights != null &&
+                        widget.notes != null)
+                      RepaintBoundary(
+                        child: CustomPaint(
+                          painter: SelectionPainter(
+                            view: c.view,
+                            scene: c.scene,
+                            selection: widget.selection!,
+                            lasso: widget.lasso!,
+                            ink: widget.ink!,
+                            highlights: widget.highlights!,
+                            notes: widget.notes!,
                             tokens: t,
                           ),
                         ),

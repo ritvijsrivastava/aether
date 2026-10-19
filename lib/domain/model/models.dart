@@ -216,6 +216,19 @@ class Highlight extends Mark {
   final Meaning meaning;
   final int startChar, endChar;
 
+  Highlight copyWith({Meaning? meaning}) => Highlight(
+    id: id,
+    docId: docId,
+    pageId: pageId,
+    meaning: meaning ?? this.meaning,
+    startChar: startChar,
+    endChar: endChar,
+    quote: quote,
+    contextBefore: contextBefore,
+    contextAfter: contextAfter,
+    rects: rects,
+  );
+
   /// The quoted text as it was at creation time.
   final String quote;
 
@@ -264,6 +277,33 @@ class Ink extends Mark {
   final int color;
 
   int get pointCount => samples.length ~/ InkCodec.stride;
+
+  Ink copyWith({int? color}) => Ink(
+    id: id,
+    docId: docId,
+    pageId: pageId,
+    samples: samples,
+    width: width,
+    color: color ?? this.color,
+  );
+
+  /// The same stroke moved by ([dx], [dy]).
+  Ink translated(double dx, double dy) {
+    final out = Float32List(samples.length);
+    for (var i = 0; i < samples.length; i += InkCodec.stride) {
+      out[i] = samples[i] + dx;
+      out[i + 1] = samples[i + 1] + dy;
+      out[i + 2] = samples[i + 2];
+    }
+    return Ink(
+      id: id,
+      docId: docId,
+      pageId: pageId,
+      samples: out,
+      width: width,
+      color: color,
+    );
+  }
 
   @override
   MarkType get type => MarkType.ink;

@@ -24,6 +24,8 @@ import 'links/link_tool.dart';
 import 'links/links_layer.dart';
 import 'marks/mark_layers.dart';
 import 'notes/note_tool.dart';
+import 'select/select_tool.dart';
+import 'select/selection.dart';
 import 'notes/notes_layer.dart';
 import 'marks/mark_tool.dart';
 
@@ -34,7 +36,14 @@ import 'marks/mark_tool.dart';
 /// reload the page positions into the canvas. The view (pan and zoom) is saved
 /// shortly after it stops changing, and restored on the next open.
 class DocumentSession
-    implements MarkSink, InkSink, EraseSink, NoteSink, NoteActions, LinkSink {
+    implements
+        MarkSink,
+        InkSink,
+        EraseSink,
+        NoteSink,
+        NoteActions,
+        LinkSink,
+        SelectSink {
   DocumentSession({
     required this.docId,
     required this.store,
@@ -263,6 +272,98 @@ class DocumentSession
   @override
   String newId() => ids.next();
 
+  // --- selection edits ---------------------------------------------------------
+
+  @override
+  void commitMove(List<Mark> finals) => _saveMarkEdits(finals, 'Move');
+
+  /// Changes the meaning of the selected highlights and/or the colour of the
+  /// selected ink, as one step.
+  void recolorMarks(Iterable<MarkRef> refs, {Meaning? meaning, int? inkColor}) {
+    final finals = <Mark>[];
+    for (final r in refs) {
+      if (r.kind == MarkKind.highlight && meaning != null) {
+        final h = highlights.byId(r.id);
+        if (h != null && h.meaning != meaning) {
+          final next = h.copyWith(meaning: meaning);
+          highlights.add(next);
+          finals.add(next);
+        }
+      } else if (r.kind == MarkKind.ink && inkColor != null) {
+        final s = ink.byId(r.id);
+        if (s != null && s.color != inkColor) {
+          final next = s.copyWith(color: inkColor);
+          ink.add(next);
+          finals.add(next);
+        }
+      }
+    }
+    _saveMarkEdits(finals, 'Recolor');
+  }
+
+  void _saveMarkEdits(List<Mark> finals, String label) {
+    if (finals.isEmpty) return;
+    _enqueue(() async {
+      try {
+        await bus.run(
+          Command.group(label, [
+            for (final m in finals)
+              await _factory.setFields(m.id, m.toFields()),
+          ]),
+        );
+      } catch (e, st) {
+        debugPrint('Saving $label failed: $e\n$st');
+        await _reloadMarks();
+      }
+    });
+  }
+
+  /// Deletes the given marks (and links to them) as one undoable step.
+  void deleteMarks(Iterable<MarkRef> refs) {
+    final ids = <String>{};
+    final linkIds = <String>{};
+    for (final r in refs) {
+      switch (r.kind) {
+        case MarkKind.highlight:
+          if (highlights.byId(r.id) == null) continue;
+          highlights.remove(r.id);
+          linkIds.addAll(links.forHighlight(r.id).map((l) => l.id));
+        case MarkKind.ink:
+          if (ink.byId(r.id) == null) continue;
+          ink.remove(r.id);
+        case MarkKind.note:
+          final n = notes.byId(r.id);
+          if (n == null) continue;
+          final wasDraft = notes.isDraft(r.id);
+          _noteTimers.remove(r.id)?.cancel();
+          notes.remove(r.id);
+          linkIds.addAll(links.forNote(r.id).map((l) => l.id));
+          if (wasDraft) continue;
+      }
+      ids.add(r.id);
+    }
+    for (final l in linkIds) {
+      links.remove(l);
+    }
+    if (ids.isEmpty && linkIds.isEmpty) return;
+    _enqueue(() async {
+      try {
+        await bus.run(
+          Command.group(
+            ids.length == 1 ? 'Delete mark' : 'Delete ${ids.length} marks',
+            [
+              for (final id in ids) await _factory.delete(id),
+              for (final l in linkIds) await _factory.delete(l),
+            ],
+          ),
+        );
+      } catch (e, st) {
+        debugPrint('Deleting marks failed: $e\n$st');
+        await _reloadMarks();
+      }
+    });
+  }
+
   // --- links -------------------------------------------------------------------
 
   @override
@@ -314,9 +415,19 @@ class DocumentSession
 
   final Map<String, Timer> _noteTimers = {};
 
+  /// Notes that were added "to a highlight" and are to be linked to it as soon
+  /// as they have text and are saved.
+  final Map<String, String> _pendingLinks = {};
+
   @override
-  String beginNote({String? pageId, required double x, required double y}) {
+  String beginNote({
+    String? pageId,
+    required double x,
+    required double y,
+    String? linkToHighlight,
+  }) {
     final id = ids.next();
+    if (linkToHighlight != null) _pendingLinks[id] = linkToHighlight;
     notes.add(
       Note(id: id, docId: docId, pageId: pageId, x: x, y: y),
       draft: true,
@@ -350,6 +461,8 @@ class DocumentSession
           await bus.run(
             _factory.create(EntityKind.mark, id, n.toFields(), label: 'Note'),
           );
+          final target = _pendingLinks.remove(id);
+          if (target != null) addLink(id, target);
         } else {
           await bus.run(
             await _factory.setFields(id, n.toFields(), label: 'Edit note'),
@@ -390,6 +503,7 @@ class DocumentSession
     if (n.text.trim().isEmpty) {
       _noteTimers.remove(id)?.cancel();
       if (notes.isDraft(id)) {
+        _pendingLinks.remove(id);
         notes.remove(id);
       } else {
         deleteNote(id);

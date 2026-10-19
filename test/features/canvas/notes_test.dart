@@ -21,7 +21,12 @@ ToolPoint pt(double x, double y) => ToolPoint(
 class FakeNoteSink implements NoteSink {
   final List<({String? pageId, double x, double y})> placed = [];
   @override
-  String beginNote({String? pageId, required double x, required double y}) {
+  String beginNote({
+    String? pageId,
+    required double x,
+    required double y,
+    String? linkToHighlight,
+  }) {
     placed.add((pageId: pageId, x: x, y: y));
     return 'n${placed.length}';
   }
