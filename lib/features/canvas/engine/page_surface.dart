@@ -1,20 +1,53 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show Listenable, immutable;
 import 'package:flutter/painting.dart'
     show TextPainter, TextSpan, TextStyle, TextDirection, FontWeight;
 
 import 'scene.dart';
 
-/// Paints the content of one page into its card. The cards painter draws the
+/// What a surface needs to know about the view while painting a frame.
+@immutable
+class PageViewInfo {
+  const PageViewInfo({
+    required this.zoom,
+    required this.viewportWorld,
+    this.devicePixelRatio = 1,
+  });
+
+  /// Current view zoom (screen logical px per world unit).
+  final double zoom;
+
+  /// The visible part of the world.
+  final Rect viewportWorld;
+  final double devicePixelRatio;
+}
+
+/// Paints the content of each page into its card. The cards painter draws the
 /// paper (shadow and white sheet); a surface draws what is on it.
 ///
-/// [PdfPageSurface] (2b) draws cached tiles; [SyntheticPageSurface] draws a
+/// A frame is `beginFrame`, then `paint` for every visible card, then
+/// `endFrame`, so a surface can plan its work (which tiles to fetch, what to
+/// evict) across all pages at once.
+///
+/// [PdfPageSurface] draws cached pdfium tiles; [SyntheticPageSurface] draws a
 /// numbered placeholder so the engine can be judged without any PDF.
 abstract interface class PageSurface {
+  /// Fires when the surface has new content (a tile arrived); the cards
+  /// painter repaints on it. Null for surfaces that never change by
+  /// themselves.
+  Listenable? get repaint;
+
+  void beginFrame();
+
   /// [canvas] is already in world space; draw inside [card.rect].
-  /// [zoom] is the current view zoom, for level-of-detail decisions.
-  void paint(Canvas canvas, Card card, double zoom);
+  void paint(Canvas canvas, Card card, PageViewInfo info);
+
+  void endFrame();
+
+  /// A one-line status for the performance overlay, if any.
+  String? get stats;
 }
 
 /// Numbered placeholder pages with line bars standing in for text.
@@ -30,9 +63,21 @@ class SyntheticPageSurface implements PageSurface {
   final Paint _bar = Paint();
 
   @override
-  void paint(Canvas canvas, Card card, double zoom) {
+  Listenable? get repaint => null;
+
+  @override
+  String? get stats => null;
+
+  @override
+  void beginFrame() {}
+
+  @override
+  void endFrame() {}
+
+  @override
+  void paint(Canvas canvas, Card card, PageViewInfo info) {
     final r = card.rect;
-    if (zoom >= 0.4) {
+    if (info.zoom >= 0.4) {
       _bar.color = barColor;
       final left = r.left + 56, width = r.width - 112;
       var row = 0;

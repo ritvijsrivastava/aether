@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/debug_flags.dart';
 import '../../app/providers.dart';
 import '../../domain/model/models.dart';
 import '../../ui/adaptive/window_class.dart';
@@ -129,6 +130,11 @@ class _EmptyLibrary extends StatelessWidget {
                   alignment: WrapAlignment.center,
                   spacing: AetherTokens.s2,
                   children: [
+                    if (kDebugPdfPath.isNotEmpty)
+                      TextButton(
+                        onPressed: () => context.push('/doc/pdf-debug'),
+                        child: const Text('Open the debug PDF'),
+                      ),
                     for (final n in const [30, 500])
                       TextButton(
                         onPressed: () => context.push('/doc/synthetic-$n'),

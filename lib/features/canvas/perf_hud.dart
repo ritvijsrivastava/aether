@@ -76,7 +76,10 @@ class FrameStatsCollector {
 /// A small readout of frame times and the display refresh rate, for judging
 /// smoothness on a real device. Off unless enabled in Settings.
 class PerfHud extends StatefulWidget {
-  const PerfHud({super.key});
+  const PerfHud({super.key, this.extra});
+
+  /// An optional second line (cache and render queue statistics).
+  final String? Function()? extra;
 
   @override
   State<PerfHud> createState() => _PerfHudState();
@@ -128,11 +131,17 @@ class _PerfHudState extends State<PerfHud> {
                 fontFeatures: const [FontFeature.tabularFigures()],
                 color: t.desk,
               ),
-              child: Text(
-                '${s.fps.toStringAsFixed(0)} fps of ${hz.toStringAsFixed(0)} Hz'
-                '  ·  build ${s.buildMs.toStringAsFixed(1)}'
-                '  raster ${s.rasterMs.toStringAsFixed(1)}'
-                '  worst ${s.worstMs.toStringAsFixed(0)} ms${bad ? ' !' : ''}',
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${s.fps.toStringAsFixed(0)} fps of ${hz.toStringAsFixed(0)} Hz'
+                    '  ·  build ${s.buildMs.toStringAsFixed(1)}'
+                    '  raster ${s.rasterMs.toStringAsFixed(1)}'
+                    '  worst ${s.worstMs.toStringAsFixed(0)} ms${bad ? ' !' : ''}',
+                  ),
+                  if (widget.extra?.call() case final line?) Text(line),
+                ],
               ),
             ),
           ),

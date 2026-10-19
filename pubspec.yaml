@@ -42,6 +42,7 @@ dependencies:
   collection: ^1.19.1
   meta: ^1.19.0
   path_drawing: ^1.0.1
+  pdfrx: ^2.6.6
 
 dev_dependencies:
   flutter_test:

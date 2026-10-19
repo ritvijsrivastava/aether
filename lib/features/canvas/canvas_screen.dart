@@ -1,8 +1,10 @@
+import 'dart:io' show Platform;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/debug_flags.dart';
 import '../../app/providers.dart';
 import '../../ui/adaptive/window_class.dart';
 import '../../ui/theme/tokens.dart';
@@ -15,6 +17,9 @@ import 'engine/canvas_controller.dart';
 import 'engine/page_surface.dart';
 import 'engine/scene.dart';
 import 'engine/view_state.dart';
+import 'pdf/pdf_page_surface.dart';
+import 'pdf/pdf_source.dart';
+import 'pdf/pdfium_tile_renderer.dart';
 import 'perf_hud.dart';
 import 'tool_palette.dart';
 import 'zoom_pill.dart';
@@ -37,6 +42,11 @@ Scene syntheticScene(int pages) {
   ]);
 }
 
+/// Debug document: opens the PDF at `--dart-define=AETHER_DEBUG_PDF=...`.
+const String debugPdfId = 'pdf-debug';
+
+enum _Load { ready, opening, failed }
+
 /// The document workspace. Layout adapts to the window class:
 /// compact = full-bleed canvas + bottom toolbar + Extract sheet;
 /// medium/expanded = tool rail + side Extract panel.
@@ -51,7 +61,12 @@ class CanvasScreen extends ConsumerStatefulWidget {
 class _CanvasScreenState extends ConsumerState<CanvasScreen>
     with SingleTickerProviderStateMixin {
   late final CanvasController _controller;
-  late final PageSurface _surface;
+  PageSurface _surface = SyntheticPageSurface();
+  OpenedPdf? _pdf;
+  _Load _load = _Load.ready;
+  String? _error;
+
+  bool get _isPdf => widget.docId == debugPdfId;
 
   @override
   void initState() {
@@ -60,11 +75,51 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _controller = CanvasController(
       scene: n == null ? const Scene([]) : syntheticScene(n),
     )..attach(this);
-    _surface = SyntheticPageSurface();
+    if (_isPdf) {
+      _load = _Load.opening;
+      _openPdf();
+    }
+  }
+
+  Future<void> _openPdf() async {
+    try {
+      if (kDebugPdfPath.isEmpty) {
+        throw PdfOpenException(
+          PdfOpenFailure.unreadable,
+          'AETHER_DEBUG_PDF is not set',
+        );
+      }
+      final pdf = await openPdfFile(kDebugPdfPath);
+      if (!mounted) {
+        await pdf.dispose();
+        return;
+      }
+      _pdf = pdf;
+      _surface = PdfPageSurface(
+        pageSizes: pdf.pageSizes,
+        renderer: PdfiumTileRenderer(pdf.document),
+        cacheBytes: tileCacheBytesFor(
+          isDesktop: Platform.isLinux,
+          shortestSideDp: MediaQuery.sizeOf(context).shortestSide,
+        ),
+      );
+      _controller.scene.value = Scene.column(pdf.pageSizes);
+      setState(() => _load = _Load.ready);
+    } on PdfOpenException catch (e) {
+      if (mounted) {
+        setState(() {
+          _load = _Load.failed;
+          _error = e.message;
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
+    final surface = _surface;
+    if (surface is PdfPageSurface) surface.dispose();
+    _pdf?.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -93,8 +148,13 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     final doc = docs.where((d) => d.id == widget.docId).firstOrNull;
     final n = syntheticCount(widget.docId);
     final title =
-        doc?.title ?? (n != null ? 'Synthetic test, $n pages' : 'Document');
-    final pages = doc?.pageCount ?? n ?? 0;
+        doc?.title ??
+        (n != null
+            ? 'Synthetic test, $n pages'
+            : _isPdf
+            ? kDebugPdfPath.split('/').last
+            : 'Document');
+    final pages = doc?.pageCount ?? n ?? _pdf?.pageSizes.length ?? 0;
 
     final canvasView = CanvasView(
       controller: _controller,
@@ -103,21 +163,27 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       fingerDraws: settings.fingerDraws,
       onReady: _controller.fitFirst,
     );
-    final canvas = settings.perfHud
-        ? Stack(
-            fit: StackFit.expand,
-            children: [
-              canvasView,
-              const Align(
-                alignment: Alignment.topCenter,
-                child: Padding(
-                  padding: EdgeInsets.only(top: AetherTokens.s2),
-                  child: PerfHud(),
-                ),
-              ),
-            ],
-          )
-        : canvasView;
+    final canvas = Stack(
+      fit: StackFit.expand,
+      children: [
+        canvasView,
+        if (settings.perfHud)
+          Align(
+            alignment: Alignment.topCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(top: AetherTokens.s2),
+              child: PerfHud(extra: () => _surface.stats),
+            ),
+          ),
+        if (_load != _Load.ready)
+          Center(
+            child: _StatusCard(
+              opening: _load == _Load.opening,
+              message: _error,
+            ),
+          ),
+      ],
+    );
 
     return Scaffold(
       body: Column(
@@ -140,6 +206,36 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Shown over the canvas while a document opens, or if it cannot be opened.
+class _StatusCard extends StatelessWidget {
+  const _StatusCard({required this.opening, this.message});
+  final bool opening;
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return PanelSurface(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 320),
+        child: Text(
+          opening
+              ? 'Opening…'
+              : (message ?? 'This document could not be opened.'),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: 'Figtree',
+            fontSize: 14,
+            color: t.ink,
+            height: 1.4,
+          ),
+        ),
       ),
     );
   }

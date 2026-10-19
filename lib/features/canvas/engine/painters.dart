@@ -87,12 +87,14 @@ class CardsPainter extends CustomPainter {
     required this.scene,
     required this.surface,
     required this.tokens,
-  }) : super(repaint: Listenable.merge([view, scene]));
+    this.devicePixelRatio = 1,
+  }) : super(repaint: Listenable.merge([view, scene, ?surface.repaint]));
 
   final ValueListenable<ViewState> view;
   final ValueListenable<Scene> scene;
   final PageSurface surface;
   final AetherTokens tokens;
+  final double devicePixelRatio;
 
   final Paint _paper = Paint();
   final Paint _shadowNear = Paint();
@@ -101,7 +103,14 @@ class CardsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final v = view.value;
-    final visible = scene.value.visible(v.worldRect(size));
+    final world = v.worldRect(size);
+    final visible = scene.value.visible(world).toList();
+    final info = PageViewInfo(
+      zoom: v.zoom,
+      viewportWorld: world,
+      devicePixelRatio: devicePixelRatio,
+    );
+    surface.beginFrame();
     canvas.save();
     canvas.translate(v.x, v.y);
     canvas.scale(v.zoom);
@@ -129,10 +138,11 @@ class CardsPainter extends CustomPainter {
       canvas.drawRRect(rr, _paper);
       canvas.save();
       canvas.clipRRect(rr);
-      surface.paint(canvas, c, v.zoom);
+      surface.paint(canvas, c, info);
       canvas.restore();
     }
     canvas.restore();
+    surface.endFrame();
   }
 
   @override
@@ -140,7 +150,8 @@ class CardsPainter extends CustomPainter {
       old.tokens != tokens ||
       old.surface != surface ||
       old.view != view ||
-      old.scene != scene;
+      old.scene != scene ||
+      old.devicePixelRatio != devicePixelRatio;
 }
 
 /// Drag handles in screen space, so they keep a constant size.
