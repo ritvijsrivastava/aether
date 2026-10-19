@@ -560,4 +560,141 @@ void main() {
       expect(changes, 2);
     });
   });
+
+  group('ink', () {
+    Float32List line([double y = 100]) => Float32List.fromList([
+      10, y, 0.4, //
+      60, y + 5, 0.6,
+      110, y, 0.5,
+    ]);
+
+    Future<List<EntityState>> storedInk() async => [
+      for (final e in await store.entities(kind: EntityKind.mark, docId: docId))
+        if (e.field<String>(F.type) == 'ink') e,
+    ];
+
+    Future<DocumentSession> opened() async {
+      final s = open();
+      await s.load();
+      return s;
+    }
+
+    test('a stroke shows at once and is saved behind it', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first;
+      final id = s.addInk(
+        pageId: page.id,
+        samples: line(),
+        width: 3,
+        color: 0xFFF4877E,
+      );
+      expect(s.ink.count, 1, reason: 'visible before it is written');
+      await s.settled();
+      final saved = (await storedInk()).single;
+      expect(saved.id, id);
+      final back = Mark.fromState(saved) as Ink;
+      expect(back.pageId, page.id);
+      expect(back.width, 3);
+      expect(back.color, 0xFFF4877E);
+      expect(back.samples, line());
+      expect(s.bus.undoLabel, 'Ink');
+    });
+
+    test(
+      'strokes come back when the document is reopened, free ones too',
+      () async {
+        final s = await opened();
+        final page = s.controller.scene.value.cards[1];
+        s.addInk(
+          pageId: page.id,
+          samples: line(),
+          width: 2.5,
+          color: 0xFF2B2723,
+        );
+        s.addInk(samples: line(300), width: 2.5, color: 0xFF2B2723);
+        await s.settled();
+        final again = await opened();
+        expect(again.ink.count, 2);
+        expect(again.ink.forPage(page.id).length, 1);
+        expect(again.ink.forPage(null).length, 1);
+        expect(again.ink.forPage(page.id).single.samples, line());
+      },
+    );
+
+    test('undo takes a stroke away, redo brings it back', () async {
+      final s = await opened();
+      s.addInk(
+        pageId: s.controller.scene.value.cards.first.id,
+        samples: line(),
+        width: 2,
+        color: 0xFF000000,
+      );
+      await s.settled();
+      await s.undo();
+      expect(s.ink.count, 0);
+      expect(await storedInk(), isEmpty);
+      await s.redo();
+      expect(s.ink.count, 1);
+      expect((await storedInk()).length, 1);
+    });
+
+    test('a failed save takes the stroke back off the page', () async {
+      final flaky = FlakyStore(store);
+      final controller = CanvasController(scene: const Scene([]))
+        ..viewport = const Size(1000, 800);
+      addTearDown(controller.dispose);
+      final s = DocumentSession(
+        docId: docId,
+        store: flaky,
+        db: db,
+        controller: controller,
+        clock: HlcClock('dev', now: () => 8000 + clockTick++),
+        ids: SequentialIdGenerator('k${clockTick++}'),
+      );
+      addTearDown(s.dispose);
+      await s.load();
+      flaky.failCommits = true;
+      s.addInk(
+        pageId: controller.scene.value.cards.first.id,
+        samples: line(),
+        width: 2,
+        color: 0xFF000000,
+      );
+      expect(s.ink.count, 1);
+      await s.settled();
+      expect(s.ink.count, 0);
+      expect(await storedInk(), isEmpty);
+    });
+
+    test('leaving right after a stroke still saves it', () async {
+      final s = await opened();
+      s.addInk(
+        pageId: s.controller.scene.value.cards.first.id,
+        samples: line(),
+        width: 2,
+        color: 0xFF000000,
+      );
+      await s.dispose();
+      expect((await storedInk()).length, 1);
+    });
+
+    test('highlights and ink live side by side and undo in order', () async {
+      final s = await opened();
+      final page = s.controller.scene.value.cards.first;
+      s.addInk(pageId: page.id, samples: line(), width: 2, color: 0xFF000000);
+      s.addHighlight(
+        pageId: page.id,
+        selection: TextSelector.between(layoutText(['the quick brown']), 0, 0)!,
+        meaning: Meaning.claim,
+      );
+      await s.settled();
+      expect(s.ink.count, 1);
+      expect(s.highlights.count, 1);
+      await s.undo();
+      expect(s.highlights.count, 0);
+      expect(s.ink.count, 1, reason: 'undo takes only the last action');
+      await s.undo();
+      expect(s.ink.count, 0);
+    });
+  });
 }

@@ -11,7 +11,9 @@ import 'package:aether/domain/commands/command_bus.dart';
 import 'package:aether/domain/model/models.dart';
 import 'package:aether/domain/ops/op.dart';
 import 'package:aether/domain/text/page_text.dart';
+import 'package:aether/features/canvas/canvas_ui_state.dart';
 import 'package:aether/features/canvas/canvas_view.dart';
+import 'package:aether/features/canvas/ink/ink_options.dart';
 import 'package:aether/features/canvas/engine/view_state.dart';
 import 'package:aether/features/canvas/pdf/pdf_source.dart';
 import 'package:aether/features/library/import/pdf_importer.dart';
@@ -261,5 +263,124 @@ void main() {
       final png = await image.toByteData(format: ui.ImageByteFormat.png);
       File('$shots/mark_flow.png').writeAsBytesSync(png!.buffer.asUint8List());
     });
+  }, skip: skip != null);
+
+  testWidgets('drawing with the Ink tool saves a stroke on the page', (
+    tester,
+  ) async {
+    final db = AetherDatabase(NativeDatabase.memory());
+    addTearDown(() => tester.runAsync(db.close));
+    final store = DriftOpStore(db);
+    final tmp = Directory.systemTemp.createTempSync('aether_inkflow_');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    late PdfStorage storage;
+    late String docId;
+    await tester.runAsync(() async {
+      storage = await PdfStorage.open(Directory('${tmp.path}/lib'));
+      var t = 1000;
+      final importer = PdfImporter(
+        store: store,
+        bus: CommandBus(
+          store: store,
+          clock: HlcClock('imp', now: () => t++),
+          ids: SequentialIdGenerator('b'),
+        ),
+        storage: storage,
+        inspector: const PdfiumInspector(),
+        db: db,
+        ids: SequentialIdGenerator('doc'),
+      );
+      docId = (await importer.import(const ImportRequest(_paper))).docId;
+    });
+    await pumpApp(
+      tester,
+      size: const Size(1280, 800),
+      db: db,
+      location: '/doc/$docId',
+      storage: storage,
+    );
+    await pumpUntil(tester, find.byType(CanvasView));
+    final c = tester.widget<CanvasView>(find.byType(CanvasView)).controller;
+    for (var i = 0; i < 400 && c.tools == null; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 25)),
+      );
+      await tester.pump(const Duration(milliseconds: 25));
+    }
+    await tester.pump(const Duration(milliseconds: 500));
+
+    await tester.tap(find.text('Ink'));
+    await tester.pump();
+    expect(find.byType(InkOptions), findsOneWidget, reason: 'options appear');
+    await tester.tap(find.byTooltip('Coral'));
+    await tester.pump();
+
+    final origin = tester.getTopLeft(find.byType(CanvasView));
+    final from = origin + const Offset(500, 300);
+    // A stylus stroke with pressure, 12 samples.
+    const id = 7;
+    await tester.sendEventToBinding(
+      PointerDownEvent(
+        kind: PointerDeviceKind.stylus,
+        pointer: id,
+        position: from,
+        buttons: kPrimaryButton,
+        pressure: 0.3,
+        pressureMin: 0,
+        pressureMax: 1,
+      ),
+    );
+    for (var i = 1; i <= 12; i++) {
+      await tester.sendEventToBinding(
+        PointerMoveEvent(
+          kind: PointerDeviceKind.stylus,
+          pointer: id,
+          position: from + Offset(i * 12.0, (i % 3) * 4.0),
+          buttons: kPrimaryButton,
+          pressure: 0.3 + i * 0.03,
+          pressureMin: 0,
+          pressureMax: 1,
+        ),
+      );
+    }
+    await tester.sendEventToBinding(
+      PointerUpEvent(
+        kind: PointerDeviceKind.stylus,
+        pointer: id,
+        position: from + const Offset(160, 0),
+        pressureMin: 0,
+        pressureMax: 1,
+      ),
+    );
+    await tester.pump();
+
+    List<Ink> saved = [];
+    for (var i = 0; i < 200 && saved.isEmpty; i++) {
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+        saved = [
+          for (final e in await store.entities(
+            kind: EntityKind.mark,
+            docId: docId,
+          ))
+            if (Mark.fromState(e) case final Ink i) i,
+        ];
+      });
+    }
+    expect(saved, hasLength(1));
+    expect(saved.single.pageId, c.scene.value.cards.first.id);
+    expect(saved.single.color, InkPalette.colors[1]);
+    expect(saved.single.pointCount, greaterThanOrEqualTo(3));
+    expect(
+      saved.single.samples[2],
+      closeTo(0.3, 1e-4),
+      reason: 'the first sample keeps its pressure',
+    );
+    expect(find.text('Highlight'), findsNothing);
+    expect(
+      find.text('0 items'),
+      findsOneWidget,
+      reason: 'ink is not in Extract',
+    );
   }, skip: skip != null);
 }

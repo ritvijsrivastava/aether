@@ -11,7 +11,8 @@ import 'package:aether/features/canvas/input/tool_gestures.dart';
 import 'package:aether/features/canvas/marks/mark_tool.dart';
 import 'package:aether/ui/theme/theme.dart';
 import 'package:aether/ui/theme/tokens.dart';
-import 'package:flutter/gestures.dart' show kPrimaryButton, kPrimaryStylusButton;
+import 'package:flutter/gestures.dart'
+    show kPrimaryButton, kPrimaryStylusButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter/services.dart';

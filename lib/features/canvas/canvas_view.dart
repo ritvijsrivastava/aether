@@ -7,6 +7,7 @@ import 'canvas_ui_state.dart';
 import 'engine/canvas_controller.dart';
 import 'engine/page_surface.dart';
 import 'engine/painters.dart';
+import 'ink/ink_layer.dart';
 import 'marks/flash.dart';
 import 'marks/mark_layers.dart';
 import 'input/input_arbiter.dart';
@@ -26,6 +27,8 @@ class CanvasView extends StatefulWidget {
     this.highlights,
     this.live,
     this.flash,
+    this.ink,
+    this.liveInk,
     this.pen = const PenConfig(),
     this.fingerDraws = false,
     this.onReady,
@@ -45,6 +48,11 @@ class CanvasView extends StatefulWidget {
 
   /// The outline shown on a highlight after jumping to it from Extract.
   final FlashController? flash;
+
+  /// Committed ink and the stroke being drawn; null in the synthetic test
+  /// documents.
+  final InkLayer? ink;
+  final LiveInk? liveInk;
 
   /// Pen button bits and pressure curve for this device.
   final PenConfig pen;
@@ -290,6 +298,26 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
                             view: c.view,
                             scene: c.scene,
                             live: widget.live!,
+                          ),
+                        ),
+                      ),
+                    if (widget.ink != null)
+                      RepaintBoundary(
+                        child: CustomPaint(
+                          painter: InkPainter(
+                            view: c.view,
+                            scene: c.scene,
+                            ink: widget.ink!,
+                          ),
+                        ),
+                      ),
+                    if (widget.liveInk != null)
+                      RepaintBoundary(
+                        child: CustomPaint(
+                          painter: LiveInkPainter(
+                            view: c.view,
+                            scene: c.scene,
+                            live: widget.liveInk!,
                           ),
                         ),
                       ),

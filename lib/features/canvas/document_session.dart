@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -16,6 +17,8 @@ import '../../domain/text/text_selection.dart';
 import 'engine/canvas_controller.dart';
 import 'engine/scene.dart';
 import 'engine/view_state.dart';
+import 'ink/ink_layer.dart';
+import 'ink/ink_tool.dart';
 import 'marks/mark_layers.dart';
 import 'marks/mark_tool.dart';
 
@@ -25,7 +28,7 @@ import 'marks/mark_tool.dart';
 /// Card moves made by dragging are saved as undoable commands; undo and redo
 /// reload the page positions into the canvas. The view (pan and zoom) is saved
 /// shortly after it stops changing, and restored on the next open.
-class DocumentSession implements MarkSink {
+class DocumentSession implements MarkSink, InkSink {
   DocumentSession({
     required this.docId,
     required this.store,
@@ -56,6 +59,9 @@ class DocumentSession implements MarkSink {
   /// Extract list listen to it.
   final HighlightLayer highlights = HighlightLayer();
 
+  /// The document's ink strokes.
+  final InkLayer ink = InkLayer();
+
   Future<void> _tail = Future.value();
   Timer? _viewTimer;
   bool _viewDirty = false;
@@ -76,11 +82,16 @@ class DocumentSession implements MarkSink {
   Future<void> _reloadMarks() async {
     final entities = await store.entities(kind: EntityKind.mark, docId: docId);
     final all = <Highlight>[];
+    final strokes = <Ink>[];
     for (final e in entities) {
       final m = Mark.fromState(e);
       if (m is Highlight) all.add(m);
+      if (m is Ink) strokes.add(m);
     }
-    if (!_disposed) highlights.replaceAll(all);
+    if (!_disposed) {
+      highlights.replaceAll(all);
+      ink.replaceAll(strokes);
+    }
   }
 
   Future<Scene> _sceneFromStore() async {
@@ -189,6 +200,37 @@ class DocumentSession implements MarkSink {
       } catch (e, st) {
         debugPrint('Saving highlight $id failed: $e\n$st');
         highlights.remove(id);
+      }
+    });
+    return id;
+  }
+
+  /// Shows the stroke at once and saves it behind the queue; one undo step.
+  @override
+  String addInk({
+    String? pageId,
+    required Float32List samples,
+    required double width,
+    required int color,
+  }) {
+    final id = ids.next();
+    final stroke = Ink(
+      id: id,
+      docId: docId,
+      pageId: pageId,
+      samples: samples,
+      width: width,
+      color: color,
+    );
+    ink.add(stroke);
+    _enqueue(() async {
+      try {
+        await bus.run(
+          _factory.create(EntityKind.mark, id, stroke.toFields(), label: 'Ink'),
+        );
+      } catch (e, st) {
+        debugPrint('Saving ink $id failed: $e\n$st');
+        ink.remove(id);
       }
     });
     return id;

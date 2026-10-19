@@ -21,6 +21,9 @@ import 'canvas_top_bar.dart';
 import 'canvas_ui_state.dart';
 import 'canvas_view.dart';
 import 'document_session.dart';
+import 'ink/ink_layer.dart';
+import 'ink/ink_options.dart';
+import 'ink/ink_tool.dart';
 import 'input/pen_config.dart';
 import 'input/tool_gestures.dart';
 import 'marks/flash.dart';
@@ -76,6 +79,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   DocumentSession? _session;
   final ValueNotifier<LiveMark?> _live = ValueNotifier(null);
   MarkToolController? _markTool;
+  final LiveInk _liveInk = LiveInk();
   PageTextService? _textService;
   late final FlashController _flash = FlashController(this);
   ExtractController? _extract;
@@ -199,7 +203,19 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       onDelete: (h) => session.deleteHighlight(h.id),
       onUndo: session.undo,
     );
-    _controller.tools = ToolRouter({CanvasTool.mark: MarkHandler(tool)});
+    final inkTool = InkToolController(
+      view: _controller.view,
+      scene: _controller.scene,
+      live: _liveInk,
+      widthDp: () => ref.read(canvasUiProvider).inkWidth,
+      color: () => ref.read(canvasUiProvider).inkColor,
+      sink: session,
+      predict: defaultTargetPlatform == TargetPlatform.android,
+    );
+    _controller.tools = ToolRouter({
+      CanvasTool.mark: MarkHandler(tool),
+      CanvasTool.ink: inkTool,
+    });
     _controller.view.addListener(_warmText);
     _history = session.bus.changes.listen((_) {
       if (mounted) setState(() {});
@@ -279,6 +295,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _controller.view.removeListener(_warmText);
     _controller.tools = null;
     _markTool?.dispose();
+    _liveInk.dispose();
     _live.dispose();
     _flash.dispose();
     _copiedTimer?.cancel();
@@ -327,6 +344,8 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       highlights: session?.highlights,
       live: _live,
       flash: _flash,
+      ink: session?.ink,
+      liveInk: _liveInk,
       pen: PenConfig.forPlatform(defaultTargetPlatform),
       fingerDraws: settings.fingerDraws,
       onReady: _onReady,
@@ -348,6 +367,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
                   _surface.stats,
                   _textService?.stats,
                   _markTool?.stats,
+                  _liveInk.stats,
                 ].whereType<String>().join('\n'),
               ),
             ),
@@ -482,6 +502,14 @@ class _WideBody extends ConsumerWidget {
               child: ToolRail(),
             ),
           ),
+          if (ui.tool == CanvasTool.ink)
+            Positioned(
+              // Beside the rail, level with the Ink button.
+              left: leftHanded ? null : 96,
+              right: leftHanded ? 96 : null,
+              top: AetherTokens.s4 + 2 * 60,
+              child: const InkOptions(),
+            ),
           Positioned(
             right: leftHanded ? null : AetherTokens.s4,
             left: leftHanded ? AetherTokens.s4 : null,
@@ -566,6 +594,13 @@ class _CompactBody extends ConsumerWidget {
                   right: 0,
                   bottom: 88,
                   child: Center(child: MeaningStrip()),
+                ),
+              if (ui.tool == CanvasTool.ink)
+                const Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 88,
+                  child: Center(child: InkOptions(sliderWidth: 80)),
                 ),
               _ExtractSheet(open: open, source: extract),
             ],

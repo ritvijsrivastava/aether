@@ -41,10 +41,26 @@ enum ExtractFilter {
   final String label;
 }
 
+/// The pen colours: Warm Ink first (the default), then the three meaning
+/// colours, which are user-mark colours and so allowed on ink.
+abstract final class InkPalette {
+  static const int warmInk = 0xFF2B2723;
+  static const List<int> colors = [
+    warmInk,
+    0xFFF4877E, // coral
+    0xFFF2C94C, // amber
+    0xFF6FB1EE, // blue
+  ];
+  static const List<String> names = ['Warm ink', 'Coral', 'Amber', 'Blue'];
+  static const double minWidth = 1, maxWidth = 8, defaultWidth = 2.5;
+}
+
 class CanvasUiState {
   const CanvasUiState({
     this.tool = CanvasTool.mark,
     this.meaning = Meaning.claim,
+    this.inkWidth = InkPalette.defaultWidth,
+    this.inkColor = InkPalette.warmInk,
     this.extractOpen,
     this.extractWidth = 340,
     this.filter = ExtractFilter.all,
@@ -52,6 +68,10 @@ class CanvasUiState {
 
   final CanvasTool tool;
   final Meaning meaning;
+
+  /// Pen size in dp (1 to 8) and colour (ARGB) for the Ink tool.
+  final double inkWidth;
+  final int inkColor;
 
   /// null means "use the layout's default" (open in landscape, closed in portrait).
   final bool? extractOpen;
@@ -61,12 +81,16 @@ class CanvasUiState {
   CanvasUiState copyWith({
     CanvasTool? tool,
     Meaning? meaning,
+    double? inkWidth,
+    int? inkColor,
     bool? extractOpen,
     double? extractWidth,
     ExtractFilter? filter,
   }) => CanvasUiState(
     tool: tool ?? this.tool,
     meaning: meaning ?? this.meaning,
+    inkWidth: inkWidth ?? this.inkWidth,
+    inkColor: inkColor ?? this.inkColor,
     extractOpen: extractOpen ?? this.extractOpen,
     extractWidth: extractWidth ?? this.extractWidth,
     filter: filter ?? this.filter,
@@ -84,6 +108,12 @@ class CanvasUiNotifier extends Notifier<CanvasUiState> {
   /// Picking a meaning also switches to Mark (prototype behaviour).
   void setMeaning(Meaning m) =>
       state = state.copyWith(meaning: m, tool: CanvasTool.mark);
+
+  void setInkWidth(double w) => state = state.copyWith(
+    inkWidth: w.clamp(InkPalette.minWidth, InkPalette.maxWidth),
+  );
+
+  void setInkColor(int argb) => state = state.copyWith(inkColor: argb);
 
   void setExtractOpen(bool v) => state = state.copyWith(extractOpen: v);
 
