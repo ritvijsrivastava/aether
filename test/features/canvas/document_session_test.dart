@@ -1055,6 +1055,101 @@ void main() {
       },
     );
 
+    group('note order', () {
+      Future<(DocumentSession, List<String>)> three() async {
+        final s = await opened();
+        final ids = <String>[];
+        for (var i = 0; i < 3; i++) {
+          final id = s.beginNote(x: 10.0 * i, y: 5);
+          s.editNoteText(id, 'n$i');
+          await s.saveNote(id);
+          ids.add(id);
+        }
+        await s.settled();
+        return (s, ids);
+      }
+
+      int z(DocumentSession s, String id) => s.notes.byId(id)!.z;
+
+      test(
+        'bring forward puts a note above all the others, saved and undoable',
+        () async {
+          final (s, ids) = await three();
+          s.reorderNotes([MarkRef(MarkKind.note, ids[0])], front: true);
+          expect(z(s, ids[0]), greaterThan(z(s, ids[1])));
+          expect(z(s, ids[0]), greaterThan(z(s, ids[2])));
+          await s.settled();
+          final saved = {for (final n in await storedNotes()) n.id: n.z};
+          expect(saved[ids[0]], z(s, ids[0]));
+          expect(s.bus.undoLabel, 'Bring forward');
+          await s.undo();
+          expect(z(s, ids[0]), 0);
+          await s.redo();
+          expect(z(s, ids[0]), greaterThan(0));
+        },
+      );
+
+      test('send back puts it below all the others', () async {
+        final (s, ids) = await three();
+        s.reorderNotes([MarkRef(MarkKind.note, ids[2])], front: false);
+        expect(z(s, ids[2]), lessThan(z(s, ids[0])));
+        expect(z(s, ids[2]), lessThan(z(s, ids[1])));
+        await s.settled();
+        expect(s.bus.undoLabel, 'Send back');
+      });
+
+      test('several at once keep their order among themselves', () async {
+        final (s, ids) = await three();
+        s.reorderNotes([MarkRef(MarkKind.note, ids[1])], front: true);
+        s.reorderNotes([MarkRef(MarkKind.note, ids[0])], front: true);
+        // ids[1] is behind ids[0] now. Send both to the back together.
+        final before = z(s, ids[1]) < z(s, ids[0]);
+        s.reorderNotes([
+          MarkRef(MarkKind.note, ids[0]),
+          MarkRef(MarkKind.note, ids[1]),
+        ], front: false);
+        expect(before, isTrue);
+        expect(z(s, ids[1]), lessThan(z(s, ids[0])));
+        expect(z(s, ids[0]), lessThan(z(s, ids[2])));
+      });
+
+      test('already in front is no change and no undo step', () async {
+        final (s, ids) = await three();
+        s.reorderNotes([MarkRef(MarkKind.note, ids[0])], front: true);
+        await s.settled();
+        final depth = s.bus.undoDepth;
+        s.reorderNotes([MarkRef(MarkKind.note, ids[0])], front: true);
+        await s.settled();
+        expect(s.bus.undoDepth, depth);
+      });
+
+      test('a lone note, drafts and other marks are left alone', () async {
+        final s = await opened();
+        final only = s.beginNote(x: 1, y: 1);
+        s.editNoteText(only, 'x');
+        await s.saveNote(only);
+        final depth = s.bus.undoDepth;
+        s.reorderNotes([MarkRef(MarkKind.note, only)], front: true);
+        s.reorderNotes([const MarkRef(MarkKind.ink, 'nope')], front: true);
+        final draft = s.beginNote(x: 9, y: 9);
+        s.reorderNotes([MarkRef(MarkKind.note, draft)], front: true);
+        await s.settled();
+        expect(s.bus.undoDepth, depth);
+        expect(s.notes.byId(draft)!.z, 0);
+      });
+
+      test('the order survives a reopen', () async {
+        final (s, ids) = await three();
+        s.reorderNotes([MarkRef(MarkKind.note, ids[0])], front: true);
+        await s.settled();
+        final again = await opened();
+        expect(
+          again.notes.byId(ids[0])!.z,
+          greaterThan(again.notes.byId(ids[1])!.z),
+        );
+      });
+    });
+
     test('an empty note that loses focus vanishes without a trace', () async {
       final s = await opened();
       final id = s.beginNote(x: 5, y: 5);

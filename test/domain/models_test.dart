@@ -213,4 +213,23 @@ void main() {
     final back = Mark.fromState(stateOf(EntityKind.mark, 'h', h.toFields()));
     expect((back as Highlight).color, 0xFF12AB34);
   });
+
+  test('a note saved before notes had an order is level (z 0)', () {
+    final fields = const Note(
+      id: 'n',
+      docId: 'd',
+      x: 1,
+      y: 2,
+      text: 't',
+    ).toFields()..remove(F.z);
+    final back = Mark.fromState(stateOf(EntityKind.mark, 'n', fields)) as Note;
+    expect(back.z, 0);
+  });
+
+  test('a note keeps its z through a round trip', () {
+    const n = Note(id: 'n', docId: 'd', x: 1, y: 2, text: 't', z: -3);
+    final back =
+        Mark.fromState(stateOf(EntityKind.mark, 'n', n.toFields())) as Note;
+    expect(back.z, -3);
+  });
 }

@@ -54,6 +54,7 @@ abstract final class F {
   static const x = 'x';
   static const y = 'y';
   static const text = 'text';
+  static const z = 'z';
   static const fromNoteId = 'fromNoteId';
   static const toHighlightId = 'toHighlightId';
   static const bx0 = 'bx0';
@@ -198,6 +199,7 @@ sealed class Mark {
           width: (s.field<num>(F.width) ?? Note.defaultWidth).toDouble(),
           height: (s.field<num>(F.height) ?? Note.defaultHeight).toDouble(),
           text: s.field<String>(F.text) ?? '',
+          z: (s.field<num>(F.z) ?? 0).toInt(),
         );
     }
   }
@@ -347,6 +349,7 @@ class Note extends Mark {
     this.width = defaultWidth,
     this.height = defaultHeight,
     this.text = '',
+    this.z = 0,
   });
 
   static const double defaultWidth = 220;
@@ -360,12 +363,16 @@ class Note extends Mark {
   final double width, height;
   final String text;
 
+  /// Stacking order among notes: higher is in front.
+  final int z;
+
   Note copyWith({
     double? x,
     double? y,
     double? width,
     double? height,
     String? text,
+    int? z,
   }) => Note(
     id: id,
     docId: docId,
@@ -375,6 +382,7 @@ class Note extends Mark {
     width: width ?? this.width,
     height: height ?? this.height,
     text: text ?? this.text,
+    z: z ?? this.z,
   );
 
   @override
@@ -391,6 +399,7 @@ class Note extends Mark {
     F.width: width,
     F.height: height,
     F.text: text,
+    F.z: z,
   };
 }
 

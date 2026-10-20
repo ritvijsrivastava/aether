@@ -831,7 +831,12 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       lasso: _lasso,
       onContextMenu: session == null ? null : _showContextMenu,
       onTap: session == null ? null : _onCanvasTap,
-      onPointerDownOnCanvas: _hlFocus.clear,
+      onPointerDownOnCanvas: () {
+        _hlFocus.clear();
+        // A note picked with the pen stays picked until something else is
+        // touched; the Select tool manages its own selection.
+        if (ui.tool != CanvasTool.select) _selection.clear();
+      },
       touchStats: _touchStats,
       onTool: _pickToolByKey,
       onEscape: () {
@@ -850,6 +855,10 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
                   notes: session.notes,
                   actions: session,
                   viewport: () => _controller.viewport,
+                  onSelect: (id) {
+                    _hlFocus.clear();
+                    _selection.set([MarkRef(MarkKind.note, id)]);
+                  },
                   interactive:
                       ui.tool == CanvasTool.pan ||
                       ui.tool == CanvasTool.mark ||
@@ -1304,6 +1313,14 @@ class _HighlightStripActions implements HighlightActions {
 class _SelectionActions implements SelectionActions {
   _SelectionActions(this.state);
   final _CanvasScreenState state;
+
+  @override
+  void bringForward() =>
+      state._session?.reorderNotes(state._selection.refs, front: true);
+
+  @override
+  void sendBack() =>
+      state._session?.reorderNotes(state._selection.refs, front: false);
 
   @override
   void recolorHighlight(int argb) {
