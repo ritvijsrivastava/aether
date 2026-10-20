@@ -124,6 +124,8 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
         ink: session.ink,
         eraser: _eraser,
         partial: () => ref.read(canvasUiProvider).erasePartial,
+        radiusFn: () =>
+            (ref.read(settingsProvider).value?.eraseWidth ?? 28.0) / 2,
         sink: session,
       ),
     });
@@ -415,7 +417,6 @@ class _WideBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final ui = ref.watch(canvasUiProvider);
     return Stack(
       children: [
         Positioned.fill(child: canvas),
@@ -425,21 +426,7 @@ class _WideBody extends ConsumerWidget {
           right: 0,
           child: Center(child: pill),
         ),
-        Positioned(
-          left: leftHanded ? null : AetherTokens.s3,
-          right: leftHanded ? AetherTokens.s3 : null,
-          top: AetherTokens.s3,
-          bottom: AetherTokens.s3,
-          child: const Align(alignment: Alignment.topCenter, child: ToolRail()),
-        ),
-        if (ui.tool.hasPanel)
-          Positioned(
-            // Beside the rail, level with its tool button.
-            left: leftHanded ? null : ToolRail.width + AetherTokens.s3 * 2,
-            right: leftHanded ? ToolRail.width + AetherTokens.s3 * 2 : null,
-            top: ToolRail.panelTop(ui.tool),
-            child: ToolPanel(onClear: onClear),
-          ),
+        Positioned.fill(child: MovableToolRail(onClear: onClear)),
         Positioned(
           right: leftHanded ? null : AetherTokens.s3,
           left: leftHanded ? AetherTokens.s3 : null,

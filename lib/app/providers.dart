@@ -97,6 +97,7 @@ class AppSettings {
     this.themeMode = ThemeMode.system,
     this.leftHanded = false,
     this.perfHud = false,
+    this.eraseWidth = 28.0,
   });
 
   final ThemeMode themeMode;
@@ -107,14 +108,19 @@ class AppSettings {
   /// Shows frame times over the canvas (for judging smoothness on a device).
   final bool perfHud;
 
+  /// The eraser's tip diameter in dp (its radius is half of this).
+  final double eraseWidth;
+
   AppSettings copyWith({
     ThemeMode? themeMode,
     bool? leftHanded,
     bool? perfHud,
+    double? eraseWidth,
   }) => AppSettings(
     themeMode: themeMode ?? this.themeMode,
     leftHanded: leftHanded ?? this.leftHanded,
     perfHud: perfHud ?? this.perfHud,
+    eraseWidth: eraseWidth ?? this.eraseWidth,
   );
 }
 
@@ -122,6 +128,7 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
   static const _theme = 'themeMode';
   static const _left = 'leftHanded';
   static const _hud = 'perfHud';
+  static const _eraseWidth = 'eraseWidth';
 
   @override
   Future<AppSettings> build() async {
@@ -134,6 +141,7 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
       ),
       leftHanded: await db.setting(_left) == '1',
       perfHud: await db.setting(_hud) == '1',
+      eraseWidth: double.tryParse(await db.setting(_eraseWidth) ?? '') ?? 28.0,
     );
   }
 
@@ -152,6 +160,11 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
   Future<void> setLeftHanded(bool v) async {
     state = AsyncData(_cur.copyWith(leftHanded: v));
     await ref.read(databaseProvider).putSetting(_left, v ? '1' : '0');
+  }
+
+  Future<void> setEraseWidth(double w) async {
+    state = AsyncData(_cur.copyWith(eraseWidth: w));
+    await ref.read(databaseProvider).putSetting(_eraseWidth, '$w');
   }
 }
 

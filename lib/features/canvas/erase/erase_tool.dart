@@ -45,10 +45,11 @@ class EraseToolController implements ToolHandler {
     required this.ink,
     required this.eraser,
     required this.partial,
+    this.radiusFn,
     this.sink,
   });
 
-  /// The eraser's radius in screen dp (SPEC 5.7: 14 / zoom in page points).
+  /// The default eraser radius in screen dp (SPEC 5.7: 14 = 28 dp tip).
   static const double radiusDp = 14;
 
   final ValueListenable<ViewState> view;
@@ -57,6 +58,11 @@ class EraseToolController implements ToolHandler {
 
   /// Partial erase on or off, read when the wipe starts.
   final bool Function() partial;
+
+  /// The eraser's radius in screen dp, read when the wipe starts so a
+  /// thickness change mid-wipe cannot tear the ring.
+  double radiusNow() => radiusFn?.call() ?? radiusDp;
+  final double Function()? radiusFn;
 
   EraseSink? sink;
 
@@ -78,6 +84,7 @@ class EraseToolController implements ToolHandler {
     if (sink == null) return;
     _active = true;
     _partial = partial();
+    eraser.radiusPx = radiusNow();
     _removed.clear();
     _made.clear();
     _lastWorld = null;
@@ -130,7 +137,7 @@ class EraseToolController implements ToolHandler {
     final to = view.value.screenToWorld(screen);
     final from = _lastWorld ?? to;
     _lastWorld = to;
-    final r = radiusDp / zoom;
+    final r = radiusNow() / zoom;
     final dist = (to - from).distance;
     final steps = dist <= 0 ? 1 : (dist / (r / 2)).ceil();
     for (var i = 1; i <= steps; i++) {

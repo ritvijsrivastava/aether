@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
-import '../../../ui/theme/theme.dart';
 import '../../../ui/theme/tokens.dart';
 import '../../../ui/widgets/aether_icon.dart';
 

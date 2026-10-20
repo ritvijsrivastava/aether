@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../ui/theme/theme.dart';
 import '../../../ui/theme/tokens.dart';
 import '../../../ui/widgets/aether_icon.dart';
 import '../../../ui/widgets/color_disc.dart';
