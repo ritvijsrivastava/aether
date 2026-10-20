@@ -447,6 +447,169 @@ void main() {
       expect(s.highlights.count, 0);
     });
 
+    group('re-marking', () {
+      Future<(DocumentSession, String)> withPage() async {
+        final s = await opened();
+        return (s, s.controller.scene.value.cards.first.id);
+      }
+
+      String mark(DocumentSession s, String page, int a, int b, int color) =>
+          s.addHighlight(
+            pageId: page,
+            selection: pick(a, b),
+            color: color,
+            text: text,
+          );
+
+      test('the same words in the same colour make nothing new', () async {
+        final (s, page) = await withPage();
+        final touched = <String>[];
+        s.onHighlightTouched = (h) => touched.add(h.id);
+        final first = mark(s, page, 1, 2, Swatch.coral);
+        final again = mark(s, page, 1, 2, Swatch.coral);
+        await s.settled();
+        expect(again, first, reason: 'the existing one is returned');
+        expect(s.highlights.count, 1);
+        expect((await storedMarks()).length, 1);
+        expect(touched, [first, first], reason: 'and pointed at both times');
+        expect(s.bus.undoDepth, 1, reason: 'no undo step for nothing');
+      });
+
+      test(
+        'words inside a highlight of that colour are a duplicate too',
+        () async {
+          final (s, page) = await withPage();
+          final big = mark(s, page, 0, 5, Swatch.coral);
+          expect(mark(s, page, 2, 3, Swatch.coral), big);
+          expect(s.highlights.count, 1);
+        },
+      );
+
+      test(
+        'the same words in another colour recolour that highlight',
+        () async {
+          final (s, page) = await withPage();
+          final id = mark(s, page, 1, 2, Swatch.coral);
+          final again = mark(s, page, 1, 2, Swatch.blue);
+          await s.settled();
+          expect(again, id);
+          expect(s.highlights.count, 1);
+          expect(s.highlights.byId(id)!.color, Swatch.blue);
+          expect((await storedMarks()).single.field<num>(F.color), Swatch.blue);
+          await s.undo();
+          expect(s.highlights.byId(id)!.color, Swatch.coral);
+        },
+      );
+
+      test('different colours may overlap and both stay', () async {
+        final (s, page) = await withPage();
+        mark(s, page, 0, 2, Swatch.coral);
+        mark(s, page, 2, 4, Swatch.blue);
+        expect(s.highlights.count, 2);
+      });
+
+      test('overlapping highlights of one colour merge into one', () async {
+        final (s, page) = await withPage();
+        final a = mark(s, page, 0, 2, Swatch.coral);
+        final b = mark(s, page, 2, 4, Swatch.coral);
+        await s.settled();
+        expect(s.highlights.count, 1);
+        final m = s.highlights.all.single;
+        expect(m.id, isNot(a), reason: 'a new highlight replaced the old');
+        expect(m.id, b, reason: 'and is what the second mark returned');
+        expect(m.quote, 'the quick brown fox jumps');
+        expect(m.color, Swatch.coral);
+        expect((await storedMarks()).single.id, m.id);
+        // One undo puts the first one back as it was.
+        await s.undo();
+        expect(s.highlights.count, 1);
+        expect(s.highlights.byId(a)!.quote, 'the quick brown');
+      });
+
+      test('marking across several of one colour merges them all', () async {
+        final (s, page) = await withPage();
+        mark(s, page, 0, 0, Swatch.coral);
+        mark(s, page, 2, 2, Swatch.coral);
+        mark(s, page, 4, 4, Swatch.coral);
+        expect(s.highlights.count, 3);
+        mark(s, page, 0, 4, Swatch.coral);
+        expect(s.highlights.count, 1);
+        expect(s.highlights.all.single.quote, 'the quick brown fox jumps');
+      });
+
+      test('touching but not overlapping highlights stay separate', () async {
+        final (s, page) = await withPage();
+        mark(s, page, 0, 1, Swatch.coral);
+        mark(s, page, 2, 3, Swatch.coral);
+        expect(s.highlights.count, 2);
+      });
+
+      test('links follow a merge, once per note', () async {
+        final (s, page) = await withPage();
+        final a = mark(s, page, 0, 2, Swatch.coral);
+        final b = mark(s, page, 4, 5, Swatch.coral);
+        final note = s.beginNote(pageId: page, x: 300, y: 10);
+        s.editNoteText(note, 'a thought');
+        await s.saveNote(note);
+        s.addLink(note, a);
+        s.addLink(note, b);
+        await s.settled();
+        final merged = mark(s, page, 2, 4, Swatch.coral);
+        await s.settled();
+        expect(s.highlights.count, 1);
+        final ls = s.links.forHighlight(merged);
+        expect(ls, hasLength(1));
+        expect(ls.single.fromNoteId, note);
+        expect(s.links.all.length, 1);
+        await s.undo();
+        expect(s.links.all.length, 2);
+      });
+
+      test(
+        'a double tap on a re-found bigger highlight does not shrink it',
+        () async {
+          final (s, page) = await withPage();
+          final big = mark(s, page, 0, 5, Swatch.coral);
+          final word = mark(s, page, 1, 1, Swatch.coral);
+          expect(word, big, reason: 'the tap re-found the big one');
+          final r = s.replaceHighlight(
+            oldId: word,
+            pageId: page,
+            selection: TextSelector.sentenceAt(text, 1)!,
+            color: Swatch.coral,
+            text: text,
+          );
+          expect(s.highlights.count, 1);
+          expect(s.highlights.byId(r)!.quote, contains('over.'));
+          expect(s.highlights.byId(r)!.quote, startsWith('the quick'));
+        },
+      );
+
+      test('a failed merge puts everything back', () async {
+        final flaky = FlakyStore(store);
+        final controller = CanvasController(scene: const Scene([]))
+          ..viewport = const Size(1000, 800);
+        addTearDown(controller.dispose);
+        final s = DocumentSession(
+          docId: docId,
+          store: flaky,
+          db: db,
+          controller: controller,
+          clock: HlcClock('dev', now: () => 9000 + clockTick++),
+          ids: SequentialIdGenerator('f${clockTick++}'),
+        );
+        await s.load();
+        final page = s.controller.scene.value.cards.first.id;
+        final a = mark(s, page, 0, 2, Swatch.coral);
+        await s.settled();
+        flaky.failCommits = true;
+        mark(s, page, 2, 4, Swatch.coral);
+        await s.settled();
+        expect(s.highlights.count, 1);
+        expect(s.highlights.byId(a), isNotNull);
+      });
+    });
+
     test('deleting is undoable and survives a reopen', () async {
       final s = await opened();
       final page = s.controller.scene.value.cards.first;

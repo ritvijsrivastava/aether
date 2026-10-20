@@ -9,6 +9,7 @@ import '../../core/id/id_generator.dart';
 import '../../data/db/database.dart';
 import '../../domain/commands/command.dart';
 import '../../domain/commands/command_bus.dart';
+import '../../domain/marks/highlight_rules.dart';
 import '../../domain/model/models.dart';
 import '../../domain/ops/op.dart';
 import '../../domain/ops/op_store.dart';
@@ -207,9 +208,22 @@ class DocumentSession
     rects: s.rects,
   );
 
-  /// Shows the highlight at once and saves it behind the queue. If the save
-  /// fails the highlight is taken back off the page, never left looking
-  /// saved when it is not.
+  /// Called with a highlight the owner has just made or touched again (a
+  /// duplicate, a merge, a recolour): the screen shows its action strip.
+  void Function(Highlight)? onHighlightTouched;
+
+  void _touched(String id) {
+    final h = highlights.byId(id);
+    if (h != null) onHighlightTouched?.call(h);
+  }
+
+  /// Marks [selection]. Re-marking the same words in the same colour does
+  /// nothing new (the existing highlight is reported through
+  /// [onHighlightTouched]); the same words in another colour change that
+  /// highlight's colour; overlapping highlights of one colour merge into one.
+  ///
+  /// Shows the result at once and saves it behind the queue. If the save
+  /// fails it is taken back, never left looking saved when it is not.
   @override
   String addHighlight({
     required String pageId,
@@ -217,6 +231,32 @@ class DocumentSession
     required int color,
     PageText? text,
   }) {
+    final plan = planHighlight(highlights.forPage(pageId), selection, color);
+    switch (plan) {
+      case HighlightDuplicate(:final existing):
+        _touched(existing.id);
+        return existing.id;
+      case HighlightRecolor(:final existing):
+        recolorMarks([
+          MarkRef(MarkKind.highlight, existing.id),
+        ], highlightColor: color);
+        _touched(existing.id);
+        return existing.id;
+      case HighlightMerge(:final absorbed, :final start, :final end):
+        final union = text == null
+            ? null
+            : TextSelector.fromRange(text, start, end);
+        if (union != null) {
+          final id = ids.next();
+          _swapHighlights([
+            for (final h in absorbed) h.id,
+          ], _highlight(id, pageId, union, color, text));
+          _touched(id);
+          return id;
+        }
+      case HighlightAdd():
+        break;
+    }
     final id = ids.next();
     final h = _highlight(id, pageId, selection, color, text);
     highlights.add(h);
@@ -235,6 +275,7 @@ class DocumentSession
         highlights.remove(id);
       }
     });
+    _touched(id);
     return id;
   }
 
@@ -600,6 +641,10 @@ class DocumentSession
     });
   }
 
+  /// Replaces [oldId] with [selection] as one undoable step (a double tap
+  /// widening a word to its sentence). If [oldId] is not inside the new
+  /// selection (it was a larger highlight that the tap only re-found), the
+  /// selection is marked as a new highlight instead and nothing is lost.
   @override
   String replaceHighlight({
     required String oldId,
@@ -608,23 +653,60 @@ class DocumentSession
     required int color,
     PageText? text,
   }) {
-    final id = ids.next();
-    final h = _highlight(id, pageId, selection, color, text);
     final old = highlights.byId(oldId);
-    // Links follow the word to the sentence that replaces it.
-    final moved = links.forHighlight(oldId);
+    final inside =
+        old != null &&
+        old.startChar >= selection.start &&
+        old.endChar <= selection.end;
+    if (!inside) {
+      return addHighlight(
+        pageId: pageId,
+        selection: selection,
+        color: color,
+        text: text,
+      );
+    }
+    // Other highlights of this colour the sentence now covers merge in too.
+    final absorbed = [
+      oldId,
+      for (final h in highlights.forPage(pageId))
+        if (h.id != oldId &&
+            h.color == color &&
+            h.startChar >= 0 &&
+            h.startChar < selection.end &&
+            selection.start < h.endChar)
+          h.id,
+    ];
+    final id = ids.next();
+    _swapHighlights(absorbed, _highlight(id, pageId, selection, color, text));
+    _touched(id);
+    return id;
+  }
+
+  /// Replaces the highlights [oldIds] with [h] in one undo step. Links to
+  /// the old ones follow to [h] (once per note).
+  void _swapHighlights(List<String> oldIds, Highlight h) {
+    final id = h.id;
+    final olds = [
+      for (final o in oldIds)
+        if (highlights.byId(o) != null) highlights.byId(o)!,
+    ];
+    final moved = [for (final o in oldIds) ...links.forHighlight(o)];
+    final seen = <String>{};
     final repointed = [
       for (final l in moved)
-        Link(
-          id: ids.next(),
-          docId: docId,
-          fromNoteId: l.fromNoteId,
-          toHighlightId: id,
-        ),
+        if (seen.add(l.fromNoteId))
+          Link(
+            id: ids.next(),
+            docId: docId,
+            fromNoteId: l.fromNoteId,
+            toHighlightId: id,
+          ),
     ];
-    highlights
-      ..remove(oldId)
-      ..add(h);
+    for (final o in oldIds) {
+      highlights.remove(o);
+    }
+    highlights.add(h);
     for (final l in moved) {
       links.remove(l.id);
     }
@@ -635,7 +717,7 @@ class DocumentSession
       try {
         await bus.run(
           Command.group('Highlight', [
-            await _factory.delete(oldId),
+            for (final o in oldIds) await _factory.delete(o),
             for (final l in moved) await _factory.delete(l.id),
             _factory.create(EntityKind.mark, id, h.toFields()),
             for (final l in repointed)
@@ -643,9 +725,11 @@ class DocumentSession
           ]),
         );
       } catch (e, st) {
-        debugPrint('Replacing highlight $oldId failed: $e\n$st');
+        debugPrint('Replacing highlights $oldIds failed: $e\n$st');
         highlights.remove(id);
-        if (old != null) highlights.add(old);
+        for (final o in olds) {
+          highlights.add(o);
+        }
         for (final l in repointed) {
           links.remove(l.id);
         }
@@ -654,7 +738,6 @@ class DocumentSession
         }
       }
     });
-    return id;
   }
 
   /// Completes when every queued save has been written.
