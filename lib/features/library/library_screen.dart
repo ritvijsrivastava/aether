@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kDebugMode, kProfileMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -129,31 +128,17 @@ class _EmptyLibrary extends StatelessWidget {
               ),
               const SizedBox(height: AetherTokens.s4),
               Text(
-                'Nothing on the desk yet',
+                'No boards yet',
                 style: text.panelTitle,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: AetherTokens.s2),
               Text(
-                'Import a PDF to read it on an endless surface. Everything you '
-                'mark lands in Extract, quoted and ready to export.',
+                'A board is an endless dot grid. Tap New board, then draw with '
+                'the pen and pan or pinch with your fingers.',
                 style: text.body.copyWith(color: t.inkMuted),
                 textAlign: TextAlign.center,
               ),
-              if (kDebugMode || kProfileMode) ...[
-                const SizedBox(height: AetherTokens.s4),
-                Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: AetherTokens.s2,
-                  children: [
-                    for (final n in const [30, 500])
-                      TextButton(
-                        onPressed: () => context.push('/doc/synthetic-$n'),
-                        child: Text('Open $n-page test canvas (debug)'),
-                      ),
-                  ],
-                ),
-              ],
             ],
           ),
         ),

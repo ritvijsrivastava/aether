@@ -6,13 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import '../support/harness.dart';
 
 void main() {
-  testWidgets('empty library invites an import', (tester) async {
+  testWidgets('empty library invites a first board', (tester) async {
     await pumpApp(tester, size: const Size(360, 800));
-    expect(find.text('Nothing on the desk yet'), findsOneWidget);
-    expect(
-      find.textContaining('Everything you mark lands in Extract'),
-      findsOneWidget,
-    );
+    expect(find.text('No boards yet'), findsOneWidget);
+    expect(find.textContaining('Tap New board'), findsOneWidget);
   });
 
   testWidgets(
@@ -87,7 +84,7 @@ void main() {
       location: 'file:///sdcard/Android/data/x/files/paper.pdf',
     );
     await tester.pumpAndSettle();
-    expect(find.text('Nothing on the desk yet'), findsOneWidget);
+    expect(find.text('No boards yet'), findsOneWidget);
     expect(find.textContaining('Page Not Found'), findsNothing);
   });
 }

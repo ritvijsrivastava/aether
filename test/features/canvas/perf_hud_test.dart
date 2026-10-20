@@ -46,16 +46,12 @@ void main() {
   testWidgets('the overlay shows only when enabled in settings', (
     tester,
   ) async {
-    await pumpApp(
-      tester,
-      size: const Size(1280, 720),
-      location: '/doc/synthetic-30',
-    );
+    await pumpApp(tester, size: const Size(1280, 720), location: '/doc/board');
     expect(find.byType(PerfHud), findsNothing);
     await pumpApp(
       tester,
       size: const Size(1280, 720),
-      location: '/doc/synthetic-30',
+      location: '/doc/board',
       settings: const AppSettings(perfHud: true),
     );
     expect(find.byType(PerfHud), findsOneWidget);

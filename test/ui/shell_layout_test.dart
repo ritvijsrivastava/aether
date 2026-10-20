@@ -44,10 +44,7 @@ void main() {
       for (final scale in [1.0, 2.0]) {
         testWidgets('empty ${entry.key} x$scale', (tester) async {
           await pumpApp(tester, size: entry.value, textScale: scale);
-          expect(
-            find.textContaining('Nothing on the desk yet'),
-            findsOneWidget,
-          );
+          expect(find.textContaining('No boards yet'), findsOneWidget);
           expect(tester.takeException(), isNull);
         });
         testWidgets('with documents ${entry.key} x$scale', (tester) async {
