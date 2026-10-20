@@ -168,13 +168,14 @@ class CanvasUiNotifier extends Notifier<CanvasUiState> {
       setPanelCollapsed(t, !state.collapsedPanels.contains(t));
 
   void setPanelCollapsed(CanvasTool t, bool collapsed) {
-    if (collapsed) {
-      if (!t.hasPanel || !state.collapsedPanels.add(t)) return;
-    } else if (!state.collapsedPanels.remove(t)) {
-      return;
-    }
-    // The set was changed in place; copyWith alone would not notify.
-    state = state.copyWith(collapsedPanels: {...state.collapsedPanels});
+    if (!t.hasPanel || state.collapsedPanels.contains(t) == collapsed) return;
+    state = state.copyWith(
+      collapsedPanels: {
+        for (final c in state.collapsedPanels)
+          if (c != t) c,
+        if (collapsed) t,
+      },
+    );
   }
 
   /// A press landed on the canvas: with auto-hide on, the options of the tool
