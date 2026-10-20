@@ -44,6 +44,7 @@ import 'select/selection.dart';
 import 'select/selection_view.dart';
 import 'notes/note_tool.dart';
 import 'notes/notes_overlay.dart';
+import 'marks/highlight_actions.dart';
 import 'marks/mark_layers.dart';
 import 'marks/mark_tool.dart';
 import 'engine/canvas_controller.dart';
@@ -100,6 +101,8 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   final EraserState _eraser = EraserState();
   final LiveLink _liveLink = LiveLink();
   final SelectionState _selection = SelectionState();
+  final HighlightFocus _hlFocus = HighlightFocus();
+  late final HighlightActions _hlActions = _HighlightStripActions(this);
   final LiveLasso _lasso = LiveLasso();
   Listenable? _layerChanges;
   double _lastKeyboardInset = 0;
@@ -278,6 +281,8 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       ),
     });
     _controller.view.addListener(_warmText);
+    session.onHighlightTouched = (h) => _hlFocus.show(h.id);
+    _selection.addListener(_selectionToStrip);
     // Marks that go away (deleted, undone) leave the selection.
     _layerChanges = Listenable.merge([
       session.highlights,
@@ -525,27 +530,70 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     } else if (choice == 'delete') {
       _deleteSelection(session);
     } else if (choice == 'copy' && highlight != null) {
-      await Clipboard.setData(ClipboardData(text: highlight.quote));
-      if (!mounted) return;
-      ScaffoldMessenger.maybeOf(context)
-        ?..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('Copied the quote.')));
+      await _copyQuote(highlight);
     } else if (choice == 'note' && highlight != null) {
-      final card = _controller.scene.value.byId(highlight.pageId ?? '');
-      if (card == null) return;
-      // Beside the highlight's last line, in the page's margin.
-      final b = highlight.bounds;
-      session.beginNote(
-        pageId: card.id,
-        x: b.x1 + 24,
-        y: b.y0,
-        linkToHighlight: highlight.id,
-      );
+      _noteForHighlight(highlight);
     } else if (choice == 'note-here') {
       final card = hit.scene.cards.where((c) => c.rect.contains(world));
       final page = card.isEmpty ? null : card.last;
       final at = page == null ? world : world - page.rect.topLeft;
       session.beginNote(pageId: page?.id, x: at.dx, y: at.dy);
+    }
+  }
+
+  Future<void> _copyQuote(Highlight h) async {
+    await Clipboard.setData(ClipboardData(text: h.quote));
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('Copied the quote.')));
+  }
+
+  /// A new note beside the highlight, linked to it once it has words.
+  void _noteForHighlight(Highlight h) {
+    final session = _session;
+    final card = _controller.scene.value.byId(h.pageId ?? '');
+    if (session == null || card == null) return;
+    // Beside the highlight's last line, in the page's margin.
+    final b = h.bounds;
+    session.beginNote(
+      pageId: card.id,
+      x: b.x1 + 24,
+      y: b.y0,
+      linkToHighlight: h.id,
+    );
+  }
+
+  /// A single highlight selected (Select tool) gets the action strip too.
+  void _selectionToStrip() {
+    final s = _session;
+    if (s == null ||
+        _selection.count != 1 ||
+        ref.read(canvasUiProvider).tool != CanvasTool.select) {
+      return;
+    }
+    final r = _selection.refs.single;
+    if (r.kind == MarkKind.highlight && s.highlights.byId(r.id) != null) {
+      _hlFocus.show(r.id);
+    }
+  }
+
+  /// A tap with the Pan tool: a highlight under it gets the action strip,
+  /// anything else dismisses it.
+  void _onCanvasTap(Offset local) {
+    final session = _session;
+    if (session == null) return;
+    final v = _controller.view.value;
+    final hit = MarkHitTester(
+      scene: _controller.scene.value,
+      ink: session.ink,
+      highlights: session.highlights,
+      notes: session.notes,
+    ).markAt(v.screenToWorld(local), v.zoom);
+    if (hit != null && hit.kind == MarkKind.highlight) {
+      _hlFocus.show(hit.id);
+    } else {
+      _hlFocus.clear();
     }
   }
 
@@ -587,6 +635,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _liveLink.dispose();
     _layerChanges?.removeListener(_pruneSelection);
     _selection.dispose();
+    _hlFocus.dispose();
     _lasso.dispose();
     _live.dispose();
     _flash.dispose();
@@ -620,6 +669,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     ref.listen(canvasUiProvider.select((u) => u.tool), (_, tool) {
       if (tool != CanvasTool.link) _session?.links.select(null);
       if (tool != CanvasTool.select) _selection.clear();
+      _hlFocus.clear();
       if (tool == CanvasTool.mark) _warmText();
     });
     final settings = ref.watch(settingsProvider).value ?? const AppSettings();
@@ -658,8 +708,11 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       selection: _selection,
       lasso: _lasso,
       onContextMenu: session == null ? null : _showContextMenu,
+      onTap: session == null ? null : _onCanvasTap,
+      onPointerDownOnCanvas: _hlFocus.clear,
       onTool: (t) => ref.read(canvasUiProvider.notifier).setTool(t),
       onEscape: () {
+        _hlFocus.clear();
         _selection.clear();
         _session?.links.select(null);
       },
@@ -687,6 +740,14 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
                   highlights: session.highlights,
                   notes: session.notes,
                   actions: _SelectionActions(this),
+                  viewport: () => _controller.viewport,
+                ),
+                HighlightActionStrip(
+                  view: _controller.view,
+                  scene: _controller.scene,
+                  highlights: session.highlights,
+                  focus: _hlFocus,
+                  actions: _hlActions,
                   viewport: () => _controller.viewport,
                 ),
                 LinkRemoveOverlay(
@@ -1089,6 +1150,41 @@ class _ExtractSheetState extends State<_ExtractSheet> {
 }
 
 /// The selection pill's actions, run against the open document.
+class _HighlightStripActions implements HighlightActions {
+  _HighlightStripActions(this.state);
+  final _CanvasScreenState state;
+
+  @override
+  void addNote(Highlight h) {
+    state._hlFocus.clear();
+    state._noteForHighlight(h);
+  }
+
+  @override
+  void recolor(Highlight h, int color) => state._session?.recolorMarks([
+    MarkRef(MarkKind.highlight, h.id),
+  ], highlightColor: color);
+
+  @override
+  void copyQuote(Highlight h) => state._copyQuote(h);
+
+  @override
+  void delete(Highlight h) {
+    final session = state._session;
+    if (session == null) return;
+    state._hlFocus.clear();
+    session.deleteMarks([MarkRef(MarkKind.highlight, h.id)]);
+    ScaffoldMessenger.maybeOf(state.context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: const Text('Highlight deleted'),
+          action: SnackBarAction(label: 'Undo', onPressed: session.undo),
+        ),
+      );
+  }
+}
+
 class _SelectionActions implements SelectionActions {
   _SelectionActions(this.state);
   final _CanvasScreenState state;

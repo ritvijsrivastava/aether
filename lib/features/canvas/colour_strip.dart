@@ -15,15 +15,20 @@ class ColourStrip extends StatelessWidget {
     required this.colours,
     required this.onPick,
     required this.prefix,
+    this.axis = Axis.horizontal,
   });
 
   final ToolColours colours;
   final ValueChanged<int> onPick;
   final String prefix;
 
+  /// Vertical in the highlight action strip.
+  final Axis axis;
+
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Flex(
+      direction: axis,
       mainAxisSize: MainAxisSize.min,
       children: [
         for (final c in colours.recent)

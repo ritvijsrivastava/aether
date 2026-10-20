@@ -30,6 +30,8 @@ Future<CanvasController> pumpCanvas(
   VoidCallback? onEscape,
   VoidCallback? onDelete,
   ValueChanged<CanvasTool>? onTool,
+  ValueChanged<Offset>? onTap,
+  VoidCallback? onPointerDownOnCanvas,
 }) async {
   tester.view.physicalSize = _size;
   tester.view.devicePixelRatio = 1;
@@ -53,6 +55,8 @@ Future<CanvasController> pumpCanvas(
           onEscape: onEscape,
           onDelete: onDelete,
           onTool: onTool,
+          onTap: onTap,
+          onPointerDownOnCanvas: onPointerDownOnCanvas,
         ),
       ),
     ),
@@ -568,6 +572,87 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.delete);
       await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
       expect((escapes, deletes), (1, 2));
+    });
+  });
+
+  group('taps with the Pan tool', () {
+    testWidgets(
+      'a short press that does not move is a tap, for pen and finger',
+      (tester) async {
+        for (final kind in [
+          PointerDeviceKind.stylus,
+          PointerDeviceKind.touch,
+        ]) {
+          final taps = <Offset>[];
+          await pumpCanvas(tester, tool: CanvasTool.pan, onTap: taps.add);
+          final g = await tester.startGesture(
+            const Offset(400, 300),
+            kind: kind,
+          );
+          await g.up();
+          await tester.pump(const Duration(seconds: 1));
+          expect(taps, [const Offset(400, 300)], reason: '$kind');
+        }
+      },
+    );
+
+    testWidgets('a drag is not a tap', (tester) async {
+      final taps = <Offset>[];
+      await pumpCanvas(tester, tool: CanvasTool.pan, onTap: taps.add);
+      final g = await tester.startGesture(
+        const Offset(400, 300),
+        kind: PointerDeviceKind.stylus,
+      );
+      await g.moveBy(const Offset(40, 0));
+      await g.up();
+      await tester.pump(const Duration(seconds: 1));
+      expect(taps, isEmpty);
+    });
+
+    testWidgets('a long hold is not a tap', (tester) async {
+      final taps = <Offset>[];
+      await pumpCanvas(tester, tool: CanvasTool.pan, onTap: taps.add);
+      final g = await tester.startGesture(
+        const Offset(400, 300),
+        kind: PointerDeviceKind.stylus,
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      await g.up();
+      expect(taps, isEmpty);
+    });
+
+    testWidgets('only with the Pan tool', (tester) async {
+      final taps = <Offset>[];
+      await pumpCanvas(tester, tool: CanvasTool.mark, onTap: taps.add);
+      final g = await tester.startGesture(const Offset(400, 300));
+      await g.up();
+      await tester.pump(const Duration(seconds: 1));
+      expect(taps, isEmpty);
+    });
+
+    testWidgets('two fingers are a pinch, not a tap', (tester) async {
+      final taps = <Offset>[];
+      await pumpCanvas(tester, tool: CanvasTool.pan, onTap: taps.add);
+      final a = await tester.startGesture(const Offset(400, 300), pointer: 1);
+      final b = await tester.startGesture(const Offset(500, 300), pointer: 2);
+      await a.up();
+      await b.up();
+      await tester.pump(const Duration(seconds: 1));
+      expect(taps, isEmpty);
+    });
+
+    testWidgets('any press on the canvas reports itself (to close menus)', (
+      tester,
+    ) async {
+      var downs = 0;
+      await pumpCanvas(
+        tester,
+        tool: CanvasTool.ink,
+        onPointerDownOnCanvas: () => downs++,
+      );
+      final g = await tester.startGesture(const Offset(400, 300));
+      await g.up();
+      expect(downs, 1);
     });
   });
 

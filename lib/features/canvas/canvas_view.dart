@@ -46,6 +46,8 @@ class CanvasView extends StatefulWidget {
     this.selection,
     this.lasso,
     this.onContextMenu,
+    this.onTap,
+    this.onPointerDownOnCanvas,
     this.onEscape,
     this.onTool,
     this.pen = const PenConfig(),
@@ -94,6 +96,13 @@ class CanvasView extends StatefulWidget {
   /// A right-click, or a long press with a finger, at a canvas position (local
   /// and global).
   final void Function(Offset local, Offset global)? onContextMenu;
+
+  /// A tap (a short press that does not move) with the Pan tool, at a canvas
+  /// position.
+  final ValueChanged<Offset>? onTap;
+
+  /// Any pointer going down on the canvas (not on a widget above it).
+  final VoidCallback? onPointerDownOnCanvas;
 
   /// Escape: clear what is selected.
   final VoidCallback? onEscape;
@@ -259,6 +268,41 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
     return KeyEventResult.ignored;
   }
 
+  // --- tap (Pan tool) --------------------------------------------------------
+
+  int? _tapPointer;
+  Offset _tapStart = Offset.zero;
+  Timer? _tapTimer;
+
+  void _watchTap(PointerDownEvent e) {
+    // A second pointer is a pinch, not a tap.
+    if (_tapPointer != null) {
+      _tapPointer = null;
+      return;
+    }
+    if (widget.onTap == null || !_panTool) return;
+    _tapPointer = e.pointer;
+    _tapStart = e.localPosition;
+    _tapTimer?.cancel();
+    _tapTimer = Timer(const Duration(milliseconds: 400), () {
+      _tapPointer = null;
+    });
+  }
+
+  void _tapMoved(PointerMoveEvent e) {
+    if (e.pointer == _tapPointer &&
+        (e.localPosition - _tapStart).distance > 8) {
+      _tapPointer = null;
+    }
+  }
+
+  void _tapUp(PointerUpEvent e) {
+    if (e.pointer != _tapPointer) return;
+    _tapPointer = null;
+    _tapTimer?.cancel();
+    widget.onTap?.call(e.localPosition);
+  }
+
   // --- long press (a finger): the context menu ----------------------------------
 
   Timer? _longPress;
@@ -301,6 +345,7 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
 
   @override
   void dispose() {
+    _tapTimer?.cancel();
     _longPress?.cancel();
     _focus.dispose();
     super.dispose();
@@ -339,6 +384,8 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
               behavior: HitTestBehavior.opaque,
               onPointerDown: (e) {
                 _focus.requestFocus();
+                widget.onPointerDownOnCanvas?.call();
+                _watchTap(e);
                 if (e.kind == PointerDeviceKind.mouse &&
                     e.buttons & kSecondaryButton != 0 &&
                     widget.onContextMenu != null) {
@@ -349,14 +396,17 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
                 _arbiter.down(_sample(e));
               },
               onPointerMove: (e) {
+                _tapMoved(e);
                 _longPressMoved(e);
                 _arbiter.move(_sample(e));
               },
               onPointerUp: (e) {
+                _tapUp(e);
                 _stopLongPress(e.pointer);
                 _arbiter.up(_sample(e));
               },
               onPointerCancel: (e) {
+                if (e.pointer == _tapPointer) _tapPointer = null;
                 _stopLongPress(e.pointer);
                 _arbiter.cancel(_sample(e));
               },

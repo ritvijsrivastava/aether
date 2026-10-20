@@ -20,6 +20,7 @@ import 'package:aether/features/library/import/pdf_importer.dart';
 import 'package:aether/features/library/import/pdf_inspector.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
+import 'package:aether/features/extract/extract_panel.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart' show SystemChannels;
@@ -163,8 +164,14 @@ void main() {
     expect(saved.single.rects, hasLength(3));
     expect(saved.single.pageId, c.scene.value.cards.first.id);
 
-    // Extract lists it, quoted, and tapping it takes the canvas there.
+    // Right after marking, a strip of actions sits beside the highlight.
     await tester.pump();
+    expect(find.bySemanticsLabel('Highlight actions'), findsOneWidget);
+    for (final tip in ['Add note', 'Change colour', 'Copy quote']) {
+      expect(find.byTooltip(tip), findsOneWidget, reason: tip);
+    }
+
+    // Extract lists it, quoted, and tapping it takes the canvas there.
     expect(find.text('1 item'), findsOneWidget);
     expect(
       find.textContaining('programming model and an associated'),
@@ -221,7 +228,12 @@ void main() {
     expect(find.text('Copy as Markdown'), findsOneWidget);
 
     // Delete takes it off the page and out of storage; Undo brings it back.
-    await tester.tap(find.byTooltip('Delete highlight'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(ExtractTile),
+        matching: find.byTooltip('Delete highlight'),
+      ),
+    );
     await tester.pump();
     expect(find.text('0 items'), findsOneWidget);
     for (var i = 0; i < 100; i++) {
