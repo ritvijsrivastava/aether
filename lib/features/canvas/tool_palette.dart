@@ -107,7 +107,7 @@ class _MovableToolRailState extends ConsumerState<MovableToolRail> {
     );
     final railDirection = liesDown ? Axis.horizontal : Axis.vertical;
 
-    Widget grip(bool linesVertical) => KeyedSubtree(
+    Widget grip({required bool linesVertical}) => KeyedSubtree(
       key: const Key('rail-grip'),
       child: MouseRegion(
         cursor: SystemMouseCursors.move,
@@ -144,21 +144,16 @@ class _MovableToolRailState extends ConsumerState<MovableToolRail> {
           height: ctrl.height,
           child: PanelSurface(
             padding: const EdgeInsets.all(ToolRail.pad),
-            child: railDirection == Axis.vertical
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      grip(false),
-                      ToolRail(direction: railDirection),
-                    ],
-                  )
-                : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      grip(true),
-                      ToolRail(direction: railDirection),
-                    ],
-                  ),
+            // One Flex for both orientations: the grip keeps its element (and
+            // its drag) when the rail lies down or stands back up.
+            child: Flex(
+              direction: railDirection,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                grip(linesVertical: railDirection == Axis.horizontal),
+                ToolRail(direction: railDirection),
+              ],
+            ),
           ),
         ),
         // The tool's options follow the rail: beside it when it stands,
