@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../support/harness.dart';
+
 class Clears implements EraseClearActions {
   final List<String> log = [];
   @override
@@ -113,7 +115,7 @@ void main() {
       final square = tester.getRect(
         find.bySemanticsLabel('Saturation and brightness'),
       );
-      final saved = tester.getRect(find.text('Saved colours'));
+      final saved = tester.getRect(find.bySemanticsLabel('Save this colour'));
       final minus = tester.getRect(find.byTooltip('Thinner'));
       expect(
         saved.top,
@@ -206,10 +208,10 @@ void main() {
         );
         c.read(canvasUiProvider.notifier).setTool(CanvasTool.erase);
         await tester.pump();
-        await tester.tap(find.text('Erase'));
+        await tester.tap(toolButton('Erase'));
         await tester.pump();
         expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.erase});
-        await tester.tap(find.text('Erase'));
+        await tester.tap(toolButton('Erase'));
         await tester.pump();
         expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
       },
@@ -229,9 +231,9 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('Erase'));
+      await tester.tap(toolButton('Erase'));
       await tester.pump();
-      await tester.tap(find.text('Ink'));
+      await tester.tap(toolButton('Ink'));
       await tester.pump();
       expect(c.read(canvasUiProvider).tool, CanvasTool.ink);
       expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);

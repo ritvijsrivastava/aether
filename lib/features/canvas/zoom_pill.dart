@@ -88,15 +88,11 @@ class _ZoomPillState extends State<ZoomPill> {
                 onPressed: () => _act(widget.onZoomIn),
                 icon: AetherIcon(AetherIcons.plus, color: t.ink),
               ),
-              TextButton(
+              IconButton(
+                tooltip: 'Fit to the drawing',
+                constraints: BoxConstraints.tight(target),
                 onPressed: () => _act(widget.onFit),
-                style: TextButton.styleFrom(
-                  foregroundColor: t.ink,
-                  minimumSize: target,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                ),
-                child: const Text('Fit'),
+                icon: AetherIcon(AetherIcons.fit, color: t.ink),
               ),
               divider(),
             ],

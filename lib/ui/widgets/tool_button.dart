@@ -14,8 +14,8 @@ class ToolButton extends StatelessWidget {
     required this.selected,
     required this.onPressed,
     this.tooltip,
-    this.size = 56,
-    this.showLabel = true,
+    this.size = 48,
+    this.showLabel = false,
   });
 
   final String icon;

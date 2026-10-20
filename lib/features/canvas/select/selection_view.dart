@@ -177,8 +177,8 @@ class _MarkSelectionOverlayState extends State<MarkSelectionOverlay> {
         // Back, then each strip: its recent colours and the "any colour" button.
         final wanted = _recoloring
             ? AetherTokens.minTarget * (1 + ui.inkColors.recent.length + 1) + 24
-            : 300.0;
-        final width = math.min(wanted, math.max(200.0, size.width - 16));
+            : AetherTokens.minTarget * 2 + 16;
+        final width = math.min(wanted, math.max(112.0, size.width - 16));
         var top = tl.dy - _pillH - 14;
         if (top < 8) top = br.dy + 14;
         top = top
@@ -204,7 +204,6 @@ class _MarkSelectionOverlayState extends State<MarkSelectionOverlay> {
 
   Widget _pill(BuildContext context) {
     final t = context.tokens;
-    final text = AetherText(t.ink);
     final sel = widget.selection;
     final hasInk = sel.idsOf(MarkKind.ink).isNotEmpty;
     final canRecolor = hasInk;
@@ -242,32 +241,16 @@ class _MarkSelectionOverlayState extends State<MarkSelectionOverlay> {
                   ),
                 ]
               : [
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      left: AetherTokens.s4,
-                      right: AetherTokens.s2,
-                    ),
-                    child: Text('${sel.count} selected', style: text.label),
-                  ),
                   if (canRecolor)
-                    TextButton(
+                    IconButton(
+                      tooltip: 'Colour',
                       onPressed: () => setState(() => _recoloring = true),
-                      child: Text(
-                        'Recolor',
-                        style: text.button.copyWith(color: t.indigoText),
-                      ),
+                      icon: AetherIcon(AetherIcons.palette, color: t.ink),
                     ),
-                  TextButton.icon(
+                  IconButton(
+                    tooltip: 'Delete',
                     onPressed: widget.actions.deleteSelection,
-                    icon: AetherIcon(
-                      AetherIcons.trash,
-                      size: 18,
-                      color: t.danger,
-                    ),
-                    label: Text(
-                      'Delete',
-                      style: text.button.copyWith(color: t.danger),
-                    ),
+                    icon: AetherIcon(AetherIcons.trash, color: t.danger),
                   ),
                 ],
         ),

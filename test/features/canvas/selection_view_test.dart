@@ -71,32 +71,34 @@ void main() {
     expect(find.text('Delete'), findsNothing);
   });
 
-  testWidgets('a selection shows its count, Recolor and Delete', (
+  testWidgets('a selection shows two icon buttons: Colour and Delete', (
     tester,
   ) async {
     await pump(tester);
     selection.set([const MarkRef(MarkKind.ink, 'i')]);
     await tester.pump();
-    expect(find.text('1 selected'), findsOneWidget);
-    expect(find.text('Recolor'), findsOneWidget);
-    await tester.tap(find.text('Delete'));
+    expect(find.byTooltip('Colour'), findsOneWidget);
+    expect(find.byTooltip('Delete'), findsOneWidget);
+    expect(find.text('1 selected'), findsNothing);
+    await tester.tap(find.byTooltip('Delete'));
     expect(actions.log, ['delete']);
   });
 
-  testWidgets('Recolor offers the pen colours and picking one acts', (
-    tester,
-  ) async {
+  testWidgets('the Colour button opens the pen colours inline', (tester) async {
     await pump(tester);
     selection.set([const MarkRef(MarkKind.ink, 'i')]);
     await tester.pump();
-    await tester.tap(find.text('Recolor'));
+    await tester.tap(find.byTooltip('Colour'));
     await tester.pump();
-    expect(find.byTooltip('Colour'), findsNWidgets(4));
+    expect(find.byTooltip('Back'), findsOneWidget);
+    // The strip's own discs, then the picker's square is not here: this is the
+    // old horizontal strip, discs only.
+    expect(find.bySemanticsLabel('Saturation and brightness'), findsNothing);
     await tester.tap(find.byTooltip('Colour').at(1));
     expect(actions.log, ['ink:${Swatch.coral}']);
     await tester.tap(find.byTooltip('Back'));
     await tester.pump();
-    expect(find.text('1 selected'), findsOneWidget);
+    expect(find.byTooltip('Delete'), findsOneWidget);
   });
 
   testWidgets('the buttons are 48 dp tall and the pill stays on screen', (
@@ -126,10 +128,10 @@ void main() {
     await pump(tester);
     selection.set([const MarkRef(MarkKind.ink, 'i')]);
     await tester.pump();
-    expect(find.text('1 selected'), findsOneWidget);
+    expect(find.byTooltip('Delete'), findsOneWidget);
     ink.remove('i');
     await tester.pump();
-    expect(find.text('1 selected'), findsNothing, reason: 'its box is gone');
+    expect(find.byTooltip('Delete'), findsNothing, reason: 'its box is gone');
   });
 
   testWidgets(

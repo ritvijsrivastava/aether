@@ -70,12 +70,12 @@ void main() {
   group('layout follows the window class', () {
     testWidgets('phone: bottom toolbar, no side rail', (tester) async {
       await pumpApp(tester, size: const Size(360, 800), location: '/doc/board');
-      expect(find.text('More'), findsOneWidget);
-      expect(find.text('Ink'), findsOneWidget);
-      expect(find.text('Erase'), findsOneWidget);
+      expect(toolButton('More'), findsOneWidget);
+      expect(toolButton('Ink'), findsOneWidget);
+      expect(toolButton('Erase'), findsOneWidget);
       // The three primary tools only: Pan lives under More.
-      expect(find.text('Select'), findsOneWidget);
-      expect(find.text('Pan'), findsNothing);
+      expect(toolButton('Select'), findsOneWidget);
+      expect(toolButton('Pan'), findsNothing);
     });
 
     testWidgets('tablet and desktop: all tools on a rail', (tester) async {
@@ -84,28 +84,28 @@ void main() {
         expect(
           find.descendant(
             of: find.byType(ToolRail),
-            matching: find.text(tool.label),
+            matching: toolButton(tool.label),
           ),
           findsOneWidget,
           reason: tool.label,
         );
       }
-      expect(find.text('More'), findsNothing);
+      expect(toolButton('More'), findsNothing);
     });
 
     testWidgets('crossing 600 dp switches layout', (tester) async {
       await pumpApp(tester, size: const Size(599, 800), location: '/doc/board');
-      expect(find.text('More'), findsOneWidget);
+      expect(toolButton('More'), findsOneWidget);
       await pumpApp(tester, size: const Size(600, 800), location: '/doc/board');
-      expect(find.text('More'), findsNothing);
+      expect(toolButton('More'), findsNothing);
     });
 
     testWidgets('More tray offers the remaining tools', (tester) async {
       await pumpApp(tester, size: const Size(360, 800), location: '/doc/board');
-      await tester.tap(find.text('More'));
+      await tester.tap(toolButton('More'));
       await tester.pumpAndSettle();
-      expect(find.text('Pan'), findsOneWidget);
-      expect(find.text('Select'), findsOneWidget);
+      expect(toolButton('Pan'), findsOneWidget);
+      expect(toolButton('Select'), findsOneWidget);
     });
 
     testWidgets('picking a tool changes the active tool', (tester) async {
@@ -114,12 +114,9 @@ void main() {
         size: const Size(1280, 720),
         location: '/doc/board',
       );
-      await tester.tap(find.text('Ink'));
+      await tester.tap(toolButton('Ink'));
       await tester.pump();
-      final ink = tester.widget<ToolButton>(
-        find.ancestor(of: find.text('Ink'), matching: find.byType(ToolButton)),
-      );
-      expect(ink.selected, isTrue);
+      expect(tester.widget<ToolButton>(toolButton('Ink')).selected, isTrue);
     });
 
     testWidgets('left-handed mirrors the tool rail', (tester) async {
@@ -128,7 +125,7 @@ void main() {
         size: const Size(1280, 720),
         location: '/doc/board',
       );
-      final rightHandedX = tester.getCenter(find.text('Ink')).dx;
+      final rightHandedX = tester.getCenter(toolButton('Ink')).dx;
       await pumpApp(
         tester,
         size: const Size(1280, 720),
@@ -136,7 +133,7 @@ void main() {
         settings: const AppSettings(leftHanded: true),
       );
       expect(
-        tester.getCenter(find.text('Ink')).dx,
+        tester.getCenter(toolButton('Ink')).dx,
         greaterThan(rightHandedX + 400),
       );
     });

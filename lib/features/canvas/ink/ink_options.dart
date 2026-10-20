@@ -27,7 +27,6 @@ class InkOptions extends ConsumerWidget {
     final ui = ref.watch(canvasUiProvider);
     final notifier = ref.read(canvasUiProvider.notifier);
     final t = context.tokens;
-    final text = AetherText(t.ink);
     final brightness = Theme.of(context).brightness;
     final colours = ui.inkColors;
     final shown = InkPalette.resolve(colours.current, brightness);
@@ -42,25 +41,6 @@ class InkOptions extends ConsumerWidget {
           children: [
             ColourPickerBody(argb: shown, onChanged: notifier.setInkLive),
             const SizedBox(height: AetherTokens.s2),
-            Row(
-              children: [
-                Expanded(child: Text('Saved colours', style: text.label)),
-                IconButton(
-                  tooltip: 'Save this colour',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: colours.current == InkPalette.auto
-                      ? null
-                      : notifier.saveInkColour,
-                  icon: AetherIcon(
-                    AetherIcons.plus,
-                    size: 18,
-                    color: colours.current == InkPalette.auto
-                        ? t.inkFaint
-                        : t.ink,
-                  ),
-                ),
-              ],
-            ),
             Wrap(
               children: [
                 for (final c in colours.recent)
@@ -69,6 +49,10 @@ class InkOptions extends ConsumerWidget {
                     selected: c == colours.current,
                     onTap: () => notifier.pickSavedInk(c),
                   ),
+                _SaveTile(
+                  enabled: colours.current != InkPalette.auto,
+                  onTap: notifier.saveInkColour,
+                ),
               ],
             ),
             Container(
@@ -121,6 +105,36 @@ class _SavedSwatch extends StatelessWidget {
               child: ColorDisc(color, size: 22, selected: selected),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The plus at the end of the saved colours: keeps the current colour.
+class _SaveTile extends StatelessWidget {
+  const _SaveTile({required this.enabled, required this.onTap});
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Semantics(
+      container: true,
+      label: 'Save this colour',
+      button: enabled,
+      onTap: enabled ? onTap : null,
+      excludeSemantics: true,
+      child: IconButton(
+        tooltip: 'Save this colour',
+        constraints: BoxConstraints.tight(const Size.square(_SavedSwatch.tile)),
+        padding: EdgeInsets.zero,
+        onPressed: enabled ? onTap : null,
+        icon: AetherIcon(
+          AetherIcons.plus,
+          size: 20,
+          color: enabled ? t.ink : t.inkFaint,
         ),
       ),
     );

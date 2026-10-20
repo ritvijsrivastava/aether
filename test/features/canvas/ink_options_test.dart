@@ -46,7 +46,7 @@ void main() {
     expect(find.bySemanticsLabel('Saturation and brightness'), findsOneWidget);
     expect(find.bySemanticsLabel('Hue'), findsOneWidget);
     expect(find.byType(TextField), findsNWidgets(3));
-    expect(find.text('Saved colours'), findsOneWidget);
+    expect(find.bySemanticsLabel('Save this colour'), findsOneWidget);
   });
 
   testWidgets('tapping a saved colour makes it the pen', (tester) async {

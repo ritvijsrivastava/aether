@@ -31,7 +31,7 @@ void main() {
     await pump(tester);
     expect(find.text('150%'), findsOneWidget);
     expect(find.byTooltip('Zoom in'), findsNothing);
-    expect(find.text('Fit'), findsNothing);
+    expect(find.byTooltip('Fit to the drawing'), findsNothing);
   });
 
   testWidgets('opens sideways to the left, anchored at its right edge', (
@@ -48,7 +48,7 @@ void main() {
     for (final t in ['Zoom out', 'Zoom in']) {
       expect(find.byTooltip(t), findsOneWidget);
     }
-    expect(find.text('Fit'), findsOneWidget);
+    expect(find.byTooltip('Fit to the drawing'), findsOneWidget);
   });
 
   testWidgets('its buttons act, and tapping the level folds it', (
@@ -59,11 +59,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Zoom in'));
     await tester.tap(find.byTooltip('Zoom out'));
-    await tester.tap(find.text('Fit'));
+    await tester.tap(find.byTooltip('Fit to the drawing'));
     expect(log, ['in', 'out', 'fit']);
     await tester.tap(find.text('150%'));
     await tester.pumpAndSettle();
-    expect(find.text('Fit'), findsNothing);
+    expect(find.byTooltip('Fit to the drawing'), findsNothing);
   });
 
   testWidgets('folds by itself after a quiet while', (tester) async {
@@ -72,6 +72,6 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
-    expect(find.text('Fit'), findsNothing);
+    expect(find.byTooltip('Fit to the drawing'), findsNothing);
   });
 }

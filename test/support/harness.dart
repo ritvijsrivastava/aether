@@ -11,6 +11,7 @@ import 'package:aether/domain/ops/op.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:aether/domain/model/models.dart';
+import 'package:aether/ui/widgets/tool_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
@@ -123,3 +124,8 @@ Future<void> pumpUntil(
   }
   fail('Timed out waiting for $finder');
 }
+
+/// A tool button by its name (the rail shows icons only, so there is no text
+/// to find).
+Finder toolButton(String label) =>
+    find.byWidgetPredicate((w) => w is ToolButton && w.label == label);

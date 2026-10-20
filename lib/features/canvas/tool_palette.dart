@@ -10,7 +10,7 @@ import 'canvas_ui_state.dart';
 class ToolRail extends ConsumerWidget {
   const ToolRail({super.key});
 
-  static const double button = 52, gap = 2, pad = AetherTokens.s1;
+  static const double button = 48, gap = 2, pad = AetherTokens.s1;
 
   /// The rail's outer width.
   static const double width = button + pad * 2;
