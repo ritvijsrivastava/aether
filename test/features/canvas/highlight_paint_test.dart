@@ -30,11 +30,11 @@ class InkBarSurface implements PageSurface {
   );
 }
 
-Highlight highlight(Meaning m, List<Box> rects, {int start = 0}) => Highlight(
+Highlight highlight(int m, List<Box> rects, {int start = 0}) => Highlight(
   id: 'h-${rects.hashCode}',
   docId: 'd',
   pageId: 'p0',
-  meaning: m,
+  color: m,
   startChar: start,
   endChar: start < 0 ? -1 : 10,
   quote: 'q',
@@ -91,7 +91,7 @@ void main() {
   ) async {
     await tester.runAsync(() async {
       final layer = HighlightLayer()
-        ..add(highlight(Meaning.claim, const [Box(10, 15, 90, 35)]));
+        ..add(highlight(Swatch.claim, const [Box(10, 15, 90, 35)]));
       final d = await render(highlights: layer);
       expectClose(px(d, 12, 17), paperUnderCoral);
       expectClose(px(d, 50, 25), (0, 0, 0), tol: 1); // the "text"
@@ -101,15 +101,15 @@ void main() {
 
   testWidgets('each meaning has its own colour', (tester) async {
     await tester.runAsync(() async {
-      Future<(int, int, int)> under(Meaning m) async {
+      Future<(int, int, int)> under(int m) async {
         final layer = HighlightLayer()
           ..add(highlight(m, const [Box(10, 50, 90, 70)]));
         return px(await render(highlights: layer), 50, 60);
       }
 
-      final claim = await under(Meaning.claim);
-      final method = await under(Meaning.method);
-      final question = await under(Meaning.question);
+      final claim = await under(Swatch.claim);
+      final method = await under(Swatch.method);
+      final question = await under(Swatch.question);
       expect(claim.$1, greaterThan(claim.$2), reason: 'coral is warm');
       expect(method.$3, lessThan(method.$1), reason: 'amber has little blue');
       expect(question.$3, greaterThan(question.$1), reason: 'blue is blue');
@@ -122,8 +122,8 @@ void main() {
   ) async {
     await tester.runAsync(() async {
       final layer = HighlightLayer()
-        ..add(highlight(Meaning.claim, const [Box(10, 50, 60, 70)]))
-        ..add(highlight(Meaning.method, const [Box(40, 50, 90, 70)]));
+        ..add(highlight(Swatch.claim, const [Box(10, 50, 60, 70)]))
+        ..add(highlight(Swatch.method, const [Box(40, 50, 90, 70)]));
       final d = await render(highlights: layer);
       final one = px(d, 20, 60), both = px(d, 50, 60);
       expect(both.$2, lessThan(one.$2));
@@ -138,7 +138,7 @@ void main() {
             id: 'x',
             docId: 'd',
             pageId: 'some-other-page',
-            meaning: Meaning.claim,
+            color: Swatch.claim,
             startChar: 0,
             endChar: 1,
             quote: 'q',
@@ -156,7 +156,7 @@ void main() {
     await tester.runAsync(() async {
       final layer = HighlightLayer()
         ..add(
-          highlight(Meaning.question, const [Box(10, 50, 90, 80)], start: -1),
+          highlight(Swatch.question, const [Box(10, 50, 90, 80)], start: -1),
         );
       final d = await render(highlights: layer);
       final inside = px(d, 50, 65);
@@ -172,7 +172,7 @@ void main() {
       final live = LiveMark(
         'p0',
         TextSelector.region(10, 50, 90, 70)!,
-        Meaning.claim,
+        Swatch.claim,
       );
       final d = await render(live: live);
       expect(px(d, 50, 60).$2, lessThan(200), reason: 'tinted');
@@ -182,7 +182,7 @@ void main() {
 
   test('HighlightLayer answers hit tests and stays in step with edits', () {
     final layer = HighlightLayer();
-    final a = highlight(Meaning.claim, const [Box(100, 200, 300, 208)]);
+    final a = highlight(Swatch.claim, const [Box(100, 200, 300, 208)]);
     layer.add(a);
     expect(layer.hitTest('p0', 150, 204, 1)?.id, a.id);
     expect(layer.hitTest('p1', 150, 204, 1), isNull);
@@ -195,7 +195,7 @@ void main() {
 
   test('HighlightLayer keeps pages apart and replaces by id', () {
     final layer = HighlightLayer();
-    final a = highlight(Meaning.claim, const [Box(0, 0, 10, 10)]);
+    final a = highlight(Swatch.claim, const [Box(0, 0, 10, 10)]);
     layer.add(a);
     expect(layer.forPage('p0'), [a]);
     expect(layer.forPage('nope'), isEmpty);

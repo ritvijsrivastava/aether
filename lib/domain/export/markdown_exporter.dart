@@ -1,12 +1,12 @@
-import '../model/models.dart';
+import '../marks/colour_name.dart';
 import 'extract_items.dart';
 
 /// How the Markdown is laid out.
 enum MarkdownOrder {
-  /// One section per meaning (Claim, Method, Question), each in reading order.
-  byMeaning,
+  /// One section per colour, in order of first use, each in reading order.
+  byColour,
 
-  /// One list, in reading order, each line saying which meaning it is.
+  /// One list, in reading order, each line saying which colour it is.
   readingOrder,
 }
 
@@ -26,7 +26,7 @@ abstract final class MarkdownExporter {
   static String export(
     String title,
     List<ExtractItem> items, {
-    MarkdownOrder order = MarkdownOrder.byMeaning,
+    MarkdownOrder order = MarkdownOrder.byColour,
     List<ExtractNote> notes = const [],
   }) {
     final out = StringBuffer('# ${_title(title)}\n');
@@ -35,22 +35,20 @@ abstract final class MarkdownExporter {
       return out.toString();
     }
     switch (order) {
-      case MarkdownOrder.byMeaning:
-        for (final m in Meaning.values) {
-          final group = [
-            for (final i in items)
-              if (i.meaning == m) i,
-          ];
-          if (group.isEmpty) continue;
-          out.write('\n## ${m.label}\n');
-          for (final i in group) {
-            out.write('- ${_line(i)}${_page(i, '')}\n');
+      case MarkdownOrder.byColour:
+        final labels = colourLabels(items);
+        for (final c in labels.keys) {
+          out.write('\n## ${labels[c]}\n');
+          for (final i in items) {
+            if (i.color == c) out.write('- ${_line(i)}${_page(i, '')}\n');
           }
         }
       case MarkdownOrder.readingOrder:
         if (items.isNotEmpty) out.write('\n');
         for (final i in items) {
-          out.write('- ${_line(i)}${_page(i, i.meaning.label)}\n');
+          out.write(
+            '- ${_line(i)}${_page(i, colourLabels(items)[i.color]!)}\n',
+          );
         }
     }
     if (notes.isNotEmpty) {
@@ -60,6 +58,22 @@ abstract final class MarkdownExporter {
       }
     }
     return out.toString();
+  }
+
+  /// The colours in use, in order of first use among [items] (which are in
+  /// reading order), each with its automatic label; two colours that round to
+  /// the same name get " 2", " 3" after it so headings stay distinct.
+  static Map<int, String> colourLabels(List<ExtractItem> items) {
+    final out = <int, String>{};
+    final used = <String, int>{};
+    for (final i in items) {
+      if (out.containsKey(i.color)) continue;
+      final base = colourName(i.color);
+      final n = (used[base] ?? 0) + 1;
+      used[base] = n;
+      out[i.color] = n == 1 ? base : '$base $n';
+    }
+    return out;
   }
 
   /// `text (on "quote", p. 2)`: the note's words on one line, then what it is

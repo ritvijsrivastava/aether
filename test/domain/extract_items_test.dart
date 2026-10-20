@@ -7,14 +7,14 @@ Highlight hl(
   String id,
   String page,
   int start, {
-  Meaning m = Meaning.claim,
+  int m = Swatch.claim,
   String quote = 'q',
   Box rect = const Box(0, 0, 10, 10),
 }) => Highlight(
   id: id,
   docId: 'd',
   pageId: page,
-  meaning: m,
+  color: m,
   startChar: start,
   endChar: start < 0 ? -1 : start + 5,
   quote: quote,
@@ -135,14 +135,14 @@ void main() {
     expect(items[0].isRegion, isFalse);
   });
 
-  test('a filter keeps one meaning', () {
+  test('a filter keeps one colour', () {
     final all = [
-      hl('a', 'p0', 1, m: Meaning.claim),
-      hl('b', 'p0', 2, m: Meaning.method),
-      hl('c', 'p0', 3, m: Meaning.method),
+      hl('a', 'p0', 1, m: Swatch.claim),
+      hl('b', 'p0', 2, m: Swatch.method),
+      hl('c', 'p0', 3, m: Swatch.method),
     ];
-    expect(buildExtract(all, pages, only: Meaning.method).length, 2);
-    expect(buildExtract(all, pages, only: Meaning.question), isEmpty);
+    expect(buildExtract(all, pages, onlyColor: Swatch.method).length, 2);
+    expect(buildExtract(all, pages, onlyColor: Swatch.question), isEmpty);
     expect(buildExtract(all, pages).length, 3);
   });
 

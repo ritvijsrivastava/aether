@@ -9,12 +9,11 @@ import '../../../domain/marks/highlight_index.dart';
 import '../../../domain/model/models.dart';
 import '../../../domain/text/text_selection.dart';
 import '../../../ui/theme/tokens.dart';
-import '../../../ui/widgets/meaning_disc.dart' show meaningColor;
 import '../engine/page_surface.dart';
 import '../engine/scene.dart';
 import '../engine/view_state.dart';
 
-/// How highlights are drawn (DESIGN.md "Highlights"): the meaning colour at
+/// How highlights are drawn (DESIGN.md "Highlights"): the highlight colour at
 /// half strength, multiplied into the page so the text underneath stays dark.
 /// Bars are `rHighlight` (5 px on screen) rounded, whatever the zoom.
 abstract final class HighlightPaint {
@@ -27,12 +26,12 @@ abstract final class HighlightPaint {
     Canvas canvas,
     List<Box> rects,
     Offset origin,
-    Meaning meaning,
+    int color,
     double zoom,
     Paint paint, {
     bool region = false,
   }) {
-    final color = meaningColor(meaning);
+    final c = Color(color);
     final radius = AetherTokens.rHighlight / zoom;
     paint
       ..blendMode = BlendMode.multiply
@@ -52,7 +51,7 @@ abstract final class HighlightPaint {
         canvas.drawRRect(
           rr,
           Paint()
-            ..color = color.withValues(alpha: 0.9)
+            ..color = c.withValues(alpha: 0.9)
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.5 / zoom,
         );
@@ -130,13 +129,12 @@ class HighlightLayer extends ChangeNotifier {
     final list = _byPage[card.id];
     if (list == null || list.isEmpty) return;
     for (final h in list) {
-      _paint.color = meaningColor(h.meaning)
-          .withValues(alpha: HighlightPaint.alpha);
+      _paint.color = Color(h.color).withValues(alpha: HighlightPaint.alpha);
       HighlightPaint.paint(
         canvas,
         h.rects,
         card.rect.topLeft,
-        h.meaning,
+        h.color,
         info.zoom,
         _paint,
         region: h.startChar < 0,
@@ -148,10 +146,10 @@ class HighlightLayer extends ChangeNotifier {
 /// The highlight being dragged out right now.
 @immutable
 class LiveMark {
-  const LiveMark(this.cardId, this.selection, this.meaning);
+  const LiveMark(this.cardId, this.selection, this.color);
   final String cardId;
   final MarkSelection selection;
-  final Meaning meaning;
+  final int color;
 }
 
 /// Draws the in-progress highlight in its own layer, so a drag repaints this
@@ -177,13 +175,12 @@ class LiveMarkPainter extends CustomPainter {
     canvas.translate(v.x, v.y);
     canvas.scale(v.zoom);
     canvas.clipRect(card.rect);
-    _paint.color = meaningColor(l.meaning)
-        .withValues(alpha: HighlightPaint.liveAlpha);
+    _paint.color = Color(l.color).withValues(alpha: HighlightPaint.liveAlpha);
     HighlightPaint.paint(
       canvas,
       l.selection.rects,
       card.rect.topLeft,
-      l.meaning,
+      l.color,
       v.zoom,
       _paint,
       region: l.selection.isRegion,

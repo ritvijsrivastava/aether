@@ -55,25 +55,24 @@ class ExtractController {
   };
 
   /// All items for [filter], in reading order.
-  List<ExtractItem> items(ExtractFilter filter) => switch (filter) {
-    ExtractFilter.notes => const [], // notes are in [entries]
-    ExtractFilter.all => buildExtract(highlights.all, _pageIndex),
-    ExtractFilter.claim => buildExtract(
+  List<ExtractItem> items(ExtractFilter filter) {
+    if (filter == ExtractFilter.notes) return const []; // in [entries]
+    return buildExtract(
       highlights.all,
       _pageIndex,
-      only: Meaning.claim,
-    ),
-    ExtractFilter.method => buildExtract(
-      highlights.all,
-      _pageIndex,
-      only: Meaning.method,
-    ),
-    ExtractFilter.question => buildExtract(
-      highlights.all,
-      _pageIndex,
-      only: Meaning.question,
-    ),
-  };
+      onlyColor: filter.isColour ? filter.color : null,
+    );
+  }
+
+  /// The colours in use, in the order they first appear in reading order,
+  /// each with how many highlights have it.
+  List<(int, int)> colours() {
+    final counts = <int, int>{};
+    for (final i in buildExtract(highlights.all, _pageIndex)) {
+      counts[i.color] = (counts[i.color] ?? 0) + 1;
+    }
+    return [for (final e in counts.entries) (e.key, e.value)];
+  }
 }
 
 extension ExtractEntries on ExtractController {

@@ -10,7 +10,7 @@ Highlight hl(String id, String page, List<Box> rects) => Highlight(
   id: id,
   docId: 'd',
   pageId: page,
-  meaning: Meaning.claim,
+  color: Swatch.claim,
   startChar: 0,
   endChar: 5,
   quote: 'q',

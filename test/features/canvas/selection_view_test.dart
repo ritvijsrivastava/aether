@@ -2,7 +2,6 @@ import 'dart:ui';
 
 import 'package:aether/core/geometry/box.dart';
 import 'package:aether/domain/model/models.dart';
-import 'package:aether/features/canvas/canvas_ui_state.dart';
 import 'package:aether/features/canvas/engine/scene.dart';
 import 'package:aether/features/canvas/engine/view_state.dart';
 import 'package:aether/features/canvas/ink/ink_layer.dart';
@@ -15,12 +14,13 @@ import 'package:aether/ui/theme/theme.dart';
 import 'package:aether/ui/theme/tokens.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide Card, Ink;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class FakeActions implements SelectionActions {
   final List<String> log = [];
   @override
-  void recolorMeaning(Meaning m) => log.add('meaning:${m.id}');
+  void recolorHighlight(int argb) => log.add('highlight:$argb');
   @override
   void recolorInk(int argb) => log.add('ink:$argb');
   @override
@@ -40,7 +40,7 @@ Highlight hl(String id) => Highlight(
   id: id,
   docId: 'd',
   pageId: 'p0',
-  meaning: Meaning.claim,
+  color: Swatch.claim,
   startChar: 0,
   endChar: 3,
   quote: 'q',
@@ -74,18 +74,20 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
-      MaterialApp(
-        theme: buildTheme(AetherTokens.light),
-        home: Scaffold(
-          body: MarkSelectionOverlay(
-            view: ValueNotifier(view),
-            scene: ValueNotifier(_scene),
-            selection: selection,
-            ink: ink,
-            highlights: highlights,
-            notes: notes,
-            actions: actions,
-            viewport: () => const Size(1000, 800),
+      ProviderScope(
+        child: MaterialApp(
+          theme: buildTheme(AetherTokens.light),
+          home: Scaffold(
+            body: MarkSelectionOverlay(
+              view: ValueNotifier(view),
+              scene: ValueNotifier(_scene),
+              selection: selection,
+              ink: ink,
+              highlights: highlights,
+              notes: notes,
+              actions: actions,
+              viewport: () => const Size(1000, 800),
+            ),
           ),
         ),
       ),
@@ -112,46 +114,49 @@ void main() {
     expect(actions.log, ['delete']);
   });
 
-  testWidgets('Recolor offers meanings for highlights and colours for ink', (
-    tester,
-  ) async {
-    await pump(tester);
-    selection.set([
-      const MarkRef(MarkKind.ink, 'i'),
-      const MarkRef(MarkKind.highlight, 'h'),
-    ]);
-    await tester.pump();
-    await tester.tap(find.text('Recolor'));
-    await tester.pump();
-    expect(find.byTooltip('Method'), findsOneWidget);
-    expect(find.byTooltip('Coral'), findsOneWidget);
-    await tester.tap(find.byTooltip('Method'));
-    await tester.tap(find.byTooltip('Blue'));
-    expect(actions.log, ['meaning:method', 'ink:${InkPalette.colors[3]}']);
-    await tester.tap(find.byTooltip('Back'));
-    await tester.pump();
-    expect(find.text('2 selected'), findsOneWidget);
-  });
+  testWidgets(
+    'Recolor offers the marker colours for highlights and the pen colours for ink',
+    (tester) async {
+      await pump(tester);
+      selection.set([
+        const MarkRef(MarkKind.ink, 'i'),
+        const MarkRef(MarkKind.highlight, 'h'),
+      ]);
+      await tester.pump();
+      await tester.tap(find.text('Recolor'));
+      await tester.pump();
+      // Marker colours first (Coral, Amber, Blue), then the pen's (Black, ...).
+      expect(find.byTooltip('Amber'), findsNWidgets(2));
+      expect(find.byTooltip('Black'), findsOneWidget);
+      await tester.tap(find.byTooltip('Amber').first);
+      await tester.tap(find.byTooltip('Blue').last);
+      expect(actions.log, ['highlight:${Swatch.amber}', 'ink:${Swatch.blue}']);
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pump();
+      expect(find.text('2 selected'), findsOneWidget);
+    },
+  );
 
-  testWidgets('only ink: colours, no meanings; only highlights: the reverse', (
-    tester,
-  ) async {
-    await pump(tester);
-    selection.set([const MarkRef(MarkKind.ink, 'i')]);
-    await tester.pump();
-    await tester.tap(find.text('Recolor'));
-    await tester.pump();
-    expect(find.byTooltip('Coral'), findsOneWidget);
-    expect(find.byTooltip('Method'), findsNothing);
-    selection.set([const MarkRef(MarkKind.highlight, 'h')]);
-    await tester.pump();
-    await tester.tap(find.byTooltip('Back'));
-    await tester.pump();
-    await tester.tap(find.text('Recolor'));
-    await tester.pump();
-    expect(find.byTooltip('Method'), findsOneWidget);
-    expect(find.byTooltip('Coral'), findsNothing);
-  });
+  testWidgets(
+    'only ink shows the pen colours; only highlights the marker colours',
+    (tester) async {
+      await pump(tester);
+      selection.set([const MarkRef(MarkKind.ink, 'i')]);
+      await tester.pump();
+      await tester.tap(find.text('Recolor'));
+      await tester.pump();
+      expect(find.byTooltip('Black'), findsOneWidget);
+      expect(find.byTooltip('Coral'), findsOneWidget);
+      selection.set([const MarkRef(MarkKind.highlight, 'h')]);
+      await tester.pump();
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pump();
+      await tester.tap(find.text('Recolor'));
+      await tester.pump();
+      expect(find.byTooltip('Amber'), findsOneWidget);
+      expect(find.byTooltip('Black'), findsNothing);
+    },
+  );
 
   testWidgets('a note alone has Delete but no Recolor', (tester) async {
     notes.add(

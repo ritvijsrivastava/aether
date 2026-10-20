@@ -18,12 +18,12 @@ Highlight hl(
   String page,
   int start,
   String quote, {
-  Meaning m = Meaning.claim,
+  int m = Swatch.claim,
 }) => Highlight(
   id: id,
   docId: 'd',
   pageId: page,
-  meaning: m,
+  color: m,
   startChar: start,
   endChar: start < 0 ? -1 : start + quote.length,
   quote: quote,
@@ -117,12 +117,12 @@ void main() {
     expect(find.text('0 items'), findsOneWidget);
   });
 
-  testWidgets('lists highlights in reading order with meaning and page', (
+  testWidgets('lists highlights in reading order with colour and page', (
     tester,
   ) async {
     layer
-      ..add(hl('c', 'p1', 5, 'Third quote', m: Meaning.question))
-      ..add(hl('a', 'p0', 90, 'Second quote', m: Meaning.method))
+      ..add(hl('c', 'p1', 5, 'Third quote', m: Swatch.question))
+      ..add(hl('a', 'p0', 90, 'Second quote', m: Swatch.method))
       ..add(hl('b', 'p0', 10, 'First quote'));
     await pump(tester);
     expect(find.text('3 items'), findsOneWidget);
@@ -131,7 +131,7 @@ void main() {
         t.data,
     ];
     expect(order, ['First quote', 'Second quote', 'Third quote']);
-    expect(find.text('Claim'), findsWidgets); // the chip and the item
+    expect(find.byType(FilterChip), findsNWidgets(5)); // All, 3 colours, Notes
     expect(find.text('p. 1'), findsNWidgets(2));
     expect(find.text('p. 2'), findsOneWidget);
   });
@@ -145,12 +145,14 @@ void main() {
   testWidgets('a filter chip narrows the list and the count', (tester) async {
     layer
       ..add(hl('a', 'p0', 1, 'A claim'))
-      ..add(hl('b', 'p0', 20, 'A method', m: Meaning.method))
-      ..add(hl('c', 'p0', 40, 'A question', m: Meaning.question));
+      ..add(hl('b', 'p0', 20, 'A method', m: Swatch.method))
+      ..add(hl('c', 'p0', 40, 'A question', m: Swatch.question));
     final c = await pump(tester);
-    await tester.tap(find.widgetWithText(FilterChip, 'Method'));
+    // One chip per colour in use, in reading order, each with its count.
+    expect(find.byType(FilterChip), findsNWidgets(5)); // All, 3 colours, Notes
+    await tester.tap(find.bySemanticsLabel('Amber, 1 highlights').first);
     await tester.pump();
-    expect(c.read(canvasUiProvider).filter, ExtractFilter.method);
+    expect(c.read(canvasUiProvider).filter, ExtractFilter.colour(Swatch.amber));
     expect(find.text('A method'), findsOneWidget);
     expect(find.text('A claim'), findsNothing);
     expect(find.text('1 item'), findsOneWidget);
@@ -160,12 +162,48 @@ void main() {
     expect(find.text('3 items'), findsOneWidget);
   });
 
+  testWidgets('any colour gets a chip with its count; chips follow the list', (
+    tester,
+  ) async {
+    layer
+      ..add(hl('a', 'p0', 1, 'Teal one', m: 0xFF2BA6A0))
+      ..add(hl('b', 'p0', 20, 'Teal two', m: 0xFF2BA6A0))
+      ..add(hl('c', 'p0', 40, 'Plum', m: 0xFF8E3B8E));
+    final c = await pump(tester);
+    expect(find.widgetWithText(FilterChip, '2'), findsOneWidget);
+    expect(find.widgetWithText(FilterChip, '1'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilterChip, '2'));
+    await tester.pump();
+    expect(
+      c.read(canvasUiProvider).filter,
+      const ExtractFilter.colour(0xFF2BA6A0),
+    );
+    expect(find.text('Teal one'), findsOneWidget);
+    expect(find.text('Plum'), findsNothing);
+    expect(find.text('2 items'), findsOneWidget);
+  });
+
+  testWidgets('a chip disappears when its last highlight is deleted', (
+    tester,
+  ) async {
+    layer
+      ..add(hl('a', 'p0', 1, 'Teal', m: 0xFF2BA6A0))
+      ..add(hl('b', 'p0', 20, 'Coral one'));
+    await pump(tester);
+    expect(find.byType(FilterChip), findsNWidgets(4));
+    layer.remove('a');
+    await tester.pump();
+    expect(find.byType(FilterChip), findsNWidgets(3));
+  });
+
   testWidgets('a filter with nothing to show says so', (tester) async {
     layer.add(hl('a', 'p0', 1, 'A claim'));
     final c = await pump(tester);
-    c.read(canvasUiProvider.notifier).setFilter(ExtractFilter.question);
+    c
+        .read(canvasUiProvider.notifier)
+        .setFilter(ExtractFilter.colour(Swatch.blue));
     await tester.pump();
-    expect(find.text('Nothing marked as Question yet.'), findsOneWidget);
+    expect(find.text('Nothing marked in this colour yet.'), findsOneWidget);
     expect(find.text('0 items'), findsOneWidget);
 
     c.read(canvasUiProvider.notifier).setFilter(ExtractFilter.notes);
@@ -219,7 +257,7 @@ void main() {
   });
 
   testWidgets('a free rectangle shows as an image region', (tester) async {
-    layer.add(hl('r', 'p0', -1, '(image region)', m: Meaning.method));
+    layer.add(hl('r', 'p0', -1, '(image region)', m: Swatch.method));
     await pump(tester);
     expect(find.text('Image region'), findsOneWidget);
     expect(find.text('(image region)'), findsNothing);
@@ -236,18 +274,15 @@ void main() {
     expect(text.overflow, TextOverflow.ellipsis);
   });
 
-  testWidgets('each item is one accessible button with its meaning and page', (
+  testWidgets('each item is one accessible button with its colour and page', (
     tester,
   ) async {
-    layer.add(hl('a', 'p1', 1, 'Spoken quote', m: Meaning.question));
+    layer.add(hl('a', 'p1', 1, 'Spoken quote', m: Swatch.question));
     final handle = tester.ensureSemantics();
     await pump(tester);
-    expect(
-      find.bySemanticsLabel('Question, page 2. Spoken quote'),
-      findsOneWidget,
-    );
+    expect(find.bySemanticsLabel('Blue, page 2. Spoken quote'), findsOneWidget);
     final node = tester.getSemantics(
-      find.bySemanticsLabel('Question, page 2. Spoken quote'),
+      find.bySemanticsLabel('Blue, page 2. Spoken quote'),
     );
     expect(node.flagsCollection.isButton, isTrue);
     handle.dispose();

@@ -1,3 +1,5 @@
+import '../features/canvas/palette.dart';
+
 import 'package:flutter/foundation.dart' show immutable;
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -200,3 +202,13 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
 final settingsProvider = AsyncNotifierProvider<SettingsNotifier, AppSettings>(
   SettingsNotifier.new,
 );
+
+/// Keeps the pen and marker colours in the settings table.
+class DbPaletteStore implements PaletteStore {
+  DbPaletteStore(this._db);
+  final AetherDatabase _db;
+  @override
+  Future<String?> read(String key) => _db.setting(key);
+  @override
+  Future<void> write(String key, String value) => _db.putSetting(key, value);
+}

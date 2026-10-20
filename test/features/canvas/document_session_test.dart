@@ -355,7 +355,7 @@ void main() {
       final id = s.addHighlight(
         pageId: page.id,
         selection: pick(1, 4),
-        meaning: Meaning.method,
+        color: Swatch.method,
         text: text,
       );
       expect(s.highlights.count, 1, reason: 'visible before it is written');
@@ -364,7 +364,7 @@ void main() {
       final saved = await storedMarks();
       expect(saved.single.id, id);
       final back = Mark.fromState(saved.single) as Highlight;
-      expect(back.meaning, Meaning.method);
+      expect(back.color, Swatch.method);
       expect(back.pageId, page.id);
       expect(back.quote, 'quick brown fox jumps');
       expect(back.rects.length, 2);
@@ -380,13 +380,13 @@ void main() {
       s.addHighlight(
         pageId: page.id,
         selection: pick(0, 0),
-        meaning: Meaning.claim,
+        color: Swatch.claim,
         text: text,
       );
       s.addHighlight(
         pageId: page.id,
         selection: TextSelector.region(10, 20, 110, 70)!,
-        meaning: Meaning.question,
+        color: Swatch.question,
       );
       await s.settled();
       final again = await opened();
@@ -396,7 +396,7 @@ void main() {
           .forPage(page.id)
           .firstWhere((h) => h.startChar < 0);
       expect(region.quote, '(image region)');
-      expect(region.meaning, Meaning.question);
+      expect(region.color, Swatch.question);
       expect(region.rects.single, const Box(10, 20, 110, 70));
     });
 
@@ -406,7 +406,7 @@ void main() {
       s.addHighlight(
         pageId: page.id,
         selection: pick(0, 0),
-        meaning: Meaning.claim,
+        color: Swatch.claim,
         text: text,
       );
       await s.settled();
@@ -425,14 +425,14 @@ void main() {
       final word = s.addHighlight(
         pageId: page.id,
         selection: pick(1, 1),
-        meaning: Meaning.claim,
+        color: Swatch.claim,
         text: text,
       );
       final sentence = s.replaceHighlight(
         oldId: word,
         pageId: page.id,
         selection: TextSelector.sentenceAt(text, 1)!,
-        meaning: Meaning.claim,
+        color: Swatch.claim,
         text: text,
       );
       expect(s.highlights.byId(word), isNull);
@@ -453,7 +453,7 @@ void main() {
       final id = s.addHighlight(
         pageId: page.id,
         selection: pick(0, 0),
-        meaning: Meaning.claim,
+        color: Swatch.claim,
         text: text,
       );
       await s.settled();
@@ -478,7 +478,7 @@ void main() {
         s.addHighlight(
           pageId: s.controller.scene.value.cards.first.id,
           selection: pick(0, 0),
-          meaning: Meaning.claim,
+          color: Swatch.claim,
           text: text,
         );
         await s.dispose(); // no settled() first, as when the screen is popped
@@ -496,7 +496,7 @@ void main() {
         s.addHighlight(
           pageId: page.id,
           selection: sel,
-          meaning: Meaning.claim,
+          color: Swatch.claim,
           text: text,
         );
       }
@@ -506,7 +506,7 @@ void main() {
         s.addHighlight(
           pageId: page.id,
           selection: sel,
-          meaning: Meaning.claim,
+          color: Swatch.claim,
           text: text,
         );
       }
@@ -536,7 +536,7 @@ void main() {
       s.addHighlight(
         pageId: controller.scene.value.cards.first.id,
         selection: pick(0, 0),
-        meaning: Meaning.claim,
+        color: Swatch.claim,
         text: text,
       );
       expect(s.highlights.count, 1);
@@ -553,7 +553,7 @@ void main() {
       final id = s.addHighlight(
         pageId: page.id,
         selection: pick(0, 0),
-        meaning: Meaning.claim,
+        color: Swatch.claim,
         text: text,
       );
       expect(changes, 1);
@@ -688,7 +688,7 @@ void main() {
       s.addHighlight(
         pageId: page.id,
         selection: TextSelector.between(layoutText(['the quick brown']), 0, 0)!,
-        meaning: Meaning.claim,
+        color: Swatch.claim,
       );
       await s.settled();
       expect(s.ink.count, 1);
@@ -790,7 +790,7 @@ void main() {
       final h = s.addHighlight(
         pageId: page.id,
         selection: TextSelector.between(layoutText(['the quick']), 0, 0)!,
-        meaning: Meaning.claim,
+        color: Swatch.claim,
       );
       await s.settled();
       s.ink.remove(ink);
@@ -1055,7 +1055,7 @@ void main() {
       final hl = s.addHighlight(
         pageId: page,
         selection: TextSelector.between(text, 1, 1)!,
-        meaning: Meaning.claim,
+        color: Swatch.claim,
         text: text,
       );
       await s.settled();
@@ -1086,7 +1086,7 @@ void main() {
         final h2 = x.s.addHighlight(
           pageId: x.page,
           selection: TextSelector.between(text, 3, 3)!,
-          meaning: Meaning.method,
+          color: Swatch.method,
           text: text,
         );
         x.s.addLink(x.note, x.hl);
@@ -1176,7 +1176,7 @@ void main() {
           oldId: x.hl,
           pageId: x.page,
           selection: TextSelector.sentenceAt(text, 1)!,
-          meaning: Meaning.claim,
+          color: Swatch.claim,
           text: text,
         );
         expect(x.s.links.all.single.toHighlightId, sentence);
@@ -1198,7 +1198,7 @@ void main() {
       final hl = s.addHighlight(
         pageId: page,
         selection: TextSelector.between(text, 1, 1)!,
-        meaning: Meaning.claim,
+        color: Swatch.claim,
         text: text,
       );
       final note = s.beginNote(pageId: page, x: 5, y: 5);
@@ -1221,7 +1221,7 @@ void main() {
       final hl = s.addHighlight(
         pageId: page,
         selection: TextSelector.between(text, 1, 1)!,
-        meaning: Meaning.claim,
+        color: Swatch.claim,
         text: text,
       );
       final note = s.beginNote(pageId: page, x: 5, y: 5);
@@ -1283,24 +1283,24 @@ void main() {
         final h = s.addHighlight(
           pageId: page,
           selection: TextSelector.between(text, 1, 1)!,
-          meaning: Meaning.claim,
+          color: Swatch.claim,
           text: text,
         );
         await s.settled();
         s.recolorMarks(
           [MarkRef(MarkKind.ink, i), MarkRef(MarkKind.highlight, h)],
-          meaning: Meaning.question,
+          highlightColor: Swatch.question,
           inkColor: 0xFFF4877E,
         );
-        expect(s.highlights.byId(h)!.meaning, Meaning.question);
+        expect(s.highlights.byId(h)!.color, Swatch.question);
         expect(s.ink.byId(i)!.color, 0xFFF4877E);
         await s.settled();
         expect(s.bus.undoLabel, 'Recolor');
         final again = await opened();
-        expect(again.highlights.byId(h)!.meaning, Meaning.question);
+        expect(again.highlights.byId(h)!.color, Swatch.question);
         expect(again.ink.byId(i)!.color, 0xFFF4877E);
         await s.undo();
-        expect(s.highlights.byId(h)!.meaning, Meaning.claim);
+        expect(s.highlights.byId(h)!.color, Swatch.claim);
         expect(s.ink.byId(i)!.color, 0xFF000000);
       },
     );
@@ -1310,12 +1310,14 @@ void main() {
       final h = s.addHighlight(
         pageId: s.controller.scene.value.cards.first.id,
         selection: TextSelector.between(text, 1, 1)!,
-        meaning: Meaning.claim,
+        color: Swatch.claim,
         text: text,
       );
       await s.settled();
       final depth = s.bus.undoDepth;
-      s.recolorMarks([MarkRef(MarkKind.highlight, h)], meaning: Meaning.claim);
+      s.recolorMarks([
+        MarkRef(MarkKind.highlight, h),
+      ], highlightColor: Swatch.claim);
       await s.settled();
       expect(s.bus.undoDepth, depth);
     });
@@ -1329,7 +1331,7 @@ void main() {
         final h = s.addHighlight(
           pageId: page,
           selection: TextSelector.between(text, 1, 1)!,
-          meaning: Meaning.claim,
+          color: Swatch.claim,
           text: text,
         );
         final n = s.beginNote(pageId: page, x: 5, y: 5);
@@ -1374,7 +1376,7 @@ void main() {
       final h = s.addHighlight(
         pageId: page,
         selection: TextSelector.between(text, 1, 1)!,
-        meaning: Meaning.claim,
+        color: Swatch.claim,
         text: text,
       );
       final n = s.beginNote(pageId: page, x: 5, y: 5, linkToHighlight: h);
@@ -1396,7 +1398,7 @@ void main() {
       final h = s.addHighlight(
         pageId: page,
         selection: TextSelector.between(text, 1, 1)!,
-        meaning: Meaning.claim,
+        color: Swatch.claim,
         text: text,
       );
       final n = s.beginNote(pageId: page, x: 5, y: 5, linkToHighlight: h);

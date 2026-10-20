@@ -5,12 +5,13 @@ import '../../domain/export/extract_items.dart';
 import '../../ui/theme/theme.dart';
 import '../../ui/theme/tokens.dart';
 import '../../ui/widgets/aether_icon.dart';
-import '../../ui/widgets/meaning_disc.dart';
+import '../../domain/marks/colour_name.dart';
+import '../../ui/widgets/color_disc.dart';
 import '../canvas/canvas_ui_state.dart';
 import 'extract_controller.dart';
 
 /// The Extract panel: every mark as a quoted item, in reading order,
-/// filterable by meaning. Tap an item to go to it on the canvas.
+/// filterable by colour. Tap an item to go to it on the canvas.
 class ExtractPanel extends ConsumerWidget {
   const ExtractPanel({
     super.key,
@@ -80,18 +81,18 @@ class _Body extends ConsumerWidget {
                     spacing: 6,
                     runSpacing: 0,
                     children: [
-                      for (final f in ExtractFilter.values)
-                        FilterChip(
-                          label: Text(
-                            f.label,
-                            style: text.label.copyWith(
-                              color: ui.filter == f ? t.desk : t.ink,
-                            ),
-                          ),
-                          selected: ui.filter == f,
-                          onSelected: (_) =>
-                              ref.read(canvasUiProvider.notifier).setFilter(f),
+                      _chip(ref, t, text, ExtractFilter.all, 'All'),
+                      for (final (c, n)
+                          in panel.source?.colours() ?? const <(int, int)>[])
+                        _chip(
+                          ref,
+                          t,
+                          text,
+                          ExtractFilter.colour(c),
+                          '$n',
+                          color: c,
                         ),
+                      _chip(ref, t, text, ExtractFilter.notes, 'Notes'),
                     ],
                   ),
                 ],
@@ -161,13 +162,37 @@ class _Body extends ConsumerWidget {
     );
   }
 
-  static String _emptyCopy(ExtractFilter f) => switch (f) {
-    ExtractFilter.all =>
-      'Highlight or write to start collecting. Everything you mark lands '
-          'here, quoted and ready to export.',
-    ExtractFilter.notes => 'Notes you write will be listed here.',
-    _ => 'Nothing marked as ${f.label} yet.',
-  };
+  /// One filter chip; a colour chip shows its disc and how many it holds.
+  Widget _chip(
+    WidgetRef ref,
+    AetherTokens t,
+    AetherText text,
+    ExtractFilter f,
+    String label, {
+    int? color,
+  }) {
+    final selected = ui.filter == f;
+    return Semantics(
+      label: color == null ? null : '${colourName(color)}, $label highlights',
+      child: FilterChip(
+        avatar: color == null ? null : ColorDisc(color, size: 16),
+        label: Text(
+          label,
+          style: text.label.copyWith(color: selected ? t.desk : t.ink),
+        ),
+        selected: selected,
+        showCheckmark: color == null,
+        onSelected: (_) => ref.read(canvasUiProvider.notifier).setFilter(f),
+      ),
+    );
+  }
+
+  static String _emptyCopy(ExtractFilter f) => f == ExtractFilter.all
+      ? 'Highlight or write to start collecting. Everything you mark lands '
+            'here, quoted and ready to export.'
+      : f == ExtractFilter.notes
+      ? 'Notes you write will be listed here.'
+      : 'Nothing marked in this colour yet.';
 
   void _delete(BuildContext context, ExtractController s, ExtractItem item) {
     s.onDelete(item.highlight);
@@ -186,7 +211,7 @@ class _Body extends ConsumerWidget {
   }
 }
 
-/// One quoted mark: its meaning and page above, the quote below.
+/// One quoted mark: its colour and page above, the quote below.
 class ExtractTile extends StatelessWidget {
   const ExtractTile({
     super.key,
@@ -208,7 +233,7 @@ class ExtractTile extends StatelessWidget {
       container: true,
       button: onJump != null,
       label:
-          '${item.meaning.label}${where.isEmpty ? '' : ', page ${item.pageNumber}'}'
+          '${colourName(item.color)}${where.isEmpty ? '' : ', page ${item.pageNumber}'}'
           '. $quote',
       onTap: onJump,
       child: Material(
@@ -225,16 +250,9 @@ class ExtractTile extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    ExcludeSemantics(
-                      child: MeaningDisc(item.meaning, size: 22),
-                    ),
-                    const SizedBox(width: AetherTokens.s1),
-                    Text(item.meaning.label, style: text.label),
+                    ExcludeSemantics(child: ColorDisc(item.color, size: 22)),
                     if (where.isNotEmpty) ...[
-                      Text(
-                        '  ·  ',
-                        style: text.caption.copyWith(color: t.inkMuted),
-                      ),
+                      const SizedBox(width: AetherTokens.s1),
                       Text(
                         where,
                         style: text.caption.copyWith(color: t.inkMuted),

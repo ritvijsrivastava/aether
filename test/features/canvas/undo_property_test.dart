@@ -161,7 +161,7 @@ void main() {
   String onPage(DocumentSession s) {
     final rows = <String>[
       for (final h in s.highlights.all)
-        'h|${h.id}|${h.meaning.id}|${h.startChar}-${h.endChar}|${h.pageId}',
+        'h|${h.id}|${h.color}|${h.startChar}-${h.endChar}|${h.pageId}',
       for (final i in s.ink.all)
         'i|${i.id}|${i.color}|${i.pageId}|${i.samples.join(",")}',
       for (final n in s.notes.all)
@@ -226,7 +226,7 @@ void main() {
         s.addHighlight(
           pageId: page,
           selection: TextSelector.between(text, a, b)!,
-          meaning: Meaning.values[r.nextInt(3)],
+          color: Swatch.defaults[r.nextInt(3)],
           text: text,
         );
         return 'addHighlight';
@@ -286,7 +286,7 @@ void main() {
             for (final h in hls) MarkRef(MarkKind.highlight, h.id),
             for (final i in inks) MarkRef(MarkKind.ink, i.id),
           ],
-          meaning: Meaning.values[r.nextInt(3)],
+          highlightColor: Swatch.defaults[r.nextInt(3)],
           inkColor: 0xFF000000 + r.nextInt(4),
         );
         return 'recolor';

@@ -3,12 +3,14 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
-import '../../../domain/model/models.dart';
 import '../../../ui/theme/theme.dart';
 import '../../../ui/theme/tokens.dart';
 import '../../../ui/widgets/aether_icon.dart';
-import '../../../ui/widgets/meaning_disc.dart';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../canvas_ui_state.dart';
+import '../colour_strip.dart';
 import '../engine/scene.dart';
 import '../engine/view_state.dart';
 import '../ink/ink_layer.dart';
@@ -130,7 +132,7 @@ class SelectionPainter extends CustomPainter {
 
 /// What the selection's action pill can do.
 abstract interface class SelectionActions {
-  void recolorMeaning(Meaning m);
+  void recolorHighlight(int argb);
   void recolorInk(int argb);
   void deleteSelection();
 }
@@ -215,9 +217,14 @@ class _MarkSelectionOverlayState extends State<MarkSelectionOverlay> {
         // Above the selection if there is room, else below; kept on screen.
         final hasH = sel.idsOf(MarkKind.highlight).isNotEmpty;
         final hasI = sel.idsOf(MarkKind.ink).isNotEmpty;
+        final ui = ProviderScope.containerOf(context).read(canvasUiProvider);
+        // Back, then each strip: its recent colours and the "any colour" button.
         final wanted = _recoloring
-            ? AetherTokens.minTarget * (1 + (hasH ? 3 : 0) + (hasI ? 4 : 0)) +
-                  16
+            ? AetherTokens.minTarget *
+                      (1 +
+                          (hasH ? ui.markColors.recent.length + 1 : 0) +
+                          (hasI ? ui.inkColors.recent.length + 1 : 0)) +
+                  24
             : 300.0;
         final width = math.min(wanted, math.max(200.0, size.width - 16));
         var top = tl.dy - _pillH - 14;
@@ -266,58 +273,37 @@ class _MarkSelectionOverlayState extends State<MarkSelectionOverlay> {
                     onPressed: () => setState(() => _recoloring = false),
                     icon: AetherIcon(AetherIcons.back, color: t.ink),
                   ),
-                  if (hasHighlights)
-                    for (final m in Meaning.values)
-                      Semantics(
-                        button: true,
-                        label: 'Change to ${m.label}',
-                        excludeSemantics: true,
-                        onTap: () => widget.actions.recolorMeaning(m),
-                        child: Tooltip(
-                          message: m.label,
-                          child: InkResponse(
-                            radius: 24,
-                            onTap: () => widget.actions.recolorMeaning(m),
-                            child: SizedBox(
-                              width: AetherTokens.minTarget,
-                              height: AetherTokens.minTarget,
-                              child: Center(child: MeaningDisc(m)),
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final ui = ref.watch(canvasUiProvider);
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (hasHighlights)
+                            ColourStrip(
+                              colours: ui.markColors,
+                              prefix: 'Highlight',
+                              onPick: widget.actions.recolorHighlight,
                             ),
-                          ),
-                        ),
-                      ),
-                  if (hasInk)
-                    for (var i = 0; i < InkPalette.colors.length; i++)
-                      Semantics(
-                        button: true,
-                        label: 'Pen colour ${InkPalette.names[i]}',
-                        excludeSemantics: true,
-                        onTap: () =>
-                            widget.actions.recolorInk(InkPalette.colors[i]),
-                        child: Tooltip(
-                          message: InkPalette.names[i],
-                          child: InkResponse(
-                            radius: 24,
-                            onTap: () =>
-                                widget.actions.recolorInk(InkPalette.colors[i]),
-                            child: SizedBox(
-                              width: AetherTokens.minTarget,
-                              height: AetherTokens.minTarget,
-                              child: Center(
-                                child: Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: BoxDecoration(
-                                    color: Color(InkPalette.colors[i]),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: t.hairline),
-                                  ),
-                                ),
+                          if (hasHighlights && hasInk)
+                            Container(
+                              width: 1,
+                              height: 28,
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: AetherTokens.s1,
                               ),
+                              color: t.hairline,
                             ),
-                          ),
-                        ),
-                      ),
+                          if (hasInk)
+                            ColourStrip(
+                              colours: ui.inkColors,
+                              prefix: 'Pen',
+                              onPick: widget.actions.recolorInk,
+                            ),
+                        ],
+                      );
+                    },
+                  ),
                 ]
               : [
                   Padding(

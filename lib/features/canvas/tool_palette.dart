@@ -1,43 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../domain/model/models.dart';
 import '../../ui/theme/tokens.dart';
-import '../../ui/widgets/meaning_disc.dart';
 import '../../ui/widgets/panel_surface.dart';
 import '../../ui/widgets/tool_button.dart';
 import 'canvas_ui_state.dart';
-
-/// One tappable meaning swatch with a 48 dp hit area.
-class MeaningButton extends ConsumerWidget {
-  const MeaningButton(this.meaning, {super.key});
-  final Meaning meaning;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final ui = ref.watch(canvasUiProvider);
-    final selected = ui.meaning == meaning && ui.tool == CanvasTool.mark;
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: '${meaning.label} highlight',
-      excludeSemantics: true,
-      onTap: () => ref.read(canvasUiProvider.notifier).setMeaning(meaning),
-      child: Tooltip(
-        message: meaning.label,
-        child: InkResponse(
-          radius: 24,
-          onTap: () => ref.read(canvasUiProvider.notifier).setMeaning(meaning),
-          child: SizedBox(
-            width: AetherTokens.minTarget,
-            height: AetherTokens.minTarget,
-            child: Center(child: MeaningDisc(meaning, selected: selected)),
-          ),
-        ),
-      ),
-    );
-  }
-}
+import 'colour_strip.dart';
 
 /// Vertical floating tool rail (tablet and desktop).
 class ToolRail extends ConsumerWidget {
@@ -46,7 +14,6 @@ class ToolRail extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ui = ref.watch(canvasUiProvider);
-    final t = context.tokens;
     return PanelSurface(
       padding: const EdgeInsets.all(AetherTokens.s2),
       child: SingleChildScrollView(
@@ -64,13 +31,6 @@ class ToolRail extends ConsumerWidget {
               ),
               const SizedBox(height: AetherTokens.s1),
             ],
-            Container(
-              height: 1,
-              width: 40,
-              margin: const EdgeInsets.symmetric(vertical: AetherTokens.s1),
-              color: t.hairline,
-            ),
-            for (final m in Meaning.values) MeaningButton(m),
           ],
         ),
       ),
@@ -166,17 +126,22 @@ Future<void> showMoreTools(BuildContext context) {
   );
 }
 
-/// Row of the three meanings, shown above the toolbar while Mark is active.
-class MeaningStrip extends StatelessWidget {
-  const MeaningStrip({super.key});
+/// The marker's options: its last five colours and any other colour. Shown
+/// beside the rail (or above the toolbar) while Mark is active.
+class MarkOptions extends ConsumerWidget {
+  const MarkOptions({super.key});
 
   @override
-  Widget build(BuildContext context) => PanelSurface(
-    radius: AetherTokens.rPill,
-    padding: const EdgeInsets.symmetric(horizontal: AetherTokens.s2),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [for (final m in Meaning.values) MeaningButton(m)],
-    ),
-  );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colours = ref.watch(canvasUiProvider.select((u) => u.markColors));
+    return PanelSurface(
+      radius: AetherTokens.rPill,
+      padding: const EdgeInsets.symmetric(horizontal: AetherTokens.s2),
+      child: ColourStrip(
+        colours: colours,
+        prefix: 'Marker',
+        onPick: ref.read(canvasUiProvider.notifier).setMarkColor,
+      ),
+    );
+  }
 }

@@ -16,7 +16,7 @@ class ExtractItem implements ExtractEntry {
   @override
   final int pageIndex;
 
-  Meaning get meaning => highlight.meaning;
+  int get color => highlight.color;
   String get quote => highlight.quote;
 
   /// A rectangle over a figure or scan, with no text behind it.
@@ -33,15 +33,15 @@ class ExtractItem implements ExtractEntry {
 /// highlight whose page is gone sorts last. Ties break on id so the order
 /// never flickers.
 ///
-/// [only] keeps a single meaning; null keeps all of them.
+/// [onlyColor] keeps a single colour; null keeps all of them.
 List<ExtractItem> buildExtract(
   Iterable<Highlight> highlights,
   Map<String, int> pageIndexById, {
-  Meaning? only,
+  int? onlyColor,
 }) {
   final items = [
     for (final h in highlights)
-      if (only == null || h.meaning == only)
+      if (onlyColor == null || h.color == onlyColor)
         ExtractItem(h, pageIndexById[h.pageId] ?? -1),
   ];
   items.sort(_readingOrder);

@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'app/app.dart';
 import 'app/providers.dart';
+import 'features/canvas/palette.dart';
 import 'core/hlc/hlc.dart';
 import 'data/db/database.dart';
 import 'data/db/drift_op_store.dart';
@@ -37,6 +38,7 @@ Future<void> main() async {
       overrides: [
         databaseProvider.overrideWithValue(db),
         pdfStorageProvider.overrideWithValue(storage),
+        paletteStoreProvider.overrideWithValue(DbPaletteStore(db)),
         hlcClockProvider.overrideWithValue(clock),
       ],
       child: const AetherApp(),

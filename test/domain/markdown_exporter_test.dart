@@ -3,15 +3,16 @@ import 'dart:io';
 import 'package:aether/core/geometry/box.dart';
 import 'package:aether/domain/export/extract_items.dart';
 import 'package:aether/domain/export/markdown_exporter.dart';
+import 'package:aether/domain/marks/colour_name.dart';
 import 'package:aether/domain/model/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Highlight hl(String id, String page, int start, String quote, Meaning m) =>
+Highlight hl(String id, String page, int start, String quote, int m) =>
     Highlight(
       id: id,
       docId: 'd',
       pageId: page,
-      meaning: m,
+      color: m,
       startChar: start,
       endChar: start < 0 ? -1 : start + quote.length,
       quote: quote,
@@ -22,12 +23,12 @@ const pages = {'p0': 0, 'p1': 1, 'p2': 2, 'p3': 3};
 
 /// A small, mixed document, deliberately given out of order.
 List<ExtractItem> sample() => buildExtract([
-  hl('5', 'p3', 12, 'How does it scale past 2,000 workers?', Meaning.question),
-  hl('1', 'p0', 10, 'MapReduce is a programming model.', Meaning.claim),
-  hl('3', 'p1', 40, 'The input is split into M pieces.', Meaning.method),
-  hl('2', 'p0', 400, 'Programs are automatically parallelized.', Meaning.claim),
-  hl('4', 'p1', -1, '(image region)', Meaning.method),
-  hl('6', 'p2', 5, 'He said "go" and left.', Meaning.claim),
+  hl('5', 'p3', 12, 'How does it scale past 2,000 workers?', Swatch.question),
+  hl('1', 'p0', 10, 'MapReduce is a programming model.', Swatch.claim),
+  hl('3', 'p1', 40, 'The input is split into M pieces.', Swatch.method),
+  hl('2', 'p0', 400, 'Programs are automatically parallelized.', Swatch.claim),
+  hl('4', 'p1', -1, '(image region)', Swatch.method),
+  hl('6', 'p2', 5, 'He said "go" and left.', Swatch.claim),
 ], pages);
 
 /// Compares with `test/domain/goldens/<name>`. Re-record a deliberate change
@@ -107,7 +108,7 @@ List<ExtractNote> sampleNotes() => [
 ];
 
 void main() {
-  test('notes follow the meaning sections, matching their golden file', () {
+  test('notes follow the colour sections, matching their golden file', () {
     expectGolden(
       'export_with_notes.md',
       MarkdownExporter.export('MapReduce', sample(), notes: sampleNotes()),
@@ -161,9 +162,9 @@ void main() {
     );
   });
 
-  test('grouped by meaning matches its golden file', () {
+  test('grouped by colour matches its golden file', () {
     expectGolden(
-      'export_by_meaning.md',
+      'export_by_colour.md',
       MarkdownExporter.export('MapReduce', sample()),
     );
   });
@@ -179,18 +180,33 @@ void main() {
     );
   });
 
-  test('sections appear in the order Claim, Method, Question', () {
+  test('sections appear in the order each colour is first used', () {
     final md = MarkdownExporter.export('T', sample());
-    expect(md.indexOf('## Claim'), lessThan(md.indexOf('## Method')));
-    expect(md.indexOf('## Method'), lessThan(md.indexOf('## Question')));
+    final first = [
+      for (final c in <int>{for (final i in sample()) i.color}) colourName(c),
+    ];
+    final at = [for (final n in first) md.indexOf('## $n')];
+    expect(at, everyElement(greaterThan(-1)));
+    expect([...at]..sort(), at);
   });
 
-  test('a meaning with nothing marked has no section', () {
+  test('a colour with nothing marked has no section', () {
     final md = MarkdownExporter.export('T', [
-      ExtractItem(hl('a', 'p0', 1, 'Only a claim.', Meaning.claim), 0),
+      ExtractItem(hl('a', 'p0', 1, 'Only coral.', Swatch.coral), 0),
     ]);
-    expect(md, '# T\n\n## Claim\n- "Only a claim." (p. 1)\n');
-    expect(md, isNot(contains('## Method')));
+    expect(md, '# T\n\n## Coral\n- "Only coral." (p. 1)\n');
+    expect(md, isNot(contains('## Blue')));
+  });
+
+  test('any colour gets a heading, and two that round alike stay apart', () {
+    final md = MarkdownExporter.export('T', [
+      ExtractItem(hl('a', 'p0', 1, 'One.', 0xFF6FB1EE), 0),
+      ExtractItem(hl('b', 'p0', 5, 'Two.', 0xFF70B2EF), 0),
+      ExtractItem(hl('c', 'p0', 9, 'Three.', 0xFF12AB34), 0),
+    ]);
+    expect(md, contains('## Blue\n- "One."'));
+    expect(md, contains('## Blue 2\n- "Two."'));
+    expect(md, contains('## Green\n- "Three."'));
   });
 
   test('nothing marked says so', () {
@@ -202,7 +218,7 @@ void main() {
 
   test('a free rectangle is listed as an image region, not a quote', () {
     final md = MarkdownExporter.export('T', [
-      ExtractItem(hl('r', 'p1', -1, '(image region)', Meaning.method), 1),
+      ExtractItem(hl('r', 'p1', -1, '(image region)', Swatch.method), 1),
     ]);
     expect(md, contains('- *(image region)* (p. 2)'));
     expect(md, isNot(contains('"(image region)"')));
@@ -210,7 +226,7 @@ void main() {
 
   test('a highlight on a page that is gone omits the page', () {
     final md = MarkdownExporter.export('T', [
-      ExtractItem(hl('x', 'gone', 1, 'Orphan.', Meaning.claim), -1),
+      ExtractItem(hl('x', 'gone', 1, 'Orphan.', Swatch.claim), -1),
     ]);
     expect(md, contains('- "Orphan."\n'));
   });

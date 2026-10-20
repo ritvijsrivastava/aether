@@ -1,3 +1,4 @@
+import 'package:aether/domain/model/models.dart';
 import 'package:aether/features/canvas/canvas_ui_state.dart';
 import 'package:aether/features/canvas/erase/erase_options.dart';
 import 'package:aether/features/canvas/ink/ink_options.dart';
@@ -41,10 +42,10 @@ void main() {
     final c = await pump(tester);
     await tester.tap(find.byTooltip('Coral'));
     await tester.pump();
-    expect(c.read(canvasUiProvider).inkColor, InkPalette.colors[1]);
+    expect(c.read(canvasUiProvider).inkColor, Swatch.coral);
     await tester.tap(find.byTooltip('Blue'));
     await tester.pump();
-    expect(c.read(canvasUiProvider).inkColor, InkPalette.colors[3]);
+    expect(c.read(canvasUiProvider).inkColor, Swatch.blue);
   });
 
   testWidgets('the colour buttons are 48 dp targets with names', (
@@ -52,7 +53,12 @@ void main() {
   ) async {
     final handle = tester.ensureSemantics();
     await pump(tester);
-    for (final name in InkPalette.names) {
+    for (final name in [
+      'Warm ink'.replaceAll('Warm ink', 'Black'),
+      'Coral',
+      'Amber',
+      'Blue',
+    ]) {
       final size = tester.getSize(find.byTooltip(name));
       expect(size.width, greaterThanOrEqualTo(48));
       expect(size.height, greaterThanOrEqualTo(48));
@@ -98,7 +104,7 @@ void main() {
         child: MaterialApp(
           theme: buildTheme(AetherTokens.light),
           home: const Scaffold(
-            body: Center(child: InkOptions(sliderWidth: 80)),
+            body: Center(child: InkOptions(sliderWidth: 80, compact: true)),
           ),
         ),
       ),

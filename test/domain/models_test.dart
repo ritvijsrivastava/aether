@@ -64,7 +64,7 @@ void main() {
       id: 'h1',
       docId: 'd1',
       pageId: 'p1',
-      meaning: Meaning.method,
+      color: Swatch.method,
       startChar: 10,
       endChar: 40,
       quote: 'a re-routing step',
@@ -75,7 +75,7 @@ void main() {
     final back = Mark.fromState(stateOf(EntityKind.mark, 'h1', h.toFields()));
     expect(back, isA<Highlight>());
     final b = back as Highlight;
-    expect(b.meaning, Meaning.method);
+    expect(b.color, Swatch.method);
     expect(b.quote, h.quote);
     expect(b.rects, h.rects);
     expect(b.bounds, const Box(10, 20, 100, 46));
@@ -173,8 +173,44 @@ void main() {
     expect((pb.index, pb.cardX, pb.height), (2, 1500.0, 792.0));
   });
 
-  test('unknown meaning falls back instead of throwing', () {
-    expect(Meaning.parse('nonsense'), Meaning.claim);
-    expect(Meaning.parse(null), Meaning.claim);
+  test('an unknown legacy meaning falls back instead of throwing', () {
+    expect(Swatch.fromLegacyMeaning('nonsense'), Swatch.coral);
+    expect(Swatch.fromLegacyMeaning(null), Swatch.coral);
+    expect(Swatch.fromLegacyMeaning('method'), Swatch.amber);
+    expect(Swatch.fromLegacyMeaning('question'), Swatch.blue);
+  });
+
+  test('a highlight saved before colour was free keeps its colour', () {
+    final fields = {
+      ...const Highlight(
+        id: 'h',
+        docId: 'd',
+        pageId: 'p',
+        color: 0,
+        startChar: 0,
+        endChar: 1,
+        quote: 'q',
+        rects: [],
+      ).toFields(),
+    }..remove(F.color);
+    fields[F.meaning] = 'question';
+    final h =
+        Mark.fromState(stateOf(EntityKind.mark, 'h', fields)) as Highlight;
+    expect(h.color, Swatch.blue);
+  });
+
+  test('any colour survives a round trip', () {
+    const h = Highlight(
+      id: 'h',
+      docId: 'd',
+      pageId: 'p',
+      color: 0xFF12AB34,
+      startChar: 0,
+      endChar: 1,
+      quote: 'q',
+      rects: [],
+    );
+    final back = Mark.fromState(stateOf(EntityKind.mark, 'h', h.toFields()));
+    expect((back as Highlight).color, 0xFF12AB34);
   });
 }

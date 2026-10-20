@@ -52,10 +52,10 @@ class FakeText implements PageTextSource {
 }
 
 class Added {
-  Added(this.id, this.pageId, this.selection, this.meaning);
+  Added(this.id, this.pageId, this.selection, this.color);
   final String id, pageId;
   final MarkSelection selection;
-  final Meaning meaning;
+  final int color;
 }
 
 class FakeSink implements MarkSink {
@@ -67,10 +67,10 @@ class FakeSink implements MarkSink {
   String addHighlight({
     required String pageId,
     required MarkSelection selection,
-    required Meaning meaning,
+    required int color,
     PageText? text,
   }) {
-    final a = Added('h${++_n}', pageId, selection, meaning);
+    final a = Added('h${++_n}', pageId, selection, color);
     added.add(a);
     return a.id;
   }
@@ -80,10 +80,10 @@ class FakeSink implements MarkSink {
     required String oldId,
     required String pageId,
     required MarkSelection selection,
-    required Meaning meaning,
+    required int color,
     PageText? text,
   }) {
-    final a = Added('h${++_n}', pageId, selection, meaning);
+    final a = Added('h${++_n}', pageId, selection, color);
     replaced.add((oldId, a));
     return a.id;
   }
@@ -97,7 +97,7 @@ void main() {
   late ValueNotifier<LiveMark?> live;
   late FakeText text;
   late FakeSink sink;
-  late Meaning meaning;
+  late int color;
   late DateTime clock;
   late MarkToolController tool;
 
@@ -112,13 +112,13 @@ void main() {
     live = ValueNotifier(null);
     text = FakeText({0: page, 1: page});
     sink = FakeSink();
-    meaning = Meaning.claim;
+    color = Swatch.claim;
     clock = DateTime(2030);
     tool = MarkToolController(
       view: view,
       scene: scene,
       live: live,
-      meaning: () => meaning,
+      color: () => color,
       text: text,
       sink: sink,
       now: () => clock,
@@ -138,7 +138,7 @@ void main() {
       tool.markMove(jumps);
       expect(live.value!.selection.quote, 'quick brown fox jumps');
       expect(live.value!.cardId, 'p0');
-      expect(live.value!.meaning, Meaning.claim);
+      expect(live.value!.color, Swatch.claim);
       expect(sink.added, isEmpty, reason: 'only a release commits');
       tool.markEnd(jumps);
       expect(live.value, isNull);
@@ -151,9 +151,9 @@ void main() {
     test('uses the meaning chosen at the moment of release', () {
       tool.markStart(quick);
       tool.markMove(jumps);
-      meaning = Meaning.question;
+      color = Swatch.question;
       tool.markEnd(jumps);
-      expect(sink.added.single.meaning, Meaning.question);
+      expect(sink.added.single.color, Swatch.question);
     });
 
     test('works in page space on the second page', () {

@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart' show CustomPainter;
 
 import '../../../core/geometry/box.dart';
-import '../../../domain/model/models.dart';
 import '../../../ui/theme/tokens.dart';
 import '../engine/scene.dart';
 import '../engine/view_state.dart';
@@ -13,10 +12,10 @@ import '../engine/view_state.dart';
 /// A highlight being pointed at after a jump from Extract.
 @immutable
 class Flash {
-  const Flash(this.cardId, this.rects, this.meaning);
+  const Flash(this.cardId, this.rects, this.color);
   final String cardId;
   final List<Box> rects;
-  final Meaning meaning;
+  final int color;
 }
 
 /// Shows one [Flash] for about a second and then clears it.

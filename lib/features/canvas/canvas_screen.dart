@@ -13,6 +13,9 @@ import '../../core/geometry/box.dart';
 import '../../data/pdf/page_text_service.dart';
 import '../../domain/export/markdown_exporter.dart';
 import '../../domain/model/models.dart';
+import '../../domain/marks/colour_name.dart';
+import '../../ui/widgets/color_disc.dart';
+import '../../ui/widgets/colour_picker.dart';
 import '../../ui/adaptive/window_class.dart';
 import '../library/import/password_dialog.dart';
 import '../../ui/theme/tokens.dart';
@@ -211,7 +214,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       view: _controller.view,
       scene: _controller.scene,
       live: _live,
-      meaning: () => ref.read(canvasUiProvider).meaning,
+      color: () => ref.read(canvasUiProvider).markColor,
       text: textService,
       sink: session,
     );
@@ -318,7 +321,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     );
     _flash
       ..reduceMotion = reduce
-      ..show(Flash(card.id, h.rects, h.meaning));
+      ..show(Flash(card.id, h.rects, h.color));
     _extract?.collapseRequests.value++;
   }
 
@@ -468,10 +471,10 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       highlights: session.highlights,
       notes: session.notes,
     );
-    final ref = hit.markAt(world, v.zoom);
-    if (ref != null) _selection.set([ref]);
-    final highlight = ref?.kind == MarkKind.highlight
-        ? session.highlights.byId(ref!.id)
+    final target = hit.markAt(world, v.zoom);
+    if (target != null) _selection.set([target]);
+    final highlight = target?.kind == MarkKind.highlight
+        ? session.highlights.byId(target!.id)
         : null;
     final overlay =
         Overlay.of(context).context.findRenderObject()! as RenderBox;
@@ -483,24 +486,42 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       ),
       items: [
         if (highlight != null) ...[
-          for (final m in Meaning.values)
+          for (final c in ref.read(canvasUiProvider).markColors.recent)
             CheckedPopupMenuItem<String>(
-              value: 'meaning:${m.id}',
-              checked: highlight.meaning == m,
-              child: Text(m.label),
+              value: 'colour:$c',
+              checked: highlight.color == c,
+              child: Row(
+                children: [
+                  ColorDisc(c, size: 18),
+                  const SizedBox(width: 8),
+                  Text(colourName(c)),
+                ],
+              ),
             ),
+          const PopupMenuItem(
+            value: 'colour:other',
+            child: Text('Other colour…'),
+          ),
           const PopupMenuDivider(),
           const PopupMenuItem(value: 'note', child: Text('Add note')),
           const PopupMenuItem(value: 'copy', child: Text('Copy quote')),
-        ] else if (ref == null)
+        ] else if (target == null)
           const PopupMenuItem(value: 'note-here', child: Text('Add note here')),
-        if (ref != null)
+        if (target != null)
           const PopupMenuItem(value: 'delete', child: Text('Delete')),
       ],
     );
     if (choice == null || !mounted) return;
-    if (choice.startsWith('meaning:')) {
-      session.recolorMarks([ref!], meaning: Meaning.parse(choice.substring(8)));
+    if (choice == 'colour:other') {
+      final c = await showColourPicker(
+        context,
+        initial: highlight?.color ?? Swatch.coral,
+      );
+      if (c != null) session.recolorMarks([target!], highlightColor: c);
+    } else if (choice.startsWith('colour:')) {
+      session.recolorMarks([
+        target!,
+      ], highlightColor: int.parse(choice.substring(7)));
     } else if (choice == 'delete') {
       _deleteSelection(session);
     } else if (choice == 'copy' && highlight != null) {
@@ -540,7 +561,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
         ..show(
           Flash(n.pageId!, [
             Box(n.x, n.y, n.x + n.width, n.y + n.height),
-          ], Meaning.claim),
+          ], Swatch.amber),
         );
     }
     _extract?.collapseRequests.value++;
@@ -638,7 +659,6 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       lasso: _lasso,
       onContextMenu: session == null ? null : _showContextMenu,
       onTool: (t) => ref.read(canvasUiProvider.notifier).setTool(t),
-      onMeaning: (m) => ref.read(canvasUiProvider.notifier).setMeaning(m),
       onEscape: () {
         _selection.clear();
         _session?.links.select(null);
@@ -835,6 +855,13 @@ class _WideBody extends ConsumerWidget {
               child: ToolRail(),
             ),
           ),
+          if (ui.tool == CanvasTool.mark)
+            Positioned(
+              left: leftHanded ? null : 96,
+              right: leftHanded ? 96 : null,
+              top: AetherTokens.s4 + 1 * 60,
+              child: const MarkOptions(),
+            ),
           if (ui.tool == CanvasTool.ink)
             Positioned(
               // Beside the rail, level with the Ink button.
@@ -933,7 +960,7 @@ class _CompactBody extends ConsumerWidget {
                   left: 0,
                   right: 0,
                   bottom: 88,
-                  child: Center(child: MeaningStrip()),
+                  child: Center(child: MarkOptions()),
                 ),
               if (ui.tool == CanvasTool.erase)
                 const Positioned(
@@ -947,7 +974,9 @@ class _CompactBody extends ConsumerWidget {
                   left: 0,
                   right: 0,
                   bottom: 88,
-                  child: Center(child: InkOptions(sliderWidth: 80)),
+                  child: Center(
+                    child: InkOptions(sliderWidth: 160, compact: true),
+                  ),
                 ),
               _ExtractSheet(open: open, source: extract),
             ],
@@ -1065,9 +1094,9 @@ class _SelectionActions implements SelectionActions {
   final _CanvasScreenState state;
 
   @override
-  void recolorMeaning(Meaning m) {
+  void recolorHighlight(int argb) {
     final s = state._session;
-    if (s != null) s.recolorMarks(state._selection.refs, meaning: m);
+    if (s != null) s.recolorMarks(state._selection.refs, highlightColor: argb);
   }
 
   @override

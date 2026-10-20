@@ -190,13 +190,13 @@ class DocumentSession
     String id,
     String pageId,
     MarkSelection s,
-    Meaning meaning,
+    int color,
     PageText? text,
   ) => Highlight(
     id: id,
     docId: docId,
     pageId: pageId,
-    meaning: meaning,
+    color: color,
     startChar: s.start,
     endChar: s.end,
     quote: s.quote,
@@ -214,11 +214,11 @@ class DocumentSession
   String addHighlight({
     required String pageId,
     required MarkSelection selection,
-    required Meaning meaning,
+    required int color,
     PageText? text,
   }) {
     final id = ids.next();
-    final h = _highlight(id, pageId, selection, meaning, text);
+    final h = _highlight(id, pageId, selection, color, text);
     highlights.add(h);
     _enqueue(() async {
       try {
@@ -277,15 +277,19 @@ class DocumentSession
   @override
   void commitMove(List<Mark> finals) => _saveMarkEdits(finals, 'Move');
 
-  /// Changes the meaning of the selected highlights and/or the colour of the
+  /// Changes the colour of the selected highlights and/or the colour of the
   /// selected ink, as one step.
-  void recolorMarks(Iterable<MarkRef> refs, {Meaning? meaning, int? inkColor}) {
+  void recolorMarks(
+    Iterable<MarkRef> refs, {
+    int? highlightColor,
+    int? inkColor,
+  }) {
     final finals = <Mark>[];
     for (final r in refs) {
-      if (r.kind == MarkKind.highlight && meaning != null) {
+      if (r.kind == MarkKind.highlight && highlightColor != null) {
         final h = highlights.byId(r.id);
-        if (h != null && h.meaning != meaning) {
-          final next = h.copyWith(meaning: meaning);
+        if (h != null && h.color != highlightColor) {
+          final next = h.copyWith(color: highlightColor);
           highlights.add(next);
           finals.add(next);
         }
@@ -601,11 +605,11 @@ class DocumentSession
     required String oldId,
     required String pageId,
     required MarkSelection selection,
-    required Meaning meaning,
+    required int color,
     PageText? text,
   }) {
     final id = ids.next();
-    final h = _highlight(id, pageId, selection, meaning, text);
+    final h = _highlight(id, pageId, selection, color, text);
     final old = highlights.byId(oldId);
     // Links follow the word to the sentence that replaces it.
     final moved = links.forHighlight(oldId);

@@ -9,7 +9,7 @@ import 'package:aether/ui/theme/tokens.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const _flash = Flash('p0', [Box(20, 40, 80, 52)], Meaning.method);
+const _flash = Flash('p0', [Box(20, 40, 80, 52)], Swatch.method);
 
 /// 100 x 100 px at zoom 1, the page at the origin.
 Future<ByteData> render(FlashController f) async {
@@ -51,7 +51,7 @@ void main() {
     f.show(_flash);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 1000));
-    f.show(const Flash('p0', [Box(0, 0, 10, 10)], Meaning.claim));
+    f.show(const Flash('p0', [Box(0, 0, 10, 10)], Swatch.claim));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 1000));
     expect(f.current.value, isNotNull, reason: 'restarted, not the old timer');
@@ -101,7 +101,7 @@ void main() {
 
   testWidgets('a flash on a page that is gone paints nothing', (tester) async {
     final f = FlashController(tester);
-    f.show(const Flash('missing', [Box(20, 40, 80, 52)], Meaning.claim));
+    f.show(const Flash('missing', [Box(20, 40, 80, 52)], Swatch.claim));
     await tester.runAsync(() async {
       expect(alphaAt(await render(f), 50, 37), 0);
     });

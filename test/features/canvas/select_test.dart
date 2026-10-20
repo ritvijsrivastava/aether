@@ -27,7 +27,7 @@ Highlight hl(String id, Box r) => Highlight(
   id: id,
   docId: 'd',
   pageId: 'p0',
-  meaning: Meaning.claim,
+  color: Swatch.claim,
   startChar: 0,
   endChar: 3,
   quote: 'q',
@@ -353,8 +353,8 @@ void main() {
     expect(s.copyWith(color: 7).color, 7);
     expect(s.copyWith().color, s.color);
     expect(
-      hl('h', const Box(0, 0, 1, 1)).copyWith(meaning: Meaning.method).meaning,
-      Meaning.method,
+      hl('h', const Box(0, 0, 1, 1)).copyWith(color: Swatch.method).color,
+      Swatch.method,
     );
   });
 }

@@ -680,3 +680,6 @@ Card   { id, boardId, sourceId?, kind, pageIndex?, x, y, width, height, z, hlc }
 - **Markdown export order:** by colour, in order of first use.
 
 **Still open:** none. Next step: owner says "go" for M4.1.
+
+### M4.1 progress notes
+- **Slice 1 (colour) built:** a highlight stores any ARGB colour (`Highlight.color`; old `meaning` ids read as Coral, Amber, Blue). Ink and Marker each keep their own current colour and last five, persisted in settings. Colour picker: hue bar, saturation/brightness square, hex. Extract filters by colour chips with counts; Markdown groups by colour in order of first use under an automatic name. The digit keys 1 2 3 (meanings) are removed; tool keys stay.

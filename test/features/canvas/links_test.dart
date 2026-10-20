@@ -23,7 +23,7 @@ Highlight hl(String id, String page, Box r) => Highlight(
   id: id,
   docId: 'd',
   pageId: page,
-  meaning: Meaning.claim,
+  color: Swatch.claim,
   startChar: 0,
   endChar: 3,
   quote: 'q',

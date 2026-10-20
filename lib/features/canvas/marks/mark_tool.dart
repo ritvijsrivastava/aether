@@ -3,7 +3,6 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 
-import '../../../domain/model/models.dart';
 import '../../../domain/text/page_text.dart';
 import '../../../domain/text/page_text_source.dart';
 import '../../../domain/text/text_selection.dart';
@@ -42,7 +41,7 @@ abstract interface class MarkSink {
   String addHighlight({
     required String pageId,
     required MarkSelection selection,
-    required Meaning meaning,
+    required int color,
     PageText? text,
   });
 
@@ -52,7 +51,7 @@ abstract interface class MarkSink {
     required String oldId,
     required String pageId,
     required MarkSelection selection,
-    required Meaning meaning,
+    required int color,
     PageText? text,
   });
 }
@@ -70,7 +69,7 @@ class MarkToolController implements MarkGestures {
     required this.view,
     required this.scene,
     required this.live,
-    required this.meaning,
+    required this.color,
     this.text,
     this.sink,
     DateTime Function()? now,
@@ -82,8 +81,8 @@ class MarkToolController implements MarkGestures {
   /// Receives the in-progress highlight for drawing; null when idle.
   final ValueNotifier<LiveMark?> live;
 
-  /// The meaning to mark with, read at the moment of release.
-  final Meaning Function() meaning;
+  /// The colour to mark with, read at the moment of release.
+  final int Function() color;
 
   /// Set once a document's text is available. Without it the tool does
   /// nothing.
@@ -191,7 +190,7 @@ class MarkToolController implements MarkGestures {
     if (d == null || card == null) return;
     final p = _page(_latestScreen);
     final sel = d.update(p.dx, p.dy);
-    live.value = sel == null ? null : LiveMark(card.id, sel, meaning());
+    live.value = sel == null ? null : LiveMark(card.id, sel, color());
   }
 
   @override
@@ -244,7 +243,7 @@ class MarkToolController implements MarkGestures {
           oldId: prev.highlightId,
           pageId: card.id,
           selection: sentence,
-          meaning: meaning(),
+          color: color(),
           text: t,
         );
         return;
@@ -264,7 +263,7 @@ class MarkToolController implements MarkGestures {
     return sink.addHighlight(
       pageId: card.id,
       selection: selection,
-      meaning: meaning(),
+      color: color(),
       text: t,
     );
   }

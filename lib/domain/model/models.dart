@@ -6,22 +6,23 @@ import '../../core/geometry/box.dart';
 import '../ops/entity_state.dart';
 import 'ink_codec.dart';
 
-/// The three built-in meanings. Stable string ids; user-defined meanings are a
-/// later feature and will arrive as `category` entities without a migration.
-enum Meaning {
-  claim,
-  method,
-  question;
+/// The three default highlight colours (the old Claim, Method and Question).
+/// Colour is free: a highlight stores any ARGB value, and these are only the
+/// swatches the marker starts with. They carry no name.
+abstract final class Swatch {
+  static const int coral = 0xFFF4877E;
+  static const int amber = 0xFFF2C94C;
+  static const int blue = 0xFF6FB1EE;
+  static const List<int> defaults = [coral, amber, blue];
 
-  static Meaning parse(String? id) =>
-      Meaning.values.firstWhere((m) => m.id == id, orElse: () => Meaning.claim);
+  // The old meaning names, for data written before colour became free.
+  static const int claim = coral, method = amber, question = blue;
 
-  String get id => name;
-
-  String get label => switch (this) {
-    Meaning.claim => 'Claim',
-    Meaning.method => 'Method',
-    Meaning.question => 'Question',
+  /// The colour of a highlight stored with the old `meaning` field.
+  static int fromLegacyMeaning(String? id) => switch (id) {
+    'method' => method,
+    'question' => question,
+    _ => claim,
   };
 }
 
@@ -164,7 +165,10 @@ sealed class Mark {
           id: s.id,
           docId: docId,
           pageId: pageId,
-          meaning: Meaning.parse(s.field<String>(F.meaning)),
+          color:
+              (s.field<num>(F.color) ??
+                      Swatch.fromLegacyMeaning(s.field<String>(F.meaning)))
+                  .toInt(),
           startChar: (s.field<num>(F.startChar) ?? 0).toInt(),
           endChar: (s.field<num>(F.endChar) ?? 0).toInt(),
           quote: s.field<String>(F.quote) ?? '',
@@ -204,7 +208,7 @@ class Highlight extends Mark {
     required super.id,
     required super.docId,
     super.pageId,
-    required this.meaning,
+    required this.color,
     required this.startChar,
     required this.endChar,
     required this.quote,
@@ -213,14 +217,15 @@ class Highlight extends Mark {
     required this.rects,
   });
 
-  final Meaning meaning;
+  /// ARGB highlight colour.
+  final int color;
   final int startChar, endChar;
 
-  Highlight copyWith({Meaning? meaning}) => Highlight(
+  Highlight copyWith({int? color}) => Highlight(
     id: id,
     docId: docId,
     pageId: pageId,
-    meaning: meaning ?? this.meaning,
+    color: color ?? this.color,
     startChar: startChar,
     endChar: endChar,
     quote: quote,
@@ -249,7 +254,7 @@ class Highlight extends Mark {
   @override
   Map<String, Object?> toFields() => {
     ...baseFields(),
-    F.meaning: meaning.id,
+    F.color: color,
     F.startChar: startChar,
     F.endChar: endChar,
     F.quote: quote,

@@ -11,7 +11,6 @@ import 'package:aether/domain/commands/command_bus.dart';
 import 'package:aether/domain/model/models.dart';
 import 'package:aether/domain/ops/op.dart';
 import 'package:aether/domain/text/page_text.dart';
-import 'package:aether/features/canvas/canvas_ui_state.dart';
 import 'package:aether/features/canvas/canvas_view.dart';
 import 'package:aether/features/canvas/ink/ink_options.dart';
 import 'package:aether/features/canvas/notes/notes_overlay.dart';
@@ -160,7 +159,7 @@ void main() {
       'programming model and an associated implementation for processing and '
       'generating large data sets.',
     );
-    expect(saved.single.meaning, Meaning.claim);
+    expect(saved.single.color, Swatch.claim);
     expect(saved.single.rects, hasLength(3));
     expect(saved.single.pageId, c.scene.value.cards.first.id);
 
@@ -213,7 +212,7 @@ void main() {
     await tester.pump();
     expect(
       clip,
-      '# mapreduce\n\n## Claim\n- "programming model and an associated '
+      '# mapreduce\n\n## Coral\n- "programming model and an associated '
       'implementation for processing and generating large data sets." '
       '(p. 1)\n',
     );
@@ -371,7 +370,7 @@ void main() {
     }
     expect(saved, hasLength(1));
     expect(saved.single.pageId, c.scene.value.cards.first.id);
-    expect(saved.single.color, InkPalette.colors[1]);
+    expect(saved.single.color, Swatch.coral);
     expect(saved.single.pointCount, greaterThanOrEqualTo(3));
     expect(
       saved.single.samples[2],
