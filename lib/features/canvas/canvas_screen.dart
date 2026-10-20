@@ -26,6 +26,7 @@ import 'document_session.dart';
 import 'erase/erase_options.dart';
 import 'erase/erase_tool.dart';
 import 'ink/ink_layer.dart';
+import 'ink/ink_stress.dart';
 import 'ink/ink_options.dart';
 import 'ink/ink_tool.dart';
 import 'input/pen_config.dart';
@@ -283,6 +284,16 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _history = session.bus.changes.listen((_) {
       if (mounted) setState(() {});
     });
+    if (stressInkEnabled && session.controller.scene.value.cards.isNotEmpty) {
+      // Measuring only: strokes held in memory, never saved.
+      session.ink.replaceAll([
+        ...session.ink.all,
+        ...stressStrokes(
+          session.controller.scene.value.cards.first.id,
+          stressInkCount,
+        ),
+      ]);
+    }
     setState(() {
       _load = _Load.ready;
       _title = doc.title;

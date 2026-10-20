@@ -442,6 +442,9 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
                             view: c.view,
                             scene: c.scene,
                             ink: widget.ink!,
+                            devicePixelRatio: MediaQuery.devicePixelRatioOf(
+                              context,
+                            ),
                           ),
                         ),
                       ),

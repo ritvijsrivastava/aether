@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -44,10 +46,32 @@ class _PageInk {
   int baseCount = 0;
   Box? bounds;
 
+  /// For a crowded page, the base picture drawn into a bitmap: replaying
+  /// thousands of paths every frame costs the GPU far more than drawing one
+  /// image. [bitmapScale] is pixels per page point; [bitmapBox] is the part of
+  /// the page space the image covers.
+  Image? bitmap;
+  double bitmapScale = 0;
+  Box? bitmapBox;
+  int bitmapCount = 0;
+  bool rendering = false;
+  Timer? timer;
+
+  void dropBitmap() {
+    bitmap?.dispose();
+    bitmap = null;
+    bitmapScale = 0;
+    bitmapBox = null;
+    bitmapCount = 0;
+    timer?.cancel();
+    timer = null;
+  }
+
   void dropBase() {
     base?.dispose();
     base = null;
     baseCount = 0;
+    dropBitmap();
   }
 }
 
@@ -65,6 +89,17 @@ class InkLayer extends ChangeNotifier {
   PressureCurve curve;
 
   static const int foldAfter = 24;
+
+  /// A page with more strokes than this is drawn from a bitmap while panning
+  /// and zooming (measured: 10,000 strokes cost the S9's GPU 47 ms a frame as
+  /// paths, which is 20 fps).
+  static const int bitmapThreshold = 400;
+
+  /// The longest side of a page bitmap, in pixels.
+  static const int maxBitmapSide = 4096;
+
+  /// How many page bitmaps have been drawn; for tests and the HUD.
+  int bitmapRenders = 0;
   static const String _free = '';
 
   final Map<String, _PageInk> _pages = {};
@@ -159,9 +194,13 @@ class InkLayer extends ChangeNotifier {
     canvas.drawPath(strokePath(ink.samples, ink.width, curve), _paint);
   }
 
+  final Paint _imagePaint = Paint()..filterQuality = FilterQuality.medium;
+
   /// Paints a page's ink. [canvas] is in that page's space (origin at the
-  /// page's top-left), or in canvas space for [pageId] null.
-  void paint(Canvas canvas, String? pageId) {
+  /// page's top-left), or in canvas space for [pageId] null. [scale] is the
+  /// screen pixels per page point (zoom times pixel ratio), which decides how
+  /// sharp a crowded page's bitmap needs to be.
+  void paint(Canvas canvas, String? pageId, {double scale = 1}) {
     final page = _pages[pageId ?? _free];
     if (page == null || page.inks.isEmpty) return;
     final extras = page.inks.length - page.baseCount;
@@ -176,9 +215,93 @@ class InkLayer extends ChangeNotifier {
       page.baseCount = page.inks.length;
       rebuilds++;
     }
-    canvas.drawPicture(page.base!);
+    if (page.baseCount > bitmapThreshold && _drawBitmap(canvas, page, scale)) {
+      // The base is the image; strokes added since still go on top as paths.
+    } else {
+      canvas.drawPicture(page.base!);
+    }
     for (var i = page.baseCount; i < page.inks.length; i++) {
       _drawInk(canvas, page.inks[i]);
+    }
+  }
+
+  /// Draws the page's bitmap if it is sharp enough for [scale]; otherwise asks
+  /// for a better one and returns false (the caller draws the paths).
+  bool _drawBitmap(Canvas canvas, _PageInk page, double scale) {
+    final box = page.bounds!;
+    final side = math.max(box.width + 4, box.height + 4);
+    final cap = maxBitmapSide / side; // the sharpest a bitmap can be
+    final want = math.min(scale, cap);
+    final img = page.bitmap;
+    final usable =
+        img != null &&
+        page.bitmapCount == page.baseCount &&
+        page.bitmapScale >= want * 0.6 &&
+        // Zoomed in beyond what a bitmap can hold: paths are sharper.
+        scale <= cap * 1.5;
+    if (usable) {
+      final b = page.bitmapBox!;
+      canvas.drawImageRect(
+        img,
+        Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
+        Rect.fromLTRB(b.x0, b.y0, b.x1, b.y1),
+        _imagePaint,
+      );
+      return true;
+    }
+    if (scale <= cap * 1.5) _scheduleBitmap(page, want);
+    return false;
+  }
+
+  void _scheduleBitmap(_PageInk page, double want) {
+    if (page.rendering || page.timer != null) return;
+    // Wait for a zoom gesture to settle before spending a render on it.
+    page.timer = Timer(const Duration(milliseconds: 120), () {
+      page.timer = null;
+      unawaited(_renderBitmap(page, want));
+    });
+  }
+
+  Future<void> _renderBitmap(_PageInk page, double want) async {
+    final base = page.base;
+    final bounds = page.bounds;
+    if (base == null || bounds == null || page.rendering) return;
+    page.rendering = true;
+    final count = page.baseCount;
+    try {
+      final box = Box(
+        bounds.x0 - 2,
+        bounds.y0 - 2,
+        bounds.x1 + 2,
+        bounds.y1 + 2,
+      );
+      // A little sharper than asked, so a small zoom-in does not need a redo.
+      final side = math.max(box.width, box.height);
+      final scale = math.min(want * 1.25, maxBitmapSide / side);
+      final w = math.max(1, (box.width * scale).ceil());
+      final h = math.max(1, (box.height * scale).ceil());
+      final rec = PictureRecorder();
+      Canvas(rec)
+        ..scale(scale)
+        ..translate(-box.x0, -box.y0)
+        ..drawPicture(base);
+      final pic = rec.endRecording();
+      final img = await pic.toImage(w, h);
+      pic.dispose();
+      // The page may have changed while the image was being made.
+      if (identical(page.base, base) && page.baseCount == count) {
+        page.bitmap?.dispose();
+        page.bitmap = img;
+        page.bitmapScale = scale;
+        page.bitmapBox = box;
+        page.bitmapCount = count;
+        bitmapRenders++;
+        notifyListeners();
+      } else {
+        img.dispose();
+      }
+    } finally {
+      page.rendering = false;
     }
   }
 
@@ -193,12 +316,17 @@ class InkLayer extends ChangeNotifier {
 
 /// Draws committed ink above the pages.
 class InkPainter extends CustomPainter {
-  InkPainter({required this.view, required this.scene, required this.ink})
-    : super(repaint: Listenable.merge([view, scene, ink]));
+  InkPainter({
+    required this.view,
+    required this.scene,
+    required this.ink,
+    this.devicePixelRatio = 1,
+  }) : super(repaint: Listenable.merge([view, scene, ink]));
 
   final ValueListenable<ViewState> view;
   final ValueListenable<Scene> scene;
   final InkLayer ink;
+  final double devicePixelRatio;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -221,20 +349,23 @@ class InkPainter extends CustomPainter {
       if (!reach.overlaps(world)) continue;
       canvas.save();
       canvas.translate(card.rect.left, card.rect.top);
-      ink.paint(canvas, card.id);
+      ink.paint(canvas, card.id, scale: v.zoom * devicePixelRatio);
       canvas.restore();
     }
     final free = ink.boundsOf(null);
     if (free != null &&
         Rect.fromLTRB(free.x0, free.y0, free.x1, free.y1).overlaps(world)) {
-      ink.paint(canvas, null);
+      ink.paint(canvas, null, scale: v.zoom * devicePixelRatio);
     }
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(InkPainter old) =>
-      old.view != view || old.scene != scene || old.ink != ink;
+      old.view != view ||
+      old.scene != scene ||
+      old.ink != ink ||
+      old.devicePixelRatio != devicePixelRatio;
 }
 
 /// The stroke being drawn right now, and how stale its newest sample is when
