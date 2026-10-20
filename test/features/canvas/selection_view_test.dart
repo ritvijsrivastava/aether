@@ -25,10 +25,6 @@ class FakeActions implements SelectionActions {
   void recolorInk(int argb) => log.add('ink:$argb');
   @override
   void deleteSelection() => log.add('delete');
-  @override
-  void bringForward() => log.add('forward');
-  @override
-  void sendBack() => log.add('back');
 }
 
 Ink line(String id) => Ink(
@@ -162,35 +158,18 @@ void main() {
     },
   );
 
-  testWidgets('a selected note can go forward or back', (tester) async {
+  testWidgets('a selected note offers only Delete (no order buttons)', (
+    tester,
+  ) async {
     notes.add(
       const Note(id: 'n', docId: 'd', pageId: 'p0', x: 5, y: 5, text: 'x'),
     );
     await pump(tester);
     selection.set([const MarkRef(MarkKind.note, 'n')]);
     await tester.pump();
-    await tester.tap(find.text('Forward'));
-    await tester.tap(find.text('Back'));
-    expect(actions.log, ['forward', 'back']);
-    expect(find.byTooltip('Bring forward'), findsOneWidget);
-    expect(find.byTooltip('Send back'), findsOneWidget);
-    for (final label in ['Forward', 'Back', 'Delete']) {
-      final r = tester.getSize(
-        find.ancestor(of: find.text(label), matching: find.byType(TextButton)),
-      );
-      expect(r.height, greaterThanOrEqualTo(48), reason: label);
-    }
-  });
-
-  testWidgets('ink and highlights have no order buttons', (tester) async {
-    await pump(tester);
-    selection.set([
-      const MarkRef(MarkKind.ink, 'i'),
-      const MarkRef(MarkKind.highlight, 'h'),
-    ]);
-    await tester.pump();
     expect(find.text('Forward'), findsNothing);
     expect(find.text('Back'), findsNothing);
+    expect(find.text('Delete'), findsOneWidget);
   });
 
   testWidgets('a note alone has Delete but no Recolor', (tester) async {

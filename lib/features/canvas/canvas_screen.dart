@@ -1340,14 +1340,6 @@ class _SelectionActions implements SelectionActions {
   final _CanvasScreenState state;
 
   @override
-  void bringForward() =>
-      state._session?.reorderNotes(state._selection.refs, front: true);
-
-  @override
-  void sendBack() =>
-      state._session?.reorderNotes(state._selection.refs, front: false);
-
-  @override
   void recolorHighlight(int argb) {
     final s = state._session;
     if (s != null) s.recolorMarks(state._selection.refs, highlightColor: argb);

@@ -135,10 +135,6 @@ abstract interface class SelectionActions {
   void recolorHighlight(int argb);
   void recolorInk(int argb);
   void deleteSelection();
-
-  /// Notes only: in front of or behind the other notes.
-  void bringForward();
-  void sendBack();
 }
 
 /// The pill above the selection: how many are selected, Recolor and Delete.
@@ -229,7 +225,7 @@ class _MarkSelectionOverlayState extends State<MarkSelectionOverlay> {
                           (hasH ? ui.markColors.recent.length + 1 : 0) +
                           (hasI ? ui.inkColors.recent.length + 1 : 0)) +
                   24
-            : (sel.idsOf(MarkKind.note).isNotEmpty ? 460.0 : 300.0);
+            : 300.0;
         final width = math.min(wanted, math.max(200.0, size.width - 16));
         var top = tl.dy - _pillH - 14;
         if (top < 8) top = br.dy + 14;
@@ -261,7 +257,6 @@ class _MarkSelectionOverlayState extends State<MarkSelectionOverlay> {
     final hasHighlights = sel.idsOf(MarkKind.highlight).isNotEmpty;
     final hasInk = sel.idsOf(MarkKind.ink).isNotEmpty;
     final canRecolor = hasHighlights || hasInk;
-    final hasNotes = sel.idsOf(MarkKind.note).isNotEmpty;
     return Material(
       color: t.panel,
       elevation: 4,
@@ -326,28 +321,6 @@ class _MarkSelectionOverlayState extends State<MarkSelectionOverlay> {
                         style: text.button.copyWith(color: t.indigoText),
                       ),
                     ),
-                  if (hasNotes) ...[
-                    Tooltip(
-                      message: 'Bring forward',
-                      child: TextButton(
-                        onPressed: widget.actions.bringForward,
-                        child: Text(
-                          'Forward',
-                          style: text.button.copyWith(color: t.indigoText),
-                        ),
-                      ),
-                    ),
-                    Tooltip(
-                      message: 'Send back',
-                      child: TextButton(
-                        onPressed: widget.actions.sendBack,
-                        child: Text(
-                          'Back',
-                          style: text.button.copyWith(color: t.indigoText),
-                        ),
-                      ),
-                    ),
-                  ],
                   TextButton.icon(
                     onPressed: widget.actions.deleteSelection,
                     icon: AetherIcon(
