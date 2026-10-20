@@ -46,6 +46,9 @@ class CanvasView extends StatefulWidget {
     this.selection,
     this.lasso,
     this.onContextMenu,
+    this.onPenLongPress,
+    this.onRadialMove,
+    this.onRadialRelease,
     this.onTap,
     this.onPointerDownOnCanvas,
     this.touchStats,
@@ -97,6 +100,14 @@ class CanvasView extends StatefulWidget {
   /// A right-click, or a long press with a finger, at a canvas position (local
   /// and global).
   final void Function(Offset local, Offset global)? onContextMenu;
+
+  /// A pen held still for half a second: the stroke it started is cancelled
+  /// first, then this runs (the radial menu, or a mark's own menu).
+  final void Function(Offset local, Offset global)? onPenLongPress;
+
+  /// Moves and the release of the press that opened the radial menu.
+  final void Function(Offset global)? onRadialMove;
+  final VoidCallback? onRadialRelease;
 
   /// A tap (a short press that does not move) with the Pan tool, at a canvas
   /// position.
@@ -278,6 +289,7 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
 
   // --- tap (Pan tool) --------------------------------------------------------
 
+  bool _radial = false;
   int? _tapPointer;
   Offset _tapStart = Offset.zero;
   Timer? _tapTimer;
@@ -298,6 +310,9 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
   }
 
   void _tapMoved(PointerMoveEvent e) {
+    if (_radial && widget.onRadialMove != null) {
+      widget.onRadialMove!(e.position);
+    }
     if (e.pointer == _tapPointer &&
         (e.localPosition - _tapStart).distance > 8) {
       _tapPointer = null;
@@ -305,6 +320,10 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
   }
 
   void _tapUp(PointerUpEvent e) {
+    if (_radial) {
+      _radial = false;
+      widget.onRadialRelease?.call();
+    }
     if (e.pointer != _tapPointer) return;
     _tapPointer = null;
     _tapTimer?.cancel();
@@ -320,20 +339,35 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
   static const double _longPressSlop = 10;
 
   void _watchLongPress(PointerDownEvent e) {
-    if (widget.onContextMenu == null) return;
     // A second finger is a pinch: not a long press.
     if (_longPressPointer != null) {
       _stopLongPress(_longPressPointer!);
       return;
     }
-    if (e.kind != PointerDeviceKind.touch) return;
+    final pen =
+        e.kind == PointerDeviceKind.stylus ||
+        e.kind == PointerDeviceKind.invertedStylus;
+    if (e.kind != PointerDeviceKind.touch && !pen) return;
+    if (pen) {
+      // The radial menu is a pen thing; with the Pan tool the hold pans.
+      if (widget.onPenLongPress == null || _panTool) return;
+    } else if (widget.onContextMenu == null) {
+      return;
+    }
     _longPressPointer = e.pointer;
     _longPressStart = e.localPosition;
     final global = e.position;
     _longPress = Timer(_longPressTime, () {
       _longPress = null;
       _longPressPointer = null;
-      widget.onContextMenu?.call(_longPressStart, global);
+      if (pen) {
+        // The dot the pen made so far goes away; no stroke, no undo step.
+        _radial = true;
+        _arbiter.escape();
+        widget.onPenLongPress?.call(_longPressStart, global);
+      } else {
+        widget.onContextMenu?.call(_longPressStart, global);
+      }
     });
   }
 
@@ -414,6 +448,10 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
                 _arbiter.up(_sample(e));
               },
               onPointerCancel: (e) {
+                if (_radial) {
+                  _radial = false;
+                  widget.onRadialRelease?.call();
+                }
                 if (e.pointer == _tapPointer) _tapPointer = null;
                 _stopLongPress(e.pointer);
                 _arbiter.cancel(_sample(e));

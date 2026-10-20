@@ -3,9 +3,9 @@ import 'dart:io' show File, Platform;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show debugPrint, defaultTargetPlatform;
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Card;
 import 'package:flutter/services.dart'
-    show Clipboard, ClipboardData, HardwareKeyboard;
+    show Clipboard, ClipboardData, HardwareKeyboard, HapticFeedback;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -16,6 +16,7 @@ import '../../domain/export/markdown_exporter.dart';
 import '../../domain/marks/link_geometry.dart';
 import '../../domain/model/models.dart';
 import '../../domain/marks/colour_name.dart';
+import '../../ui/widgets/aether_icon.dart';
 import '../../ui/widgets/color_disc.dart';
 import '../../ui/widgets/colour_picker.dart';
 import '../../ui/adaptive/window_class.dart';
@@ -47,6 +48,7 @@ import 'select/selection_view.dart';
 import 'notes/note_tool.dart';
 import 'notes/notes_overlay.dart';
 import 'marks/highlight_actions.dart';
+import 'radial_menu.dart';
 import 'tool_panel.dart';
 import 'marks/mark_layers.dart';
 import 'marks/mark_tool.dart';
@@ -106,6 +108,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   final SelectionState _selection = SelectionState();
   final HighlightFocus _hlFocus = HighlightFocus();
   final TouchStats _touchStats = TouchStats();
+  final RadialMenuController _radial = RadialMenuController();
   Timer? _touchLogTimer;
   late final HighlightActions _hlActions = _HighlightStripActions(this);
   late final EraseClearActions _eraseClear = _EraseClear(this);
@@ -695,6 +698,77 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       );
   }
 
+  /// The pen was held still for half a second: on empty canvas the radial
+  /// menu opens (Paste, Note here); on a mark or note its own menu does.
+  void _onPenLongPress(Offset local, Offset global) {
+    final session = _session;
+    if (session == null || !mounted) return;
+    final v = _controller.view.value;
+    final world = v.screenToWorld(local);
+    final hit = MarkHitTester(
+      scene: _controller.scene.value,
+      ink: session.ink,
+      highlights: session.highlights,
+      notes: session.notes,
+    ).markAt(world, v.zoom);
+    if (hit != null) {
+      _showContextMenu(local, global);
+      return;
+    }
+    HapticFeedback.selectionClick();
+    _radial.open(global, [
+      RadialItem(icon: AetherIcons.paste, label: 'Paste', onPick: _pasteHere),
+      RadialItem(
+        icon: AetherIcons.note,
+        label: 'Note here',
+        onPick: () => _noteHere(local),
+      ),
+    ]);
+  }
+
+  /// A new note under [local] (page space when a page is under it).
+  void _noteHere(Offset local) {
+    final session = _session;
+    if (session == null) return;
+    final world = _controller.view.value.screenToWorld(local);
+    final cards = _controller.scene.value.cards;
+    Card? card;
+    for (var i = cards.length - 1; i >= 0; i--) {
+      if (cards[i].rect.contains(world)) {
+        card = cards[i];
+        break;
+      }
+    }
+    final at = card == null ? world : world - card.rect.topLeft;
+    session.beginNote(pageId: card?.id, x: at.dx, y: at.dy);
+  }
+
+  /// Clipboard text becomes a note under the menu; nothing to paste says so.
+  Future<void> _pasteHere() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text?.trim();
+    if (text == null || text.isEmpty) {
+      _say('Nothing to paste yet. Copy text, or paste it here again.');
+      return;
+    }
+    final session = _session;
+    if (session == null) return;
+    final centre = _controller.view.value.screenToWorld(
+      _controller.viewport.center(Offset.zero),
+    );
+    final cards = _controller.scene.value.cards;
+    Card? card;
+    for (var i = cards.length - 1; i >= 0; i--) {
+      if (cards[i].rect.contains(centre)) {
+        card = cards[i];
+        break;
+      }
+    }
+    final at = card == null ? centre : centre - card.rect.topLeft;
+    final id = session.beginNote(pageId: card?.id, x: at.dx, y: at.dy);
+    session.editNoteText(id, text);
+  }
+
   /// The link whose line passes nearest [world] within reach, if any.
   String? _linkLineNear(DocumentSession session, Offset world, double zoom) {
     final layout = LinkLayout(
@@ -815,6 +889,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _liveLink.dispose();
     _layerChanges?.removeListener(_pruneSelection);
     _selection.dispose();
+    _radial.dispose();
     _hlFocus.dispose();
     _touchLogTimer?.cancel();
     _touchStats.dispose();
@@ -891,6 +966,11 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       selection: _selection,
       lasso: _lasso,
       onContextMenu: session == null ? null : _showContextMenu,
+      onPenLongPress: session == null ? null : _onPenLongPress,
+      onRadialMove: (global) {
+        _radial.pointTo(global, _controller.viewport);
+      },
+      onRadialRelease: () => _radial.release(_controller.viewport),
       onTap: session == null ? null : _onCanvasTap,
       onPointerDownOnCanvas: () {
         _hlFocus.clear();
