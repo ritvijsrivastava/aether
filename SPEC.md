@@ -547,12 +547,12 @@ Everything an earlier milestone report or this spec marked "later", "unverified"
 | R45 | **F8** Ink and Erase option panels horizontal and collapsible | owner | M4.1 **(closed)** | Horizontal strip; double-tap the tool to hide or reopen; state remembered per tool |
 | R46 | **F9** Resting palm must not block finger gestures | owner | M4.1 **(code done; owner checks with a real palm on the S9)** | Palm contact is classified and ignored on its own; pan and pinch with other fingers keep working (measured on the S9; test with synthetic contact sizes) |
 | R47 | **F10** A pen tap on a note must not close or edit it; pen can select, move, reorder (bring forward/back) | owner | M4.1 **(code done; owner checks pen select, move, double-tap on the S9)** | Pen never types; edit with finger tap or keyboard (21.7) |
-| R48 | **F11** Tool option menus (Ink, Marker, Erase) are vertical, not a horizontal bar | owner 2026-10-20 | M4.1b | A column beside the rail, level with its tool; fold and reopen as now (22.1) |
-| R49 | **F12** Long-press (pen or finger) on empty canvas opens a radial menu: hold, swipe to an item, release | owner | M4.1b | Paste, Note here (more items arrive with M4.2); replaces the finger long-press text menu (22.2) |
-| R50 | **F13** Inside a note, the pen selects text freely (drag across words and lines) and the selection menu works | owner | M4.1b | Pen drag selects while editing; copy works across lines (22.3) |
-| R51 | **F14** Long-press on a note's header or body opens a horizontal menu: Link, Unlink, Copy all, Delete | owner | M4.1b | Works for pen and finger, anywhere on the tile (22.4) |
-| R52 | **F15** "Forward / Back" on notes is unclear | owner | M4.1b | Renamed and explained, or removed until boards exist (22.5) |
-| R53 | **F16** With a palm resting, finger gestures still do not work (after M4.1) | owner | M4.1b | A touch log from the S9 decides the cause; palm handling reworked so only moving contacts drive pan and pinch (22.6) |
+| R48 | **F11** Tool option menus (Ink, Marker, Erase) are vertical, not a horizontal bar | owner 2026-10-20 | M4.1b **(closed)** | A column beside the rail, level with its tool; it hides when a press lands on the canvas, and the tool button (or key, twice) shows it again | A column beside the rail, level with its tool; fold and reopen as now (22.1) |
+| R49 | **F12** Long-press (pen or finger) on empty canvas opens a radial menu: hold, swipe to an item, release | owner | M4.1b **(closed; owner checks on the S9)** | Pen held 500 ms on empty canvas cancels the dot and opens a ring: hold and swipe to Paste or Note here; a finger long-press keeps its Add-note menu | Paste, Note here (more items arrive with M4.2); replaces the finger long-press text menu (22.2) |
+| R50 | **F13** Inside a note, the pen selects text freely (drag across words and lines) and the selection menu works | owner | M4.1b **(closed; owner checks)** | A pen drag in a note selects across words and lines like the mouse, with a Copy button; the pen still never types | Pen drag selects while editing; copy works across lines (22.3) |
+| R51 | **F14** Long-press on a note's header or body opens a horizontal menu: Link, Unlink, Copy all, Delete | owner | M4.1b **(closed)** | Long press on a note (pen or finger) opens Unlink, Copy all, Delete above it; no Link item (owner removed it: linking stays a drawn line via the Link tool) | Works for pen and finger, anywhere on the tile (22.4) |
+| R52 | **F15** "Forward / Back" on notes is unclear | owner | M4.1b **(closed)** | Forward and Back removed; note order returns with boards (M4.2) | Renamed and explained, or removed until boards exist (22.5) |
+| R53 | **F16** With a palm resting, finger gestures still do not work (after M4.1) | owner | M4.1b **(code done; owner verifies with the touch log)** | Only contacts that move (10 px within 150 ms) drive pan or pinch; a pair is two fingers landing within 300 ms; a lone contact that rests 600 ms and then slides is set aside. Settings gains Record touch log (last 20 s to touchlog.txt) | A touch log from the S9 decides the cause; palm handling reworked so only moving contacts drive pan and pinch (22.6) |
 | R23 | Multiply blend cost on the S9 measured only with 8 highlights; flat-fill fallback undecided | M3 | M6 | Measured on a page with many highlights; keep multiply or switch by setting, written down |
 | R24 | Predictive back enabled but never exercised on a device | M1 | M6 | Back from Canvas, sheets and menus checked on the S9 |
 | R25 | Linux minimum window size (800x520) never resized by hand; HiDPI and Wayland checks | M1, §17 | M6 | Done and noted in the M6 report |
@@ -734,3 +734,11 @@ Plan: (a) **touch log**: the performance overlay gains a switch that records eve
 3. **F14:** Unlink with several links: remove all, or choose (proposed: choose when more than one)?
 4. **F15:** rename to Bring to front / Send to back and show only on overlap (proposed), or remove until M4.2?
 5. **F16:** are you willing to do one palm test with the touch log (2 minutes) so I fix the right cause? (proposed: yes, I build the log first)
+
+### M4.1b decisions (owner, 2026-10-20) and progress
+- **F11:** vertical column beside the rail; hides when focus moves elsewhere (a press on the canvas), reopened by tapping the tool icon again.
+- **F12:** the finger long-press keeps just Add note (unchanged); the pen long-press cancels the dot it made and opens the radial ring (Paste, Note here).
+- **F14:** no Link item; the owner removes "Link" from menus — linking is drawing a line from a note to a highlight (or back), which is the Link tool. Unlink via the menu removes the note's links as one step; a single link line can still be selected and deleted directly.
+- **F15:** Forward and Back removed from the note pill; note order returns with boards.
+- **F16:** the owner will run the palm test with the touch log.
+- Built: all six (vertical menus, radial menu, pen text selection with Copy, note long-press menu with Unlink, order buttons removed, palm rework plus touch log). Palm still needs the owner's real-hand check on the S9 (R53) and the pen items a quick pass (R49, R50).
