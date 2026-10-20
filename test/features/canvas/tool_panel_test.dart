@@ -103,30 +103,27 @@ void main() {
       expect(find.byType(Switch), findsNothing);
     });
 
-    testWidgets('each option panel is a vertical column, its rows stacked', (
+    testWidgets('each option panel is one column, its rows stacked', (
       tester,
     ) async {
       final c = await pump(tester, onClear: Clears());
       final n = c.read(canvasUiProvider.notifier);
       n.setTool(CanvasTool.ink);
       await tester.pump();
-      final a = tester.getRect(find.byTooltip('Colour').at(0));
-      final b = tester.getRect(find.byTooltip('Colour').at(3));
-      expect(
-        b.top,
-        greaterThan(a.bottom - 1),
-        reason: 'a second row of colours',
+      final square = tester.getRect(
+        find.bySemanticsLabel('Saturation and brightness'),
       );
-      expect(
-        a.center.dx,
-        lessThan(b.center.dx + 1),
-        reason: 'a grid, left to right',
-      );
+      final saved = tester.getRect(find.text('Saved colours'));
       final minus = tester.getRect(find.byTooltip('Thinner'));
       expect(
+        saved.top,
+        greaterThan(square.bottom),
+        reason: 'saved under the picker',
+      );
+      expect(
         minus.top,
-        greaterThan(b.bottom - 1),
-        reason: 'size below colours',
+        greaterThan(saved.bottom),
+        reason: 'size under the saved colours',
       );
       n.setTool(CanvasTool.erase);
       await tester.pump();

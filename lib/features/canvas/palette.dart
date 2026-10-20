@@ -23,17 +23,15 @@ final paletteStoreProvider = Provider<PaletteStore>(
   (ref) => MemoryPaletteStore(),
 );
 
-/// One tool's colours: the one in use now and the last [max] it used.
-///
-/// Ink and Marker each have their own; they are never shared.
+/// The pen's colours: the one in use now, and the saved ones beside it.
 class ToolColours {
   const ToolColours(this.current, this.recent);
 
-  static const int max = 5;
+  static const int max = 8;
 
   final int current;
 
-  /// Most recent first, no duplicates, at most [max].
+  /// Saved colours, newest first, no duplicates, at most [max].
   final List<int> recent;
 
   /// [c] becomes the current colour and moves to the front of the recents.
@@ -41,6 +39,20 @@ class ToolColours {
     c,
     [c, ...recent.where((r) => r != c)].take(max).toList(growable: false),
   );
+
+  /// [c] becomes the current colour; the saved ones stay as they are.
+  ToolColours withCurrent(int c) => ToolColours(c, recent);
+
+  /// The current colour is added to the saved ones (an "auto" pen is not).
+  ToolColours savingCurrent() => current == InkPalette.auto
+      ? this
+      : ToolColours(
+          current,
+          [
+            current,
+            ...recent.where((r) => r != current),
+          ].take(max).toList(growable: false),
+        );
 
   /// `current;r1,r2,...` in decimal.
   String encode() => '$current;${recent.join(',')}';
@@ -73,13 +85,6 @@ class ToolColours {
   /// one) with three colours beside it.
   static const ToolColours inkDefault = ToolColours(InkPalette.auto, [
     InkPalette.auto,
-    Swatch.coral,
-    Swatch.amber,
-    Swatch.blue,
-  ]);
-
-  /// The marker starts on coral, with the other two defaults beside it.
-  static const ToolColours markDefault = ToolColours(Swatch.coral, [
     Swatch.coral,
     Swatch.amber,
     Swatch.blue,

@@ -20,14 +20,28 @@ ProviderContainer make([PaletteStore? store]) {
 
 void main() {
   group('ToolColours', () {
-    test('using a colour moves it to the front and keeps five at most', () {
-      var c = const ToolColours(1, [1, 2, 3, 4, 5]);
-      c = c.use(6);
-      expect(c.current, 6);
-      expect(c.recent, [6, 1, 2, 3, 4]);
+    test('using a colour moves it to the front and keeps eight at most', () {
+      var c = const ToolColours(1, [1, 2, 3, 4, 5, 6, 7, 8]);
+      c = c.use(9);
+      expect(c.current, 9);
+      expect(c.recent, [9, 1, 2, 3, 4, 5, 6, 7]);
       c = c.use(3);
-      expect(c.recent, [3, 6, 1, 2, 4], reason: 'no duplicates');
+      expect(c.recent, [3, 9, 1, 2, 4, 5, 6, 7], reason: 'no duplicates');
     });
+
+    test(
+      'withCurrent leaves the saved colours alone; saving adds the current',
+      () {
+        const c = ToolColours(1, [1, 2]);
+        final live = c.withCurrent(7);
+        expect(live.current, 7);
+        expect(live.recent, [1, 2]);
+        expect(live.savingCurrent().recent, [7, 1, 2]);
+        expect(live.savingCurrent().savingCurrent().recent, [7, 1, 2]);
+        const auto = ToolColours(InkPalette.auto, [InkPalette.auto]);
+        expect(auto.savingCurrent(), auto, reason: 'auto is not saved again');
+      },
+    );
 
     test('encodes and decodes, and ignores damage', () {
       const c = ToolColours(9, [9, 8, 7]);
@@ -36,7 +50,7 @@ void main() {
       expect(ToolColours.decode('nonsense'), isNull);
       expect(ToolColours.decode('5;4,x,3')!.recent, [4, 3]);
       expect(
-        ToolColours.decode('5;1,2,3,4,5,6,7')!.recent,
+        ToolColours.decode('5;1,2,3,4,5,6,7,8,9,10,11')!.recent,
         hasLength(ToolColours.max),
       );
     });
@@ -179,7 +193,10 @@ void main() {
       await tester.tap(find.byTooltip('Any colour'));
       await tester.pumpAndSettle();
       expect(find.text('Colour'), findsOneWidget);
-      await tester.enterText(find.byType(TextField), '12AB34');
+      final fields = find.byType(TextField);
+      await tester.enterText(fields.at(0), '18');
+      await tester.enterText(fields.at(1), '171');
+      await tester.enterText(fields.at(2), '52');
       await tester.pump();
       await tester.tap(find.text('Use colour'));
       await tester.pumpAndSettle();

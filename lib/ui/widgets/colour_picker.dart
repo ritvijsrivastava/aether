@@ -29,28 +29,7 @@ class _PickerDialog extends StatefulWidget {
 }
 
 class _PickerDialogState extends State<_PickerDialog> {
-  late HSVColor _hsv = HSVColor.fromColor(Color(widget.initial));
-  late final TextEditingController _hex = TextEditingController(
-    text: _hexOf(Color(widget.initial)),
-  );
-
-  static String _hexOf(Color c) =>
-      (c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase();
-
-  int get _argb => 0xFF000000 | (_hsv.toColor().toARGB32() & 0xFFFFFF);
-
-  void _set(HSVColor v) => setState(() {
-    _hsv = v;
-    _hex.text = _hexOf(v.toColor());
-  });
-
-  @override
-  void dispose() {
-    _hex.dispose();
-    super.dispose();
-  }
-
-  void _setColour(int argb) => _set(HSVColor.fromColor(Color(argb)));
+  late int _argb = 0xFF000000 | (widget.initial & 0xFFFFFF);
 
   @override
   Widget build(BuildContext context) {
@@ -81,41 +60,10 @@ class _PickerDialogState extends State<_PickerDialog> {
                     ),
                   ],
                 ),
-                _SvSquare(hsv: _hsv, onChanged: _set),
-                const SizedBox(height: AetherTokens.s3),
-                _HueBar(hsv: _hsv, onChanged: _set),
-                const SizedBox(height: AetherTokens.s3),
-                Row(
-                  children: [
-                    ColorDisc(_argb, size: 28),
-                    const SizedBox(width: AetherTokens.s2),
-                    Expanded(
-                      child: TextField(
-                        controller: _hex,
-                        maxLength: 6,
-                        textCapitalization: TextCapitalization.characters,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(
-                            RegExp('[0-9a-fA-F]'),
-                          ),
-                        ],
-                        decoration: const InputDecoration(
-                          prefixText: '#',
-                          counterText: '',
-                          isDense: true,
-                        ),
-                        onChanged: (v) {
-                          if (v.length == 6) {
-                            setState(
-                              () => _hsv = HSVColor.fromColor(
-                                Color(0xFF000000 | int.parse(v, radix: 16)),
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                    ),
-                  ],
+                ColourPickerBody(
+                  argb: _argb,
+                  squareHeight: 160,
+                  onChanged: (c) => setState(() => _argb = c),
                 ),
                 if (widget.saved.isNotEmpty) ...[
                   const SizedBox(height: AetherTokens.s3),
@@ -127,7 +75,9 @@ class _PickerDialogState extends State<_PickerDialog> {
                         if (c != 0)
                           InkResponse(
                             radius: 24,
-                            onTap: () => _setColour(c),
+                            onTap: () => setState(
+                              () => _argb = 0xFF000000 | (c & 0xFFFFFF),
+                            ),
                             child: SizedBox(
                               width: AetherTokens.minTarget,
                               height: AetherTokens.minTarget,
@@ -154,10 +104,149 @@ class _PickerDialogState extends State<_PickerDialog> {
   }
 }
 
+/// The picker itself, without a frame: a saturation/brightness square, a hue
+/// bar and red, green and blue fields. It reports every change as an opaque
+/// ARGB value, and follows [argb] when the caller changes the colour (for
+/// example a tap on a saved colour).
+class ColourPickerBody extends StatefulWidget {
+  const ColourPickerBody({
+    super.key,
+    required this.argb,
+    required this.onChanged,
+    this.squareHeight = 120,
+  });
+
+  final int argb;
+  final ValueChanged<int> onChanged;
+  final double squareHeight;
+
+  @override
+  State<ColourPickerBody> createState() => _ColourPickerBodyState();
+}
+
+class _ColourPickerBodyState extends State<ColourPickerBody> {
+  late HSVColor _hsv = HSVColor.fromColor(Color(widget.argb));
+  final List<TextEditingController> _rgb = [
+    for (var i = 0; i < 3; i++) TextEditingController(),
+  ];
+  final List<FocusNode> _focus = [for (var i = 0; i < 3; i++) FocusNode()];
+
+  int get _argb => 0xFF000000 | (_hsv.toColor().toARGB32() & 0xFFFFFF);
+
+  @override
+  void initState() {
+    super.initState();
+    _syncFields();
+  }
+
+  @override
+  void didUpdateWidget(ColourPickerBody old) {
+    super.didUpdateWidget(old);
+    // The colour changed from outside (a saved colour was tapped).
+    if ((widget.argb & 0xFFFFFF) != (_argb & 0xFFFFFF)) {
+      _hsv = HSVColor.fromColor(Color(widget.argb));
+      _syncFields();
+    }
+  }
+
+  void _syncFields() {
+    final c = Color(_argb);
+    final v = [c.r, c.g, c.b];
+    for (var i = 0; i < 3; i++) {
+      if (!_focus[i].hasFocus) _rgb[i].text = '${(v[i] * 255).round()}';
+    }
+  }
+
+  void _set(HSVColor v) {
+    setState(() => _hsv = v);
+    _syncFields();
+    widget.onChanged(_argb);
+  }
+
+  void _typed() {
+    final v = [for (final c in _rgb) int.tryParse(c.text)];
+    if (v.any((e) => e == null)) return;
+    final c = Color.fromARGB(
+      255,
+      v[0]!.clamp(0, 255),
+      v[1]!.clamp(0, 255),
+      v[2]!.clamp(0, 255),
+    );
+    setState(() => _hsv = HSVColor.fromColor(c));
+    widget.onChanged(_argb);
+  }
+
+  @override
+  void dispose() {
+    for (final c in _rgb) {
+      c.dispose();
+    }
+    for (final f in _focus) {
+      f.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = AetherText(t.ink);
+    const labels = ['R', 'G', 'B'];
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SvSquare(hsv: _hsv, onChanged: _set, height: widget.squareHeight),
+        const SizedBox(height: AetherTokens.s2),
+        _HueBar(hsv: _hsv, onChanged: _set),
+        const SizedBox(height: AetherTokens.s2),
+        Row(
+          children: [
+            for (var i = 0; i < 3; i++) ...[
+              if (i > 0) const SizedBox(width: AetherTokens.s1),
+              Expanded(
+                child: TextField(
+                  controller: _rgb[i],
+                  focusNode: _focus[i],
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  maxLength: 3,
+                  style: text.label,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: InputDecoration(
+                    counterText: '',
+                    isDense: true,
+                    prefixText: '${labels[i]} ',
+                    prefixStyle: text.caption.copyWith(color: t.inkMuted),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 10,
+                    ),
+                  ),
+                  onChanged: (_) => _typed(),
+                  onEditingComplete: () {
+                    _focus[i].unfocus();
+                    _syncFields();
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _SvSquare extends StatelessWidget {
-  const _SvSquare({required this.hsv, required this.onChanged});
+  const _SvSquare({
+    required this.hsv,
+    required this.onChanged,
+    required this.height,
+  });
   final HSVColor hsv;
   final ValueChanged<HSVColor> onChanged;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +254,7 @@ class _SvSquare extends StatelessWidget {
       label: 'Saturation and brightness',
       child: LayoutBuilder(
         builder: (context, box) {
-          final w = box.maxWidth, h = 160.0;
+          final w = box.maxWidth, h = height;
           void at(Offset p) => onChanged(
             hsv
                 .withSaturation((p.dx / w).clamp(0, 1))
@@ -269,9 +358,9 @@ class _HuePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final r = Offset.zero & size;
+    final r = Rect.fromLTWH(0, size.height / 2 - 5, size.width, 10);
     canvas.drawRRect(
-      RRect.fromRectAndRadius(r, const Radius.circular(12)),
+      RRect.fromRectAndRadius(r, const Radius.circular(5)),
       Paint()
         ..shader = LinearGradient(
           colors: [
@@ -283,7 +372,7 @@ class _HuePainter extends CustomPainter {
     final x = hue / 360 * size.width;
     canvas.drawCircle(
       Offset(x, size.height / 2),
-      10,
+      9,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3
@@ -291,7 +380,7 @@ class _HuePainter extends CustomPainter {
     );
     canvas.drawCircle(
       Offset(x, size.height / 2),
-      12,
+      10.5,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.5

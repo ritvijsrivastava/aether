@@ -3,54 +3,72 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../ui/theme/theme.dart';
 import '../../../ui/theme/tokens.dart';
 import '../../../ui/widgets/aether_icon.dart';
+import '../../../ui/widgets/color_disc.dart';
+import '../../../ui/widgets/colour_picker.dart';
 import '../../../ui/widgets/panel_surface.dart';
 import '../canvas_ui_state.dart';
-import '../colour_strip.dart';
 
-/// The Ink tool's options, kept small: the pen's saved colours (and a button
-/// for any other) in a 3-wide grid, then the pen size as a wave drawn at the
-/// current thickness with a minus and a plus beside it.
+/// The Ink tool's options, all in one card: the colour picker (square, hue,
+/// red/green/blue), the saved colours with a plus to keep the current one, and
+/// the pen size as a wave with a minus and a plus beside it.
 class InkOptions extends ConsumerWidget {
   const InkOptions({super.key});
 
   /// How much one tap of minus or plus changes the size, in dp.
   static const double step = 0.5;
 
+  static const double width = 248;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ui = ref.watch(canvasUiProvider);
     final notifier = ref.read(canvasUiProvider.notifier);
     final t = context.tokens;
+    final text = AetherText(t.ink);
+    final brightness = Theme.of(context).brightness;
     final colours = ui.inkColors;
-    const tile = AetherTokens.minTarget;
+    final shown = InkPalette.resolve(colours.current, brightness);
     return PanelSurface(
       radius: AetherTokens.rCard,
-      padding: const EdgeInsets.all(AetherTokens.s2),
+      padding: const EdgeInsets.all(AetherTokens.s3),
       child: SizedBox(
-        width: tile * 3,
+        width: width,
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            ColourPickerBody(argb: shown, onChanged: notifier.setInkLive),
+            const SizedBox(height: AetherTokens.s2),
+            Row(
+              children: [
+                Expanded(child: Text('Saved colours', style: text.label)),
+                IconButton(
+                  tooltip: 'Save this colour',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: colours.current == InkPalette.auto
+                      ? null
+                      : notifier.saveInkColour,
+                  icon: AetherIcon(
+                    AetherIcons.plus,
+                    size: 18,
+                    color: colours.current == InkPalette.auto
+                        ? t.inkFaint
+                        : t.ink,
+                  ),
+                ),
+              ],
+            ),
             Wrap(
-              alignment: WrapAlignment.center,
               children: [
                 for (final c in colours.recent)
-                  ColourSwatch(
-                    tile: tile,
+                  _SavedSwatch(
                     color: c,
                     selected: c == colours.current,
-                    label: 'A Pen colour',
-                    onTap: () => notifier.setInkColor(c),
+                    onTap: () => notifier.pickSavedInk(c),
                   ),
-                AnyColourButton(
-                  tile: tile,
-                  label: 'Other Pen colour',
-                  current: colours.current,
-                  saved: colours.recent,
-                  onPick: notifier.setInkColor,
-                ),
               ],
             ),
             Container(
@@ -60,12 +78,49 @@ class InkOptions extends ConsumerWidget {
             ),
             _SizeRow(
               width: ui.inkWidth,
-              colour: Color(
-                InkPalette.resolve(ui.inkColor, Theme.of(context).brightness),
-              ),
+              colour: Color(shown),
               onChanged: notifier.setInkWidth,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SavedSwatch extends StatelessWidget {
+  const _SavedSwatch({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+  final int color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  /// Six to a row in the card.
+  static const double tile = 40;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: 'A saved Pen colour',
+      excludeSemantics: true,
+      onTap: onTap,
+      child: Tooltip(
+        message: 'Colour',
+        child: InkResponse(
+          radius: 22,
+          onTap: onTap,
+          child: SizedBox(
+            width: tile,
+            height: tile,
+            child: Center(
+              child: ColorDisc(color, size: 22, selected: selected),
+            ),
+          ),
         ),
       ),
     );
@@ -94,7 +149,6 @@ class _SizeRow extends StatelessWidget {
       onIncrease: () => onChanged(width + InkOptions.step),
       onDecrease: () => onChanged(width - InkOptions.step),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
             tooltip: 'Thinner',

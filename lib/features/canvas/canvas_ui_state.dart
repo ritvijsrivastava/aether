@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ui/widgets/aether_icon.dart';
@@ -123,6 +125,34 @@ class CanvasUiNotifier extends Notifier<CanvasUiState> {
   );
 
   void setErasePartial(bool v) => state = state.copyWith(erasePartial: v);
+
+  Timer? _saveTimer;
+
+  /// A colour being dragged in the picker: the pen changes at once and the
+  /// choice is stored once it settles (no saved colour is added).
+  void setInkLive(int argb) {
+    _touchedInk = true;
+    state = state.copyWith(inkColors: state.inkColors.withCurrent(argb));
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 400), _persistInk);
+  }
+
+  /// Tapping a saved colour: it becomes the pen.
+  void pickSavedInk(int argb) {
+    _touchedInk = true;
+    state = state.copyWith(inkColors: state.inkColors.withCurrent(argb));
+    _persistInk();
+  }
+
+  /// The "+" next to Saved colours: keeps the current colour.
+  void saveInkColour() {
+    _touchedInk = true;
+    state = state.copyWith(inkColors: state.inkColors.savingCurrent());
+    _persistInk();
+  }
+
+  void _persistInk() =>
+      ref.read(paletteStoreProvider).write(_inkKey, state.inkColors.encode());
 
   void setInkColor(int argb) {
     _touchedInk = true;
