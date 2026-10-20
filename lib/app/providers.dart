@@ -95,56 +95,33 @@ final documentsProvider = FutureProvider<List<Document>>(
 class AppSettings {
   const AppSettings({
     this.themeMode = ThemeMode.system,
-    this.fingerDraws = false,
     this.leftHanded = false,
     this.perfHud = false,
-    this.autoHideToolPanel = true,
-    this.touchLog = false,
   });
 
   final ThemeMode themeMode;
 
-  /// A finger normally pans and zooms; when on it also applies the active tool.
-  final bool fingerDraws;
-
-  /// Mirrors the tool rail and Extract panel.
+  /// Mirrors the tool rail.
   final bool leftHanded;
 
   /// Shows frame times over the canvas (for judging smoothness on a device).
   final bool perfHud;
 
-  /// Fold a tool's options away after its first stroke, so they do not
-  /// cover the page. Double-tap the tool to bring them back.
-  final bool autoHideToolPanel;
-
-  /// Writes the last 20 s of touch and pen events to a file, for diagnosing
-  /// palm problems on a device.
-  final bool touchLog;
-
   AppSettings copyWith({
     ThemeMode? themeMode,
-    bool? fingerDraws,
     bool? leftHanded,
     bool? perfHud,
-    bool? autoHideToolPanel,
-    bool? touchLog,
   }) => AppSettings(
     themeMode: themeMode ?? this.themeMode,
-    fingerDraws: fingerDraws ?? this.fingerDraws,
     leftHanded: leftHanded ?? this.leftHanded,
     perfHud: perfHud ?? this.perfHud,
-    autoHideToolPanel: autoHideToolPanel ?? this.autoHideToolPanel,
-    touchLog: touchLog ?? this.touchLog,
   );
 }
 
 class SettingsNotifier extends AsyncNotifier<AppSettings> {
   static const _theme = 'themeMode';
-  static const _finger = 'fingerDraws';
   static const _left = 'leftHanded';
   static const _hud = 'perfHud';
-  static const _autoHide = 'autoHideToolPanel';
-  static const _touchLog = 'touchLog';
 
   @override
   Future<AppSettings> build() async {
@@ -155,11 +132,8 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
         (m) => m.name == theme,
         orElse: () => ThemeMode.system,
       ),
-      fingerDraws: await db.setting(_finger) == '1',
       leftHanded: await db.setting(_left) == '1',
       perfHud: await db.setting(_hud) == '1',
-      autoHideToolPanel: await db.setting(_autoHide) != '0',
-      touchLog: await db.setting(_touchLog) == '1',
     );
   }
 
@@ -170,24 +144,9 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
     await ref.read(databaseProvider).putSetting(_theme, m.name);
   }
 
-  Future<void> setFingerDraws(bool v) async {
-    state = AsyncData(_cur.copyWith(fingerDraws: v));
-    await ref.read(databaseProvider).putSetting(_finger, v ? '1' : '0');
-  }
-
   Future<void> setPerfHud(bool v) async {
     state = AsyncData(_cur.copyWith(perfHud: v));
     await ref.read(databaseProvider).putSetting(_hud, v ? '1' : '0');
-  }
-
-  Future<void> setAutoHideToolPanel(bool v) async {
-    state = AsyncData(_cur.copyWith(autoHideToolPanel: v));
-    await ref.read(databaseProvider).putSetting(_autoHide, v ? '1' : '0');
-  }
-
-  Future<void> setTouchLog(bool v) async {
-    state = AsyncData(_cur.copyWith(touchLog: v));
-    await ref.read(databaseProvider).putSetting(_touchLog, v ? '1' : '0');
   }
 
   Future<void> setLeftHanded(bool v) async {

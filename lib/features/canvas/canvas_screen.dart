@@ -121,12 +121,6 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
         sink: session,
       ),
     });
-    session.onGestureDone = (t) => ref
-        .read(canvasUiProvider.notifier)
-        .gestureDone(
-          t,
-          autoHide: ref.read(settingsProvider).value?.autoHideToolPanel ?? true,
-        );
     _selection.addListener(_deleteSelection);
     // Strokes that go away (deleted, undone) leave the selection.
     _layerChanges = Listenable.merge([session.ink])
@@ -265,17 +259,10 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       onPointerDownOnCanvas: () {
         // The Select tool manages its own selection.
         if (ui.tool != CanvasTool.select) _selection.clear();
-        ref
-            .read(canvasUiProvider.notifier)
-            .canvasPressed(
-              autoHide:
-                  ref.read(settingsProvider).value?.autoHideToolPanel ?? true,
-            );
       },
       onEscape: _selection.clear,
       onTool: _pickToolByKey,
       pen: PenConfig.forPlatform(defaultTargetPlatform),
-      fingerDraws: settings.fingerDraws,
       onReady: _onReady,
       onUndo: session?.undo,
       onRedo: session?.redo,

@@ -63,34 +63,11 @@ class SettingsScreen extends ConsumerWidget {
               ),
               section('Input'),
               SwitchListTile(
-                value: s.fingerDraws,
-                onChanged: n.setFingerDraws,
-                title: Text('Finger draws', style: text.title),
-                subtitle: Text(
-                  'Off: a finger pans and zooms, and only a pen or mouse marks. '
-                  'Turn on to mark with a finger, for example on a phone without a stylus.',
-                  style: text.caption.copyWith(color: t.inkMuted),
-                ),
-              ),
-              SwitchListTile(
                 value: s.leftHanded,
                 onChanged: n.setLeftHanded,
                 title: Text('Left-handed layout', style: text.title),
                 subtitle: Text(
-                  'Moves the tools and Extract to the opposite sides.',
-                  style: text.caption.copyWith(color: t.inkMuted),
-                ),
-              ),
-              SwitchListTile(
-                value: s.autoHideToolPanel,
-                onChanged: n.setAutoHideToolPanel,
-                title: Text(
-                  'Hide tool options after a stroke',
-                  style: text.title,
-                ),
-                subtitle: Text(
-                  'Colours and sizes fold away once you start drawing. Double-tap '
-                  'the tool, or tap the small tab, to bring them back.',
+                  'Moves the tools to the opposite side.',
                   style: text.caption.copyWith(color: t.inkMuted),
                 ),
               ),
@@ -102,17 +79,6 @@ class SettingsScreen extends ConsumerWidget {
                 subtitle: Text(
                   'Shows frame times and the display refresh rate over the canvas. '
                   'Use a profile build for honest numbers.',
-                  style: text.caption.copyWith(color: t.inkMuted),
-                ),
-              ),
-              SwitchListTile(
-                value: s.touchLog,
-                onChanged: n.setTouchLog,
-                title: Text('Record touch log', style: text.title),
-                subtitle: Text(
-                  'Keeps the last 20 seconds of touches and pen events in a file '
-                  'on this device, to find out why a palm or finger misbehaves. '
-                  'Turn off when done.',
                   style: text.caption.copyWith(color: t.inkMuted),
                 ),
               ),

@@ -125,17 +125,6 @@ class CanvasUiNotifier extends Notifier<CanvasUiState> {
     );
   }
 
-  /// A press landed on the canvas: with auto-hide on, the options of the tool
-  /// in use get out of the way ("focus moved elsewhere").
-  void canvasPressed({required bool autoHide}) {
-    if (autoHide) setPanelCollapsed(state.tool, true);
-  }
-
-  /// A stroke, wipe or highlight of [t] finished: the same fold.
-  void gestureDone(CanvasTool t, {required bool autoHide}) {
-    if (autoHide && state.tool == t) setPanelCollapsed(t, true);
-  }
-
   void setInkWidth(double w) => state = state.copyWith(
     inkWidth: w.clamp(InkPalette.minWidth, InkPalette.maxWidth),
   );

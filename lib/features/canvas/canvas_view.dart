@@ -34,7 +34,6 @@ class CanvasView extends StatefulWidget {
     this.onEscape,
     this.onTool,
     this.pen = const PenConfig(),
-    this.fingerDraws = false,
     this.onReady,
     this.onUndo,
     this.onRedo,
@@ -70,7 +69,6 @@ class CanvasView extends StatefulWidget {
 
   /// Pen button bits and pressure curve for this device.
   final PenConfig pen;
-  final bool fingerDraws;
 
   /// Called once the first layout is known (to restore the last view).
   final VoidCallback? onReady;
@@ -98,8 +96,6 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
   PenConfig get pen => widget.pen;
   @override
   bool get spaceHeld => _space;
-  @override
-  bool get fingerDraws => widget.fingerDraws;
 
   // --- events ---------------------------------------------------------------
 
@@ -109,7 +105,6 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
     position: e.localPosition,
     time: e.timeStamp,
     buttons: e.buttons,
-    radiusMajor: e.radiusMajor,
     pressure: _pressure(e),
   );
 

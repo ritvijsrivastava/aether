@@ -20,7 +20,6 @@ const _size = Size(1000, 800);
 Future<CanvasController> pumpCanvas(
   WidgetTester tester, {
   CanvasTool tool = CanvasTool.ink,
-  bool fingerDraws = false,
   VoidCallback? onEscape,
   VoidCallback? onDelete,
   ValueChanged<CanvasTool>? onTool,
@@ -40,7 +39,6 @@ Future<CanvasController> pumpCanvas(
           controller: c,
           tool: tool,
           ink: InkLayer(),
-          fingerDraws: fingerDraws,
           onEscape: onEscape,
           onDelete: onDelete,
           onTool: onTool,
@@ -206,72 +204,6 @@ void main() {
     expect(c.view.value.worldToScreen(Offset.zero), const Offset(500, 400));
   });
 
-  testWidgets('a touch by the pen is ignored while it hovers nearby', (
-    tester,
-  ) async {
-    final c = await pumpCanvas(tester, tool: CanvasTool.ink);
-    final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
-    await pen.addPointer(location: const Offset(100, 100));
-    await pen.moveTo(const Offset(110, 105)); // hover
-    final palm = await tester.startGesture(
-      const Offset(300, 200),
-      kind: PointerDeviceKind.touch,
-      pointer: 5,
-    );
-    await palm.moveBy(const Offset(-80, 0));
-    expect(c.view.value.x, 200, reason: 'palm ignored while the pen is near');
-    await palm.up();
-  });
-
-  testWidgets('a resting palm does not stop a finger from panning', (
-    tester,
-  ) async {
-    final c = await pumpCanvas(tester, tool: CanvasTool.ink);
-    // A big contact (the heel of a hand) lands and stays.
-    await tester.sendEventToBinding(
-      const PointerDownEvent(
-        pointer: 20,
-        kind: PointerDeviceKind.touch,
-        position: Offset(800, 700),
-        radiusMajor: 60,
-      ),
-    );
-    final finger = await tester.startGesture(
-      const Offset(300, 300),
-      kind: PointerDeviceKind.touch,
-      pointer: 21,
-    );
-    await finger.moveBy(const Offset(-90, 0));
-    await tester.pump();
-    expect(c.view.value.x, 110, reason: 'the finger panned the page');
-    expect(c.view.value.zoom, 1.0, reason: 'and nothing zoomed');
-    await finger.up();
-    await tester.sendEventToBinding(
-      const PointerUpEvent(
-        pointer: 20,
-        kind: PointerDeviceKind.touch,
-        position: Offset(800, 700),
-      ),
-    );
-  });
-
-  testWidgets('a finger far from a hovering pen pans while the hand rests', (
-    tester,
-  ) async {
-    final c = await pumpCanvas(tester, tool: CanvasTool.ink);
-    final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
-    await pen.addPointer(location: const Offset(100, 100));
-    await pen.moveTo(const Offset(110, 105)); // hover
-    final finger = await tester.startGesture(
-      const Offset(800, 500),
-      kind: PointerDeviceKind.touch,
-      pointer: 5,
-    );
-    await finger.moveBy(const Offset(-80, 0));
-    expect(c.view.value.x, 120, reason: 'the other hand works');
-    await finger.up();
-  });
-
   group('ink tool', () {
     testWidgets('a pen drag with the Ink tool draws, it does not pan', (
       tester,
@@ -324,7 +256,7 @@ void main() {
       });
     }
 
-    testWidgets('a finger does not draw by default', (tester) async {
+    testWidgets('a finger does not draw', (tester) async {
       final c = await pumpCanvas(tester, tool: CanvasTool.ink);
       final rec = RecordingTools();
       c.tools = rec;
@@ -335,24 +267,6 @@ void main() {
       await g.moveBy(const Offset(30, 0));
       await g.up();
       expect(rec.log, isEmpty);
-    });
-
-    testWidgets('with "finger draws" on, a finger draws', (tester) async {
-      final c = await pumpCanvas(
-        tester,
-        tool: CanvasTool.ink,
-        fingerDraws: true,
-      );
-      final rec = RecordingTools();
-      c.tools = rec;
-      final g = await tester.startGesture(
-        const Offset(500, 400),
-        kind: PointerDeviceKind.touch,
-      );
-      await g.moveBy(const Offset(30, 0));
-      await g.up();
-      expect(rec.log, ['start']);
-      expect(rec.points, isNotEmpty);
     });
 
     testWidgets('Escape drops a stroke in progress', (tester) async {

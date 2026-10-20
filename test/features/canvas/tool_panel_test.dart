@@ -67,67 +67,6 @@ void main() {
     });
   });
 
-  group('focus moves', () {
-    testWidgets(
-      'pressing the canvas folds the panel; the tool button brings it back',
-      (tester) async {
-        final c = container();
-        tester.view.physicalSize = const Size(600, 800);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.reset);
-        await tester.pumpWidget(
-          UncontrolledProviderScope(
-            container: c,
-            child: MaterialApp(
-              theme: buildTheme(AetherTokens.light),
-              home: const Scaffold(body: ToolRail()),
-            ),
-          ),
-        );
-        final n = c.read(canvasUiProvider.notifier);
-        n.setTool(CanvasTool.ink);
-        n.canvasPressed(autoHide: true);
-        await tester.pump();
-        expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.ink});
-        await tester.tap(find.text('Ink'));
-        await tester.pump();
-        expect(
-          c.read(canvasUiProvider).collapsedPanels,
-          isEmpty,
-          reason: 'the icon brings it back',
-        );
-      },
-    );
-
-    test('a press on the canvas folds the panel of the tool in use', () {
-      final c = container();
-      final n = c.read(canvasUiProvider.notifier)..setTool(CanvasTool.ink);
-      n.canvasPressed(autoHide: true);
-      expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.ink});
-      // With the setting off, nothing folds (the panel returns only through
-      // the tool button or its tab, never by pressing the canvas).
-      final other = container();
-      other.read(canvasUiProvider.notifier)
-        ..setTool(CanvasTool.ink)
-        ..canvasPressed(autoHide: false);
-      expect(other.read(canvasUiProvider).collapsedPanels, isEmpty);
-    });
-
-    test('a tool without options is left alone', () {
-      final c = container();
-      final n = c.read(canvasUiProvider.notifier)..setTool(CanvasTool.pan);
-      n.canvasPressed(autoHide: true);
-      expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
-    });
-
-    test('a stroke or wipe folds it, too', () {
-      final c = container();
-      final n = c.read(canvasUiProvider.notifier)..setTool(CanvasTool.erase);
-      n.gestureDone(CanvasTool.erase, autoHide: true);
-      expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.erase});
-    });
-  });
-
   group('ToolPanel', () {
     Future<ProviderContainer> pump(
       WidgetTester tester, {

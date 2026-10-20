@@ -28,10 +28,6 @@ class FakeSettings extends SettingsNotifier {
       state = AsyncData((state.value ?? initial).copyWith(themeMode: m));
 
   @override
-  Future<void> setFingerDraws(bool v) async =>
-      state = AsyncData((state.value ?? initial).copyWith(fingerDraws: v));
-
-  @override
   Future<void> setPerfHud(bool v) async =>
       state = AsyncData((state.value ?? initial).copyWith(perfHud: v));
 

@@ -61,17 +61,6 @@ void main() {
     );
   });
 
-  testWidgets('settings: finger draws is off by default and can be enabled', (
-    tester,
-  ) async {
-    await pumpApp(tester, size: const Size(840, 600), location: '/settings');
-    final tile = find.widgetWithText(SwitchListTile, 'Finger draws');
-    expect(tester.widget<SwitchListTile>(tile).value, isFalse);
-    await tester.tap(tile);
-    await tester.pump();
-    expect(tester.widget<SwitchListTile>(tile).value, isTrue);
-  });
-
   testWidgets('settings screen has no overflow at 2x text on a phone', (
     tester,
   ) async {
@@ -86,10 +75,7 @@ void main() {
 
   testWidgets('settings: provider defaults', (tester) async {
     const s = AppSettings();
-    expect(
-      (s.themeMode, s.fingerDraws, s.leftHanded),
-      (ThemeMode.system, false, false),
-    );
+    expect((s.themeMode, s.leftHanded), (ThemeMode.system, false));
   });
 
   testWidgets('an unknown location lands on the library, not an error screen', (

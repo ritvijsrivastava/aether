@@ -11,7 +11,6 @@ import '../../domain/commands/command_bus.dart';
 import '../../domain/model/models.dart';
 import '../../domain/ops/op.dart' show EntityKind;
 import '../../domain/ops/op_store.dart';
-import 'canvas_ui_state.dart' show CanvasTool;
 import 'engine/canvas_controller.dart';
 import 'engine/view_state.dart';
 import 'ink/ink_layer.dart';
@@ -99,10 +98,6 @@ class DocumentSession implements InkSink, EraseSink, SelectSink {
     if (await bus.redo()) await _reloadMarks();
   });
 
-  /// A stroke, wipe or selection edit just finished: the screen may fold the
-  /// tool's options away.
-  void Function(CanvasTool)? onGestureDone;
-
   // --- ink --------------------------------------------------------------------
 
   /// Shows the stroke at once and saves it behind the queue; one undo step.
@@ -121,7 +116,6 @@ class DocumentSession implements InkSink, EraseSink, SelectSink {
       color: color,
     );
     ink.add(stroke);
-    onGestureDone?.call(CanvasTool.ink);
     _enqueue(() async {
       try {
         await bus.run(
@@ -204,9 +198,6 @@ class DocumentSession implements InkSink, EraseSink, SelectSink {
   /// if the save fails the ink is reloaded from what was really stored.
   @override
   void commitErase({required Set<String> deleted, required List<Ink> created}) {
-    if (deleted.isNotEmpty || created.isNotEmpty) {
-      onGestureDone?.call(CanvasTool.erase);
-    }
     _enqueue(() async {
       try {
         await bus.run(
