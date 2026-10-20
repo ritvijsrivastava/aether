@@ -2,7 +2,9 @@ import 'package:aether/core/geometry/box.dart';
 import 'package:aether/domain/model/models.dart';
 import 'package:aether/features/canvas/canvas_ui_state.dart';
 import 'package:aether/features/canvas/engine/scene.dart';
+import 'package:aether/features/canvas/links/links_layer.dart';
 import 'package:aether/features/canvas/marks/mark_layers.dart';
+import 'package:aether/features/canvas/notes/notes_layer.dart';
 import 'package:aether/features/extract/extract_controller.dart';
 import 'package:aether/features/extract/extract_panel.dart';
 import 'package:aether/ui/theme/theme.dart';
@@ -256,5 +258,197 @@ void main() {
     await pump(tester, brightness: Brightness.dark);
     expect(find.text('Dark quote'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  group('notes', () {
+    late NotesLayer notes;
+    late LinksLayer links;
+    late List<String> jumpedNotes, deletedNotes;
+
+    Note nt(String id, String page, double y, String text) =>
+        Note(id: id, docId: 'd', pageId: page, x: 0, y: y, text: text);
+
+    setUp(() {
+      notes = NotesLayer();
+      links = LinksLayer();
+      jumpedNotes = [];
+      deletedNotes = [];
+      source = ExtractController(
+        highlights: layer,
+        scene: scene,
+        notes: notes,
+        links: links,
+        onJump: (h) => jumped.add(h.id),
+        onDelete: (h) {
+          deleted.add(h.id);
+          layer.remove(h.id);
+        },
+        onJumpNote: (n) => jumpedNotes.add(n.id),
+        onDeleteNote: (n) {
+          deletedNotes.add(n.id);
+          notes.remove(n.id);
+        },
+        onUndo: () => undone++,
+      );
+    });
+
+    Link lk(String id, String note, String hl) =>
+        Link(id: id, docId: 'd', fromNoteId: note, toHighlightId: hl);
+
+    testWidgets(
+      'the Notes filter lists notes with the quotes they are linked to',
+      (tester) async {
+        layer.add(hl('h', 'p0', 1, 'The claim itself'));
+        notes
+          ..add(nt('n', 'p0', 10, 'Why is this true?'))
+          ..add(nt('blank', 'p0', 20, '  '));
+        links.add(lk('l', 'n', 'h'));
+        final c = await pump(tester);
+        c.read(canvasUiProvider.notifier).setFilter(ExtractFilter.notes);
+        await tester.pump();
+        expect(
+          find.text('1 item'),
+          findsOneWidget,
+          reason: 'the blank note is not listed',
+        );
+        expect(find.text('Why is this true?'), findsOneWidget);
+        expect(find.text('↳ “The claim itself”'), findsOneWidget);
+        expect(find.text('p. 1'), findsOneWidget);
+        expect(
+          find.text('The claim itself'),
+          findsNothing,
+          reason: 'highlights are filtered out',
+        );
+      },
+    );
+
+    testWidgets('All shows each page\'s highlights, then its notes', (
+      tester,
+    ) async {
+      layer
+        ..add(hl('h1', 'p0', 1, 'First highlight'))
+        ..add(hl('h2', 'p1', 1, 'Second page highlight'));
+      notes
+        ..add(nt('n1', 'p0', 5, 'Note on one'))
+        ..add(nt('n2', 'p1', 5, 'Note on two'));
+      await pump(tester);
+      expect(find.text('4 items'), findsOneWidget);
+      final order = [
+        for (final t in tester.widgetList<Text>(
+          find.byWidgetPredicate(
+            (w) =>
+                w is Text &&
+                (w.data == 'First highlight' ||
+                    w.data == 'Note on one' ||
+                    w.data == 'Second page highlight' ||
+                    w.data == 'Note on two'),
+          ),
+        ))
+          t.data,
+      ];
+      expect(order, [
+        'First highlight',
+        'Note on one',
+        'Second page highlight',
+        'Note on two',
+      ]);
+    });
+
+    testWidgets('a note linked to a deleted highlight lists no quote for it', (
+      tester,
+    ) async {
+      notes.add(nt('n', 'p0', 10, 'Orphaned note'));
+      links.add(lk('l', 'n', 'gone'));
+      final c = await pump(tester);
+      c.read(canvasUiProvider.notifier).setFilter(ExtractFilter.notes);
+      await tester.pump();
+      expect(find.text('Orphaned note'), findsOneWidget);
+      expect(find.textContaining('↳'), findsNothing);
+    });
+
+    testWidgets('more than three quotes end with "and N more"', (tester) async {
+      notes.add(nt('n', 'p0', 10, 'About many things'));
+      for (var i = 0; i < 5; i++) {
+        layer.add(hl('h$i', 'p0', i * 10, 'quote number $i'));
+        links.add(lk('l$i', 'n', 'h$i'));
+      }
+      final c = await pump(tester);
+      c.read(canvasUiProvider.notifier).setFilter(ExtractFilter.notes);
+      await tester.pump();
+      expect(find.textContaining('↳'), findsNWidgets(3));
+      expect(find.text('and 2 more'), findsOneWidget);
+    });
+
+    testWidgets(
+      'tapping a note jumps to it; delete removes it and offers Undo',
+      (tester) async {
+        notes.add(nt('n', 'p0', 10, 'Tap me'));
+        final c = await pump(tester);
+        c.read(canvasUiProvider.notifier).setFilter(ExtractFilter.notes);
+        await tester.pump();
+        await tester.tap(find.text('Tap me'));
+        expect(jumpedNotes, ['n']);
+        await tester.tap(find.byTooltip('Delete note'));
+        await tester.pump();
+        expect(deletedNotes, ['n']);
+        expect(find.text('Note deleted'), findsOneWidget);
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.tap(find.text('Undo'));
+        expect(undone, 1);
+        await tester.pumpAndSettle(const Duration(seconds: 7));
+      },
+    );
+
+    testWidgets(
+      'a note tile is one accessible button naming what it is about',
+      (tester) async {
+        layer.add(hl('h', 'p1', 1, 'Spoken source'));
+        notes.add(nt('n', 'p1', 10, 'Spoken note'));
+        links.add(lk('l', 'n', 'h'));
+        final handle = tester.ensureSemantics();
+        final c = await pump(tester);
+        c.read(canvasUiProvider.notifier).setFilter(ExtractFilter.notes);
+        await tester.pump();
+        expect(
+          find.bySemanticsLabel(
+            'Note, page 2. Spoken note. About: Spoken source',
+          ),
+          findsOneWidget,
+        );
+        handle.dispose();
+      },
+    );
+
+    testWidgets('the note delete control is a 48 dp target', (tester) async {
+      notes.add(nt('n', 'p0', 10, 'x'));
+      final c = await pump(tester);
+      c.read(canvasUiProvider.notifier).setFilter(ExtractFilter.notes);
+      await tester.pump();
+      final size = tester.getSize(find.byTooltip('Delete note'));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+    });
+
+    testWidgets('follows the notes layer as notes are typed and removed', (
+      tester,
+    ) async {
+      final c = await pump(tester);
+      c.read(canvasUiProvider.notifier).setFilter(ExtractFilter.notes);
+      await tester.pump();
+      expect(find.textContaining('Notes you write'), findsOneWidget);
+      notes.add(nt('n', 'p0', 10, 'Fresh note'));
+      await tester.pump();
+      expect(find.text('Fresh note'), findsOneWidget);
+      notes.remove('n');
+      await tester.pump();
+      expect(find.text('Fresh note'), findsNothing);
+    });
+
+    testWidgets('renders in the dark theme', (tester) async {
+      notes.add(nt('n', 'p0', 10, 'Dark note'));
+      await pump(tester, brightness: Brightness.dark);
+      expect(find.text('Dark note'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 }

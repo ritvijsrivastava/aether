@@ -9,6 +9,7 @@ import 'package:flutter/services.dart'
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../core/geometry/box.dart';
 import '../../data/pdf/page_text_service.dart';
 import '../../domain/export/markdown_exporter.dart';
 import '../../domain/model/models.dart';
@@ -220,6 +221,10 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       onJump: _jumpTo,
       onDelete: (h) => session.deleteHighlight(h.id),
       onUndo: session.undo,
+      notes: session.notes,
+      links: session.links,
+      onJumpNote: _jumpToNote,
+      onDeleteNote: (n) => session.deleteNote(n.id),
     );
     final inkTool = InkToolController(
       view: _controller.view,
@@ -306,6 +311,14 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _extract?.collapseRequests.value++;
   }
 
+  static String _copiedMessage(int highlights, int notes) {
+    final h = highlights == 1 ? '1 highlight' : '$highlights highlights';
+    final n = notes == 1 ? '1 note' : '$notes notes';
+    if (notes == 0) return 'Copied $h as Markdown.';
+    if (highlights == 0) return 'Copied $n as Markdown.';
+    return 'Copied $h and $n as Markdown.';
+  }
+
   /// Ctrl+C: the selected quotes and notes as text; with nothing selected (or
   /// only ink), the whole Extract list as Markdown.
   Future<void> _copyKey() async {
@@ -354,27 +367,28 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   /// Copy as Markdown: the whole Extract list, grouped by meaning.
   Future<void> _copyMarkdown() async {
     final items = _extract?.items(ExtractFilter.all) ?? const [];
+    final noteItems = _extract?.noteItems() ?? const [];
     final messenger = ScaffoldMessenger.maybeOf(context);
-    if (items.isEmpty) {
+    if (items.isEmpty && noteItems.isEmpty) {
       messenger
         ?..clearSnackBars()
         ..showSnackBar(const SnackBar(content: Text('Nothing to copy yet.')));
       return;
     }
     await Clipboard.setData(
-      ClipboardData(text: MarkdownExporter.export(_title ?? 'Document', items)),
+      ClipboardData(
+        text: MarkdownExporter.export(
+          _title ?? 'Document',
+          items,
+          notes: noteItems,
+        ),
+      ),
     );
     if (!mounted) return;
     messenger
       ?..clearSnackBars()
       ..showSnackBar(
-        SnackBar(
-          content: Text(
-            items.length == 1
-                ? 'Copied 1 highlight as Markdown.'
-                : 'Copied ${items.length} highlights as Markdown.',
-          ),
-        ),
+        SnackBar(content: Text(_copiedMessage(items.length, noteItems.length))),
       );
     setState(() => _copied = true);
     _copiedTimer?.cancel();
@@ -503,6 +517,24 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     }
   }
 
+  /// Extract note tapped: bring the note into view and outline it.
+  void _jumpToNote(Note n) {
+    final o = NotesOverlay.worldOrigin(n, _controller.scene.value);
+    if (o == null || !mounted) return;
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    _controller.reveal(o & Size(n.width, n.height), animate: !reduce);
+    if (n.pageId != null) {
+      _flash
+        ..reduceMotion = reduce
+        ..show(
+          Flash(n.pageId!, [
+            Box(n.x, n.y, n.x + n.width, n.y + n.height),
+          ], Meaning.claim),
+        );
+    }
+    _extract?.collapseRequests.value++;
+  }
+
   void _warmText() => _markTool?.warmVisible(viewport: _controller.viewport);
 
   /// First layout is known: restore the remembered view, or show page one.
@@ -594,6 +626,8 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       selection: _selection,
       lasso: _lasso,
       onContextMenu: session == null ? null : _showContextMenu,
+      onTool: (t) => ref.read(canvasUiProvider.notifier).setTool(t),
+      onMeaning: (m) => ref.read(canvasUiProvider.notifier).setMeaning(m),
       onEscape: () {
         _selection.clear();
         _session?.links.select(null);

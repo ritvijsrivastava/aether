@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../domain/model/models.dart';
 import '../../ui/theme/tokens.dart';
 import 'canvas_ui_state.dart';
 import 'engine/canvas_controller.dart';
@@ -47,6 +48,8 @@ class CanvasView extends StatefulWidget {
     this.lasso,
     this.onContextMenu,
     this.onEscape,
+    this.onTool,
+    this.onMeaning,
     this.pen = const PenConfig(),
     this.fingerDraws = false,
     this.onReady,
@@ -96,6 +99,10 @@ class CanvasView extends StatefulWidget {
 
   /// Escape: clear what is selected.
   final VoidCallback? onEscape;
+
+  /// Tool keys (H M P E N L S) and meaning keys (1 2 3).
+  final ValueChanged<CanvasTool>? onTool;
+  final ValueChanged<Meaning>? onMeaning;
 
   /// Pen button bits and pressure curve for this device.
   final PenConfig pen;
@@ -214,6 +221,27 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
         k == LogicalKeyboardKey.numpadSubtract) {
       c.zoomBy(0.8);
       return KeyEventResult.handled;
+    }
+    if (!ctrl && !HardwareKeyboard.instance.isAltPressed) {
+      final label = k.keyLabel.toUpperCase();
+      if (widget.onTool != null) {
+        for (final t in CanvasTool.values) {
+          if (t.key == label) {
+            widget.onTool!(t);
+            return KeyEventResult.handled;
+          }
+        }
+      }
+      final m = switch (label) {
+        '1' => Meaning.claim,
+        '2' => Meaning.method,
+        '3' => Meaning.question,
+        _ => null,
+      };
+      if (m != null && widget.onMeaning != null) {
+        widget.onMeaning!(m);
+        return KeyEventResult.handled;
+      }
     }
     if (ctrl && k == LogicalKeyboardKey.keyZ) {
       final redo = HardwareKeyboard.instance.isShiftPressed;

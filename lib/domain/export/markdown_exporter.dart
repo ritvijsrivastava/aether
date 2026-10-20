@@ -27,9 +27,10 @@ abstract final class MarkdownExporter {
     String title,
     List<ExtractItem> items, {
     MarkdownOrder order = MarkdownOrder.byMeaning,
+    List<ExtractNote> notes = const [],
   }) {
     final out = StringBuffer('# ${_title(title)}\n');
-    if (items.isEmpty) {
+    if (items.isEmpty && notes.isEmpty) {
       out.write('\nNothing marked yet.\n');
       return out.toString();
     }
@@ -47,12 +48,33 @@ abstract final class MarkdownExporter {
           }
         }
       case MarkdownOrder.readingOrder:
-        out.write('\n');
+        if (items.isNotEmpty) out.write('\n');
         for (final i in items) {
           out.write('- ${_line(i)}${_page(i, i.meaning.label)}\n');
         }
     }
+    if (notes.isNotEmpty) {
+      out.write('\n## Notes\n');
+      for (final n in notes) {
+        out.write('- ${_noteLine(n)}\n');
+      }
+    }
     return out.toString();
+  }
+
+  /// `text (on "quote", p. 2)`: the note's words on one line, then what it is
+  /// about and where it sits.
+  static String _noteLine(ExtractNote n) {
+    final text = n.text.replaceAll(RegExp(r'\s+'), ' ');
+    final on = [
+      for (final q in n.quotes)
+        '${q.isRegion ? '*(image region)*' : '"${q.quote}"'}'
+            '${q.pageIndex >= 0 ? ', p. ${q.pageIndex + 1}' : ''}',
+    ];
+    final where = on.isNotEmpty
+        ? '(on ${on.join('; ')})'
+        : (n.pageIndex >= 0 ? '(p. ${n.pageNumber})' : '');
+    return where.isEmpty ? text : '$text $where';
   }
 
   /// A title is one line.

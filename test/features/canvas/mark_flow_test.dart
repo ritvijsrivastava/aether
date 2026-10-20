@@ -579,6 +579,31 @@ void main() {
     expect(saved.single.text, 'Why does this scale?');
     expect(saved.single.pageId, c.scene.value.cards.first.id);
 
+    // Extract lists the note, and Copy as Markdown puts it under "## Notes".
+    await tester.pump();
+    expect(find.text('1 item'), findsOneWidget);
+    expect(find.text('Why does this scale?'), findsNWidgets(2));
+    String? clip;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clip = (call.arguments as Map)['text'] as String;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await tester.tap(find.text('Copy as Markdown'));
+    await tester.pump();
+    expect(clip, contains('## Notes\n- Why does this scale? (p. 1)\n'));
+    await tester.pump(const Duration(seconds: 2));
+
     // An empty note placed and abandoned leaves nothing behind.
     final g2 = await tester.startGesture(
       origin + const Offset(300, 500),

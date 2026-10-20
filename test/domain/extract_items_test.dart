@@ -21,7 +21,95 @@ Highlight hl(
   rects: [rect],
 );
 
+Note nt(String id, String page, double y, String text, {double x = 0}) =>
+    Note(id: id, docId: 'd', pageId: page, x: x, y: y, text: text);
+
 void main() {
+  group('notes', () {
+    const pages = {'p0': 0, 'p1': 1};
+    List<LinkedQuote> none(String id) => const [];
+
+    test('lists only notes with words, top to bottom, page by page', () {
+      final out = buildNotes(
+        [
+          nt('c', 'p1', 5, 'on page two'),
+          nt('b', 'p0', 200, 'lower'),
+          nt('empty', 'p0', 1, '   '),
+          nt('a', 'p0', 50, 'upper'),
+          nt('free', 'nowhere', 0, 'loose'),
+        ],
+        pages,
+        none,
+      );
+      expect([for (final n in out) n.note.id], ['a', 'b', 'c', 'free']);
+      expect(out.last.pageIndex, -1);
+    });
+
+    test('equal places keep a stable order; left before right', () {
+      final out = buildNotes(
+        [nt('r', 'p0', 10, 'r', x: 300), nt('l', 'p0', 10, 'l', x: 5)],
+        pages,
+        none,
+      );
+      expect([for (final n in out) n.note.id], ['l', 'r']);
+    });
+
+    test('carries the quotes each note is linked to', () {
+      final out = buildNotes(
+        [nt('a', 'p0', 1, 'why')],
+        pages,
+        (id) => const [
+          LinkedQuote(
+            highlightId: 'h',
+            quote: 'the claim',
+            pageIndex: 3,
+            isRegion: false,
+          ),
+          LinkedQuote(
+            highlightId: 'r',
+            quote: '(image region)',
+            pageIndex: 0,
+            isRegion: true,
+          ),
+        ],
+      );
+      expect(out.single.quotes.map((q) => q.shown), [
+        'the claim',
+        '(image region)',
+      ]);
+    });
+
+    test(
+      'merged with highlights: a page\'s highlights come before its notes',
+      () {
+        final hs = buildExtract([hl('h2', 'p1', 4), hl('h1', 'p0', 9)], pages);
+        final ns = buildNotes(
+          [
+            nt('n1', 'p0', 1, 'p0 note'),
+            nt('n2', 'p1', 1, 'p1 note'),
+            nt('nf', 'x', 1, 'free'),
+          ],
+          pages,
+          none,
+        );
+        final merged = mergeEntries(hs, ns);
+        expect(
+          [
+            for (final e in merged)
+              e is ExtractItem ? e.highlight.id : (e as ExtractNote).note.id,
+          ],
+          ['h1', 'n1', 'h2', 'n2', 'nf'],
+        );
+      },
+    );
+
+    test('merging with nothing on one side', () {
+      expect(mergeEntries(const [], const []), isEmpty);
+      final ns = buildNotes([nt('n', 'p0', 1, 'x')], pages, none);
+      expect(mergeEntries(const [], ns).length, 1);
+    });
+  });
+
   const pages = {'p0': 0, 'p1': 1, 'p2': 2};
 
   test('orders by page, then by position in the text', () {

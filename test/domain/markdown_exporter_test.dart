@@ -42,7 +42,125 @@ void expectGolden(String name, String actual) {
   expect(actual, f.readAsStringSync());
 }
 
+List<ExtractNote> sampleNotes() => [
+  ExtractNote(
+    const Note(
+      id: 'n1',
+      docId: 'd',
+      pageId: 'p1',
+      x: 0,
+      y: 10,
+      text: 'Check\nthe split size.',
+    ),
+    1,
+    const [
+      LinkedQuote(
+        highlightId: '3',
+        quote: 'The input is split into M pieces.',
+        pageIndex: 1,
+        isRegion: false,
+      ),
+    ],
+  ),
+  ExtractNote(
+    const Note(
+      id: 'n2',
+      docId: 'd',
+      pageId: 'p2',
+      x: 0,
+      y: 10,
+      text: 'Two sources.',
+    ),
+    2,
+    const [
+      LinkedQuote(
+        highlightId: '1',
+        quote: 'MapReduce is a programming model.',
+        pageIndex: 0,
+        isRegion: false,
+      ),
+      LinkedQuote(
+        highlightId: '4',
+        quote: '(image region)',
+        pageIndex: 1,
+        isRegion: true,
+      ),
+    ],
+  ),
+  ExtractNote(
+    const Note(
+      id: 'n3',
+      docId: 'd',
+      pageId: 'p3',
+      x: 0,
+      y: 10,
+      text: 'No links, just a thought.',
+    ),
+    3,
+    const [],
+  ),
+  ExtractNote(
+    const Note(id: 'n4', docId: 'd', x: 0, y: 0, text: 'Off the pages.'),
+    -1,
+    const [],
+  ),
+];
+
 void main() {
+  test('notes follow the meaning sections, matching their golden file', () {
+    expectGolden(
+      'export_with_notes.md',
+      MarkdownExporter.export('MapReduce', sample(), notes: sampleNotes()),
+    );
+  });
+
+  test('notes with the reading-order layout', () {
+    expectGolden(
+      'export_reading_order_with_notes.md',
+      MarkdownExporter.export(
+        'MapReduce',
+        sample(),
+        order: MarkdownOrder.readingOrder,
+        notes: sampleNotes(),
+      ),
+    );
+  });
+
+  test('only notes: no empty highlight sections, no "Nothing marked yet"', () {
+    final md = MarkdownExporter.export(
+      'T',
+      const [],
+      notes: sampleNotes().sublist(2, 3),
+    );
+    expect(md, '# T\n\n## Notes\n- No links, just a thought. (p. 4)\n');
+    final r = MarkdownExporter.export(
+      'T',
+      const [],
+      order: MarkdownOrder.readingOrder,
+      notes: sampleNotes().sublist(2, 3),
+    );
+    expect(r, md);
+  });
+
+  test('a note\'s lines are joined into one, and its sources named', () {
+    final md = MarkdownExporter.export(
+      'T',
+      const [],
+      notes: sampleNotes().sublist(0, 1),
+    );
+    expect(
+      md,
+      '# T\n\n## Notes\n- Check the split size. (on "The input is split into M pieces.", p. 2)\n',
+    );
+  });
+
+  test('nothing and no notes still says so', () {
+    expect(
+      MarkdownExporter.export('T', const []),
+      '# T\n\nNothing marked yet.\n',
+    );
+  });
+
   test('grouped by meaning matches its golden file', () {
     expectGolden(
       'export_by_meaning.md',

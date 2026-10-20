@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:aether/domain/model/models.dart';
 import 'package:aether/features/canvas/canvas_ui_state.dart';
 import 'package:aether/features/canvas/canvas_view.dart';
 import 'package:aether/features/canvas/engine/canvas_controller.dart';
@@ -29,6 +30,8 @@ Future<CanvasController> pumpCanvas(
   void Function(Offset local, Offset global)? onContextMenu,
   VoidCallback? onEscape,
   VoidCallback? onDelete,
+  ValueChanged<CanvasTool>? onTool,
+  ValueChanged<Meaning>? onMeaning,
 }) async {
   tester.view.physicalSize = _size;
   tester.view.devicePixelRatio = 1;
@@ -51,6 +54,8 @@ Future<CanvasController> pumpCanvas(
           onContextMenu: onContextMenu,
           onEscape: onEscape,
           onDelete: onDelete,
+          onTool: onTool,
+          onMeaning: onMeaning,
         ),
       ),
     ),
@@ -566,6 +571,70 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.delete);
       await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
       expect((escapes, deletes), (1, 2));
+    });
+  });
+
+  group('tool and meaning keys', () {
+    testWidgets('H M P E N L S choose the tools', (tester) async {
+      final chosen = <CanvasTool>[];
+      await pumpCanvas(tester, onTool: chosen.add);
+      for (final k in [
+        LogicalKeyboardKey.keyH,
+        LogicalKeyboardKey.keyM,
+        LogicalKeyboardKey.keyP,
+        LogicalKeyboardKey.keyE,
+        LogicalKeyboardKey.keyN,
+        LogicalKeyboardKey.keyL,
+        LogicalKeyboardKey.keyS,
+      ]) {
+        await tester.sendKeyEvent(k);
+      }
+      expect(chosen, [
+        CanvasTool.pan,
+        CanvasTool.mark,
+        CanvasTool.ink,
+        CanvasTool.erase,
+        CanvasTool.note,
+        CanvasTool.link,
+        CanvasTool.select,
+      ]);
+    });
+
+    testWidgets('1 2 3 choose Claim, Method, Question', (tester) async {
+      final chosen = <Meaning>[];
+      await pumpCanvas(tester, onMeaning: chosen.add);
+      await tester.sendKeyEvent(LogicalKeyboardKey.digit1);
+      await tester.sendKeyEvent(LogicalKeyboardKey.digit2);
+      await tester.sendKeyEvent(LogicalKeyboardKey.digit3);
+      expect(chosen, [Meaning.claim, Meaning.method, Meaning.question]);
+    });
+
+    testWidgets('with Ctrl held they are not tool keys (Ctrl+1 is 100%)', (
+      tester,
+    ) async {
+      final tools = <CanvasTool>[];
+      final meanings = <Meaning>[];
+      final c = await pumpCanvas(
+        tester,
+        onTool: tools.add,
+        onMeaning: meanings.add,
+      );
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.digit1);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyS);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump(const Duration(seconds: 1));
+      expect(tools, isEmpty);
+      expect(meanings, isEmpty);
+      expect(c.view.value.zoom, 1.0);
+    });
+
+    testWidgets('keys that mean nothing are left alone', (tester) async {
+      final tools = <CanvasTool>[];
+      await pumpCanvas(tester, onTool: tools.add);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyQ);
+      await tester.sendKeyEvent(LogicalKeyboardKey.digit7);
+      expect(tools, isEmpty);
     });
   });
 }

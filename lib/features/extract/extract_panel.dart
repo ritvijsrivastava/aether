@@ -35,7 +35,7 @@ class ExtractPanel extends ConsumerWidget {
     return ListenableBuilder(
       listenable: s.changes,
       builder: (context, _) =>
-          _Body(items: s.items(ui.filter), ui: ui, panel: this),
+          _Body(items: s.entries(ui.filter), ui: ui, panel: this),
     );
   }
 }
@@ -43,7 +43,7 @@ class ExtractPanel extends ConsumerWidget {
 class _Body extends ConsumerWidget {
   const _Body({required this.items, required this.ui, required this.panel});
 
-  final List<ExtractItem> items;
+  final List<ExtractEntry> items;
   final CanvasUiState ui;
   final ExtractPanel panel;
 
@@ -121,19 +121,39 @@ class _Body extends ConsumerWidget {
               ),
               sliver: SliverList.builder(
                 itemCount: items.length,
-                itemBuilder: (context, i) => Padding(
-                  padding: const EdgeInsets.only(bottom: AetherTokens.s2),
-                  child: ExtractTile(
-                    key: ValueKey(items[i].highlight.id),
-                    item: items[i],
-                    onJump: panel.source == null
-                        ? null
-                        : () => panel.source!.onJump(items[i].highlight),
-                    onDelete: panel.source == null
-                        ? null
-                        : () => _delete(context, panel.source!, items[i]),
-                  ),
-                ),
+                itemBuilder: (context, i) {
+                  final e = items[i];
+                  final src = panel.source;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: AetherTokens.s2),
+                    child: switch (e) {
+                      ExtractItem() => ExtractTile(
+                        key: ValueKey(e.highlight.id),
+                        item: e,
+                        onJump: src == null
+                            ? null
+                            : () => src.onJump(e.highlight),
+                        onDelete: src == null
+                            ? null
+                            : () => _delete(context, src, e),
+                      ),
+                      ExtractNote() => ExtractNoteTile(
+                        key: ValueKey(e.note.id),
+                        item: e,
+                        onJump: src?.onJumpNote == null
+                            ? null
+                            : () => src!.onJumpNote!(e.note),
+                        onDelete: src?.onDeleteNote == null
+                            ? null
+                            : () {
+                                src!.onDeleteNote!(e.note);
+                                _undoBar(context, src, 'Note deleted');
+                              },
+                      ),
+                      _ => const SizedBox.shrink(),
+                    },
+                  );
+                },
               ),
             ),
         ],
@@ -151,12 +171,15 @@ class _Body extends ConsumerWidget {
 
   void _delete(BuildContext context, ExtractController s, ExtractItem item) {
     s.onDelete(item.highlight);
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    messenger
+    _undoBar(context, s, 'Highlight deleted');
+  }
+
+  void _undoBar(BuildContext context, ExtractController s, String message) {
+    ScaffoldMessenger.maybeOf(context)
       ?..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: const Text('Highlight deleted'),
+          content: Text(message),
           action: SnackBarAction(label: 'Undo', onPressed: s.onUndo),
         ),
       );
@@ -249,6 +272,131 @@ class ExtractTile extends StatelessWidget {
                           ),
                   ),
                 ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A note in the list: its words, and the quotes it is linked to.
+class ExtractNoteTile extends StatelessWidget {
+  const ExtractNoteTile({
+    super.key,
+    required this.item,
+    this.onJump,
+    this.onDelete,
+  });
+
+  final ExtractNote item;
+  final VoidCallback? onJump, onDelete;
+
+  /// Linked quotes shown before "and N more".
+  static const int maxQuotes = 3;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = AetherText(t.ink);
+    final where = item.pageIndex < 0 ? '' : 'p. ${item.pageNumber}';
+    final shown = item.quotes.take(maxQuotes).toList();
+    final more = item.quotes.length - shown.length;
+    return Semantics(
+      container: true,
+      button: onJump != null,
+      label:
+          'Note${where.isEmpty ? '' : ', page ${item.pageNumber}'}. ${item.text}'
+          '${item.quotes.isEmpty ? '' : '. About: ${item.quotes.map((q) => q.shown).join('; ')}'}',
+      onTap: onJump,
+      child: Material(
+        color: t.desk,
+        borderRadius: BorderRadius.circular(AetherTokens.rCard),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AetherTokens.rCard),
+          hoverColor: t.hoverWash,
+          onTap: onJump,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 4, 4, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    ExcludeSemantics(
+                      child: Container(
+                        width: 22,
+                        height: 22,
+                        margin: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: AetherTokens.notePaper,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Center(
+                          child: AetherIcon(
+                            AetherIcons.note,
+                            size: 13,
+                            color: AetherTokens.onMark,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: AetherTokens.s1),
+                    Text('Note', style: text.label),
+                    if (where.isNotEmpty) ...[
+                      Text(
+                        '  ·  ',
+                        style: text.caption.copyWith(color: t.inkMuted),
+                      ),
+                      Text(
+                        where,
+                        style: text.caption.copyWith(color: t.inkMuted),
+                      ),
+                    ],
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Delete note',
+                      onPressed: onDelete,
+                      constraints: const BoxConstraints(
+                        minWidth: AetherTokens.minTarget,
+                        minHeight: AetherTokens.minTarget,
+                      ),
+                      icon: AetherIcon(
+                        AetherIcons.trash,
+                        size: 18,
+                        color: t.inkMuted,
+                      ),
+                    ),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Text(
+                    item.text,
+                    maxLines: 6,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.body,
+                  ),
+                ),
+                for (final q in shown)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6, right: 10),
+                    child: Text(
+                      '↳ “${q.shown}”',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: text.caption.copyWith(color: t.indigoText),
+                    ),
+                  ),
+                if (more > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'and $more more',
+                      style: text.caption.copyWith(color: t.inkMuted),
+                    ),
+                  ),
               ],
             ),
           ),
