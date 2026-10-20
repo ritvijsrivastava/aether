@@ -107,8 +107,8 @@ void main() {
     });
 
     test('the Wacom first button is bit 4, the second does nothing', () {
-      expect(wacom.resolveTool(CanvasTool.mark, stylus, 5), CanvasTool.erase);
-      expect(wacom.resolveTool(CanvasTool.mark, stylus, 3), CanvasTool.mark);
+      expect(wacom.resolveTool(CanvasTool.ink, stylus, 5), CanvasTool.erase);
+      expect(wacom.resolveTool(CanvasTool.ink, stylus, 3), CanvasTool.ink);
     });
 
     test('only a pen uses the button rules', () {
@@ -117,7 +117,7 @@ void main() {
         PointerDeviceKind.touch,
         PointerDeviceKind.trackpad,
       ]) {
-        expect(sPen.resolveTool(CanvasTool.mark, k, 2), CanvasTool.mark);
+        expect(sPen.resolveTool(CanvasTool.ink, k, 2), CanvasTool.ink);
       }
     });
 

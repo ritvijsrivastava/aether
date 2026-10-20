@@ -23,19 +23,11 @@ class LibraryScreen extends ConsumerStatefulWidget {
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   String _query = '';
 
-  Future<void> _import() async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final requests = await ref.read(pdfPickerProvider).pick();
-      if (!mounted || requests.isEmpty) return;
-      await runImport(context: context, ref: ref, requests: requests);
-    } catch (_) {
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(
-          const SnackBar(content: Text("Couldn't open the file picker.")),
-        );
-    }
+  /// A new empty board, opened at once.
+  Future<void> _newBoard() async {
+    final id = await ref.read(libraryActionsProvider).createBoard();
+    if (!mounted) return;
+    context.push('/doc/$id');
   }
 
   @override
@@ -46,10 +38,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final items = ref.watch(libraryItemsProvider);
     final progress = ref.watch(importProgressProvider);
 
-    final importButton = FilledButton.icon(
-      onPressed: progress.active ? null : _import,
-      icon: AetherIcon(AetherIcons.upload, size: 18, color: t.onIndigo),
-      label: const Text('Import PDF'),
+    final newBoardButton = FilledButton.icon(
+      onPressed: progress.active ? null : _newBoard,
+      icon: AetherIcon(AetherIcons.note, size: 18, color: t.onIndigo),
+      label: const Text('New board'),
     );
 
     return Scaffold(
@@ -58,7 +50,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         title: Text('Aether', style: text.wordmark),
         actions: [
           if (cls == WindowClass.expanded) ...[
-            importButton,
+            newBoardButton,
             const SizedBox(width: AetherTokens.s2),
           ],
           IconButton(
@@ -72,15 +64,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       floatingActionButton: cls == WindowClass.expanded
           ? null
           : FloatingActionButton.extended(
-              onPressed: progress.active ? null : _import,
+              onPressed: progress.active ? null : _newBoard,
               backgroundColor: t.indigo,
               foregroundColor: t.onIndigo,
               elevation: 2,
               shape: const StadiumBorder(side: BorderSide.none),
               focusElevation: 2,
-              icon: AetherIcon(AetherIcons.upload, size: 20, color: t.onIndigo),
+              icon: AetherIcon(AetherIcons.note, size: 20, color: t.onIndigo),
               label: Text(
-                'Import PDF',
+                'New board',
                 style: text.button.copyWith(color: t.onIndigo),
               ),
             ),

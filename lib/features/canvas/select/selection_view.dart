@@ -14,9 +14,7 @@ import '../colour_strip.dart';
 import '../engine/scene.dart';
 import '../engine/view_state.dart';
 import '../ink/ink_layer.dart';
-import '../marks/mark_layers.dart';
-import '../notes/notes_layer.dart';
-import 'mark_hit.dart';
+import 'ink_hit.dart';
 import 'select_tool.dart';
 import 'selection.dart';
 
@@ -29,28 +27,14 @@ class SelectionPainter extends CustomPainter {
     required this.selection,
     required this.lasso,
     required this.ink,
-    required this.highlights,
-    required this.notes,
     required this.tokens,
-  }) : super(
-         repaint: Listenable.merge([
-           view,
-           scene,
-           selection,
-           lasso,
-           ink,
-           highlights,
-           notes,
-         ]),
-       );
+  }) : super(repaint: Listenable.merge([view, scene, selection, lasso, ink]));
 
   final ValueListenable<ViewState> view;
   final ValueListenable<Scene> scene;
   final SelectionState selection;
   final LiveLasso lasso;
   final InkLayer ink;
-  final HighlightLayer highlights;
-  final NotesLayer notes;
   final AetherTokens tokens;
 
   static void dashed(Canvas canvas, Path path, Paint paint, double px) {
@@ -81,12 +65,7 @@ class SelectionPainter extends CustomPainter {
       ..color = tokens.indigo;
 
     if (!selection.isEmpty) {
-      final hit = MarkHitTester(
-        scene: scene.value,
-        ink: ink,
-        highlights: highlights,
-        notes: notes,
-      );
+      final hit = InkHitTester(ink: ink);
       final b = hit.unionBounds(selection.refs);
       if (b != null) {
         final r = RRect.fromRectAndRadius(
@@ -132,7 +111,6 @@ class SelectionPainter extends CustomPainter {
 
 /// What the selection's action pill can do.
 abstract interface class SelectionActions {
-  void recolorHighlight(int argb);
   void recolorInk(int argb);
   void deleteSelection();
 }
@@ -143,21 +121,15 @@ class MarkSelectionOverlay extends StatefulWidget {
   const MarkSelectionOverlay({
     super.key,
     required this.view,
-    required this.scene,
     required this.selection,
     required this.ink,
-    required this.highlights,
-    required this.notes,
     required this.actions,
     required this.viewport,
   });
 
   final ValueNotifier<ViewState> view;
-  final ValueNotifier<Scene> scene;
   final SelectionState selection;
   final InkLayer ink;
-  final HighlightLayer highlights;
-  final NotesLayer notes;
   final SelectionActions actions;
   final Size Function() viewport;
 
@@ -191,23 +163,11 @@ class _MarkSelectionOverlayState extends State<MarkSelectionOverlay> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([
-        widget.view,
-        widget.scene,
-        widget.selection,
-        widget.ink,
-        widget.highlights,
-        widget.notes,
-      ]),
+      listenable: Listenable.merge([widget.view, widget.selection, widget.ink]),
       builder: (context, _) {
         final sel = widget.selection;
         if (sel.isEmpty) return const SizedBox.shrink();
-        final b = MarkHitTester(
-          scene: widget.scene.value,
-          ink: widget.ink,
-          highlights: widget.highlights,
-          notes: widget.notes,
-        ).unionBounds(sel.refs);
+        final b = InkHitTester(ink: widget.ink).unionBounds(sel.refs);
         if (b == null) return const SizedBox.shrink();
         final v = widget.view.value;
         final tl = v.worldToScreen(b.topLeft);
@@ -215,16 +175,11 @@ class _MarkSelectionOverlayState extends State<MarkSelectionOverlay> {
         final size = widget.viewport();
         final pill = _pill(context);
         // Above the selection if there is room, else below; kept on screen.
-        final hasH = sel.idsOf(MarkKind.highlight).isNotEmpty;
-        final hasI = sel.idsOf(MarkKind.ink).isNotEmpty;
+
         final ui = ProviderScope.containerOf(context).read(canvasUiProvider);
         // Back, then each strip: its recent colours and the "any colour" button.
         final wanted = _recoloring
-            ? AetherTokens.minTarget *
-                      (1 +
-                          (hasH ? ui.markColors.recent.length + 1 : 0) +
-                          (hasI ? ui.inkColors.recent.length + 1 : 0)) +
-                  24
+            ? AetherTokens.minTarget * (1 + ui.inkColors.recent.length + 1) + 24
             : 300.0;
         final width = math.min(wanted, math.max(200.0, size.width - 16));
         var top = tl.dy - _pillH - 14;
@@ -254,9 +209,8 @@ class _MarkSelectionOverlayState extends State<MarkSelectionOverlay> {
     final t = context.tokens;
     final text = AetherText(t.ink);
     final sel = widget.selection;
-    final hasHighlights = sel.idsOf(MarkKind.highlight).isNotEmpty;
     final hasInk = sel.idsOf(MarkKind.ink).isNotEmpty;
-    final canRecolor = hasHighlights || hasInk;
+    final canRecolor = hasInk;
     return Material(
       color: t.panel,
       elevation: 4,
@@ -279,21 +233,6 @@ class _MarkSelectionOverlayState extends State<MarkSelectionOverlay> {
                       return Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (hasHighlights)
-                            ColourStrip(
-                              colours: ui.markColors,
-                              prefix: 'Highlight',
-                              onPick: widget.actions.recolorHighlight,
-                            ),
-                          if (hasHighlights && hasInk)
-                            Container(
-                              width: 1,
-                              height: 28,
-                              margin: const EdgeInsets.symmetric(
-                                horizontal: AetherTokens.s1,
-                              ),
-                              color: t.hairline,
-                            ),
                           if (hasInk)
                             ColourStrip(
                               colours: ui.inkColors,
@@ -341,5 +280,4 @@ class _MarkSelectionOverlayState extends State<MarkSelectionOverlay> {
 }
 
 /// A tap-sized helper for the tests: whether a selection could be recolored.
-bool canRecolor(SelectionState s) =>
-    s.idsOf(MarkKind.highlight).isNotEmpty || s.idsOf(MarkKind.ink).isNotEmpty;
+bool canRecolor(SelectionState s) => s.idsOf(MarkKind.ink).isNotEmpty;

@@ -16,13 +16,13 @@ void main() {
   });
 
   testWidgets(
-    'phone and tablet use a FAB; desktop puts Import in the app bar',
+    'phone and tablet use a FAB; desktop puts New board in the app bar',
     (tester) async {
       await pumpApp(tester, size: const Size(360, 800));
       expect(find.byType(FloatingActionButton), findsOneWidget);
       await pumpApp(tester, size: const Size(1280, 720));
       expect(find.byType(FloatingActionButton), findsNothing);
-      expect(find.widgetWithText(FilledButton, 'Import PDF'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'New board'), findsOneWidget);
     },
   );
 
@@ -39,20 +39,11 @@ void main() {
     expect(find.textContaining('1 page · Added'), findsOneWidget);
     await tester.tap(find.text('MapReduce'));
     await tester.pumpAndSettle();
-    expect(find.text('Copy as Markdown'), findsOneWidget);
-  });
-
-  testWidgets('Copy as Markdown is honest when there is nothing to copy', (
-    tester,
-  ) async {
-    await pumpApp(
-      tester,
-      size: const Size(1280, 720),
-      location: '/doc/synthetic-30',
+    expect(
+      find.byTooltip('Undo'),
+      findsOneWidget,
+      reason: 'the canvas top bar',
     );
-    await tester.tap(find.text('Copy as Markdown'));
-    await tester.pump();
-    expect(find.text('Nothing to copy yet.'), findsOneWidget);
   });
 
   testWidgets('settings: theme choice changes the app brightness', (

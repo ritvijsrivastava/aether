@@ -8,7 +8,6 @@ import '../../ui/widgets/panel_surface.dart';
 import 'canvas_ui_state.dart';
 import 'erase/erase_options.dart';
 import 'ink/ink_options.dart';
-import 'tool_palette.dart';
 
 /// The options of the tool in use, as one horizontal panel: colours and size
 /// for Ink, colours for Mark, the partial switch and the clear buttons for
@@ -32,7 +31,6 @@ class ToolPanel extends ConsumerWidget {
     );
     if (collapsed) return _Tab(tool: tool);
     return switch (tool) {
-      CanvasTool.mark => const MarkOptions(),
       CanvasTool.ink => InkOptions(
         sliderWidth: compact ? 160 : 140,
         compact: compact,
@@ -53,7 +51,6 @@ class _Tab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final color = switch (tool) {
       CanvasTool.ink => ref.watch(canvasUiProvider.select((u) => u.inkColor)),
-      CanvasTool.mark => ref.watch(canvasUiProvider.select((u) => u.markColor)),
       _ => null,
     };
     final label = '${tool.label} options';

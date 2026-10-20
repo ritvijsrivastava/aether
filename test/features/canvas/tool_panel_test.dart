@@ -11,11 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 class Clears implements EraseClearActions {
   final List<String> log = [];
   @override
-  void clearPageInk() => log.add('page');
-  @override
   void clearAllInk() => log.add('all');
-  @override
-  void clearBoard() => log.add('board');
 }
 
 ProviderContainer container() {
@@ -31,7 +27,7 @@ void main() {
       () {
         final c = container();
         final n = c.read(canvasUiProvider.notifier);
-        n.pressTool(CanvasTool.ink);
+        n.setTool(CanvasTool.ink);
         expect(c.read(canvasUiProvider).tool, CanvasTool.ink);
         expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
         n.pressTool(CanvasTool.ink);
@@ -47,14 +43,14 @@ void main() {
       n.pressTool(CanvasTool.pan);
       n.pressTool(CanvasTool.pan);
       expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
-      n.togglePanel(CanvasTool.note);
+      n.togglePanel(CanvasTool.select);
       expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
     });
 
     test('choosing another tool shows its options and hides nothing else', () {
       final c = container();
       final n = c.read(canvasUiProvider.notifier);
-      n.pressTool(CanvasTool.ink);
+      n.setTool(CanvasTool.ink);
       n.pressTool(CanvasTool.erase);
       expect(c.read(canvasUiProvider).tool, CanvasTool.erase);
       expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
@@ -176,8 +172,8 @@ void main() {
       final n = c.read(canvasUiProvider.notifier);
       n.setTool(CanvasTool.ink);
       await tester.pump();
-      final a = tester.getRect(find.byTooltip('Coral'));
-      final b = tester.getRect(find.byTooltip('Blue'));
+      final a = tester.getRect(find.byTooltip('Colour').at(0));
+      final b = tester.getRect(find.byTooltip('Colour').at(3));
       expect(a.center.dx, b.center.dx, reason: 'colours in one column');
       expect(b.top, greaterThan(a.bottom - 1), reason: 'stacked downwards');
       final slider = tester.getRect(find.byType(Slider));
@@ -186,17 +182,9 @@ void main() {
         greaterThan(b.bottom - 1),
         reason: 'size below colours',
       );
-      n.setTool(CanvasTool.mark);
-      await tester.pump();
-      expect(find.byType(Slider), findsNothing);
-      expect(find.byTooltip('Coral'), findsOneWidget);
-      final m1 = tester.getRect(find.byTooltip('Coral'));
-      final m2 = tester.getRect(find.byTooltip('Blue'));
-      expect(m2.center.dx, m1.center.dx, reason: 'the marker column too');
       n.setTool(CanvasTool.erase);
       await tester.pump();
       expect(find.text('Erase part of a stroke'), findsOneWidget);
-      expect(find.byTooltip('Coral'), findsNothing);
       final sw = tester.getRect(find.byType(Switch));
       final clear = tester.getRect(find.text('Clear all ink'));
       expect(clear.top, greaterThan(sw.bottom - 1), reason: 'buttons under it');
@@ -234,18 +222,14 @@ void main() {
       h.dispose();
     });
 
-    testWidgets('Erase has Clear page ink, Clear all ink and Clear board', (
-      tester,
-    ) async {
+    testWidgets('Erase has Clear all ink', (tester) async {
       final clears = Clears();
       final c = await pump(tester, onClear: clears);
       c.read(canvasUiProvider.notifier).setTool(CanvasTool.erase);
       await tester.pump();
-      await tester.tap(find.text('Clear page ink'));
       await tester.tap(find.text('Clear all ink'));
-      await tester.tap(find.text('Clear board'));
-      expect(clears.log, ['page', 'all', 'board']);
-      for (final label in ['Clear page ink', 'Clear all ink', 'Clear board']) {
+      expect(clears.log, ['all']);
+      for (final label in ['Clear all ink']) {
         expect(
           tester
               .getSize(
@@ -271,7 +255,7 @@ void main() {
         size: const Size(360, 640),
       );
       final n = c.read(canvasUiProvider.notifier);
-      for (final t in [CanvasTool.ink, CanvasTool.erase, CanvasTool.mark]) {
+      for (final t in [CanvasTool.ink, CanvasTool.erase, CanvasTool.select]) {
         n.setTool(t);
         await tester.pump();
         expect(tester.takeException(), isNull, reason: t.label);
@@ -296,13 +280,12 @@ void main() {
             ),
           ),
         );
-        await tester.tap(find.text('Ink'));
+        c.read(canvasUiProvider.notifier).setTool(CanvasTool.erase);
         await tester.pump();
-        expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
-        await tester.tap(find.text('Ink'));
+        await tester.tap(find.text('Erase'));
         await tester.pump();
-        expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.ink});
-        await tester.tap(find.text('Ink'));
+        expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.erase});
+        await tester.tap(find.text('Erase'));
         await tester.pump();
         expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
       },

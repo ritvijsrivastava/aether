@@ -82,12 +82,12 @@ class Rec implements GestureSink {
 
 class Ctx implements ArbiterContext {
   @override
-  CanvasTool tool = CanvasTool.note; // no drag-consuming tool by default
+  CanvasTool tool = CanvasTool.pan; // no drag-consuming tool by default
   @override
   PenConfig pen = const PenConfig();
   bool get panTool => tool == CanvasTool.pan;
-  set panTool(bool v) => tool = v ? CanvasTool.pan : CanvasTool.note;
-  set markTool(bool v) => tool = v ? CanvasTool.mark : CanvasTool.note;
+  set panTool(bool v) => tool = v ? CanvasTool.pan : CanvasTool.select;
+  set markTool(bool v) => tool = v ? CanvasTool.ink : CanvasTool.select;
   @override
   bool spaceHeld = false;
   @override
@@ -184,6 +184,7 @@ void main() {
       'finger-draws on: one finger is left to the tool, two still pinch',
       () {
         ctx.fingerDraws = true;
+        ctx.tool = CanvasTool.ink;
         a.down(s(1, touch, 100, 100, 0));
         a.move(s(1, touch, 150, 100, 10));
         expect(rec.pan, Offset.zero);
@@ -195,10 +196,12 @@ void main() {
   });
 
   group('mouse and pen', () {
-    test('a plain left drag does nothing in M2 (no tool consumes it)', () {
+    test('a plain left drag applies the tool in use', () {
+      ctx.tool = CanvasTool.ink;
       a.down(s(1, mouse, 10, 10, 0, buttons: 1));
       a.move(s(1, mouse, 60, 10, 10, buttons: 1));
       expect(rec.pan, Offset.zero);
+      expect(rec.log.where((e) => e.startsWith('mark')), isNotEmpty);
     });
 
     test('left drag pans under the Pan tool', () {
@@ -223,6 +226,7 @@ void main() {
     });
 
     test('a pen pans only under the Pan tool', () {
+      ctx.tool = CanvasTool.ink;
       a.down(s(1, pen, 0, 0, 0, buttons: 1));
       a.move(s(1, pen, 30, 0, 10, buttons: 1));
       a.up(s(1, pen, 30, 0, 20));

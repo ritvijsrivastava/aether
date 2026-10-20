@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-enum MarkKind { highlight, ink, note }
+enum MarkKind { ink }
 
 /// A mark, by kind and id.
 @immutable

@@ -7,13 +7,13 @@ import 'package:aether/features/canvas/engine/page_surface.dart';
 import 'package:aether/features/canvas/engine/painters.dart';
 import 'package:aether/features/canvas/engine/scene.dart';
 import 'package:aether/features/canvas/engine/view_state.dart';
+import 'package:aether/features/canvas/ink/ink_layer.dart';
 import 'package:aether/features/canvas/input/tool_gestures.dart';
-import 'package:aether/features/canvas/marks/mark_tool.dart';
 import 'package:aether/ui/theme/theme.dart';
 import 'package:aether/ui/theme/tokens.dart';
 import 'package:flutter/gestures.dart'
-    show kPrimaryButton, kPrimaryStylusButton, kSecondaryButton;
-import 'package:flutter/material.dart';
+    show kPrimaryButton, kPrimaryStylusButton;
+import 'package:flutter/material.dart' hide Ink;
 import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,19 +22,13 @@ const _size = Size(1000, 800);
 
 Future<CanvasController> pumpCanvas(
   WidgetTester tester, {
-  CanvasTool tool = CanvasTool.mark,
+  CanvasTool tool = CanvasTool.ink,
   bool fingerDraws = false,
   int pages = 6,
-  VoidCallback? onCopy,
-  void Function(Offset local, Offset global)? onContextMenu,
   VoidCallback? onEscape,
   VoidCallback? onDelete,
   ValueChanged<CanvasTool>? onTool,
-  ValueChanged<Offset>? onTap,
   VoidCallback? onPointerDownOnCanvas,
-  void Function(Offset local, Offset global)? onPenLongPress,
-  void Function(Offset global)? onRadialMove,
-  VoidCallback? onRadialRelease,
 }) async {
   tester.view.physicalSize = _size;
   tester.view.devicePixelRatio = 1;
@@ -52,17 +46,12 @@ Future<CanvasController> pumpCanvas(
           controller: c,
           surface: SyntheticPageSurface(),
           tool: tool,
+          ink: InkLayer(),
           fingerDraws: fingerDraws,
-          onCopy: onCopy,
-          onContextMenu: onContextMenu,
           onEscape: onEscape,
           onDelete: onDelete,
           onTool: onTool,
-          onTap: onTap,
           onPointerDownOnCanvas: onPointerDownOnCanvas,
-          onPenLongPress: onPenLongPress,
-          onRadialMove: onRadialMove,
-          onRadialRelease: onRadialRelease,
         ),
       ),
     ),
@@ -72,16 +61,17 @@ Future<CanvasController> pumpCanvas(
   return c;
 }
 
-class RecordingMarks implements MarkGestures {
-  final List<String> log = [];
+class _AsTool implements ToolHandler {
+  _AsTool(this.rec);
+  final RecordingTools rec;
   @override
-  void markStart(Offset p) => log.add('start ${p.dx.round()},${p.dy.round()}');
+  void start(ToolPoint p) => rec.toolStart(CanvasTool.ink, p);
   @override
-  void markMove(Offset p) => log.add('move ${p.dx.round()},${p.dy.round()}');
+  void move(ToolPoint p) => rec.toolMove(p);
   @override
-  void markEnd(Offset p) => log.add('end ${p.dx.round()},${p.dy.round()}');
+  void end(ToolPoint p) => rec.toolEnd(p);
   @override
-  void markCancel() => log.add('cancel');
+  void cancel() => rec.toolCancel();
 }
 
 class RecordingTools implements ToolGestures {
@@ -136,16 +126,19 @@ void main() {
     await b.up();
   });
 
-  testWidgets('a finger never draws, even with a mark tool active', (
+  testWidgets('a finger never draws, even with the Ink tool active', (
     tester,
   ) async {
     final c = await pumpCanvas(tester, tool: CanvasTool.ink);
+    final rec = RecordingTools();
+    c.tools = rec;
     final g = await tester.startGesture(
       const Offset(500, 400),
       kind: PointerDeviceKind.touch,
     );
     await g.moveBy(const Offset(-50, 0));
     expect(c.view.value.x, closeTo(150, 1e-6));
+    expect(rec.log, isEmpty, reason: 'the finger panned, it did not draw');
     await g.up();
   });
 
@@ -318,13 +311,13 @@ void main() {
     }
   });
 
-  group('mark tool', () {
-    testWidgets('a pen drag with the Mark tool is a mark, not a pan', (
+  group('ink tool', () {
+    testWidgets('a pen drag with the Ink tool draws, it does not pan', (
       tester,
     ) async {
       final c = await pumpCanvas(tester);
-      final marks = RecordingMarks();
-      c.tools = ToolRouter({CanvasTool.mark: MarkHandler(marks)});
+      final rec = RecordingTools();
+      c.tools = rec;
       final before = c.view.value;
       final g = await tester.startGesture(
         const Offset(500, 400),
@@ -332,14 +325,18 @@ void main() {
       );
       await g.moveTo(const Offset(540, 420));
       await g.up();
-      expect(marks.log, ['start 500,400', 'move 540,420', 'end 540,420']);
+      expect(rec.log, [
+        'start',
+      ], reason: 'the end is recorded as a point, not a log line');
+      expect(rec.starts.single.$1, CanvasTool.ink);
+      expect(rec.points.last.position, const Offset(540, 420));
       expect(c.view.value, before);
     });
 
-    testWidgets('a mouse drag with the primary button marks', (tester) async {
+    testWidgets('a mouse drag with the primary button draws', (tester) async {
       final c = await pumpCanvas(tester);
-      final marks = RecordingMarks();
-      c.tools = ToolRouter({CanvasTool.mark: MarkHandler(marks)});
+      final rec = RecordingTools();
+      c.tools = rec;
       final g = await tester.startGesture(
         const Offset(300, 300),
         kind: PointerDeviceKind.mouse,
@@ -347,55 +344,60 @@ void main() {
       );
       await g.moveTo(const Offset(350, 310));
       await g.up();
-      expect(marks.log.first, 'start 300,300');
-      expect(marks.log.last, 'end 350,310');
+      expect(rec.log, ['start']);
+      expect(rec.points.last.position, const Offset(350, 310));
     });
 
-    for (final tool in [CanvasTool.pan, CanvasTool.ink, CanvasTool.erase]) {
-      testWidgets('the ${tool.label} tool does not mark', (tester) async {
+    for (final tool in [CanvasTool.pan, CanvasTool.erase]) {
+      testWidgets('the ${tool.label} tool does not draw', (tester) async {
         final c = await pumpCanvas(tester, tool: tool);
-        final marks = RecordingMarks();
-        c.tools = ToolRouter({CanvasTool.mark: MarkHandler(marks)});
+        final rec = RecordingTools();
+        c.tools = ToolRouter({CanvasTool.ink: _AsTool(rec)});
         final g = await tester.startGesture(
           const Offset(500, 400),
           kind: PointerDeviceKind.stylus,
         );
         await g.moveTo(const Offset(540, 420));
         await g.up();
-        expect(marks.log, isEmpty);
+        expect(rec.log, isEmpty);
       });
     }
 
-    testWidgets('a finger does not mark by default', (tester) async {
-      final c = await pumpCanvas(tester);
-      final marks = RecordingMarks();
-      c.tools = ToolRouter({CanvasTool.mark: MarkHandler(marks)});
+    testWidgets('a finger does not draw by default', (tester) async {
+      final c = await pumpCanvas(tester, tool: CanvasTool.ink);
+      final rec = RecordingTools();
+      c.tools = rec;
       final g = await tester.startGesture(
         const Offset(500, 400),
         kind: PointerDeviceKind.touch,
       );
       await g.moveBy(const Offset(30, 0));
       await g.up();
-      expect(marks.log, isEmpty);
+      expect(rec.log, isEmpty);
     });
 
-    testWidgets('with "finger draws" on, a finger marks', (tester) async {
-      final c = await pumpCanvas(tester, fingerDraws: true);
-      final marks = RecordingMarks();
-      c.tools = ToolRouter({CanvasTool.mark: MarkHandler(marks)});
+    testWidgets('with "finger draws" on, a finger draws', (tester) async {
+      final c = await pumpCanvas(
+        tester,
+        tool: CanvasTool.ink,
+        fingerDraws: true,
+      );
+      final rec = RecordingTools();
+      c.tools = rec;
       final g = await tester.startGesture(
         const Offset(500, 400),
         kind: PointerDeviceKind.touch,
       );
       await g.moveBy(const Offset(30, 0));
       await g.up();
-      expect(marks.log, ['start 500,400', 'move 530,400', 'end 530,400']);
+      expect(rec.log, ['start']);
+      expect(rec.points, isNotEmpty);
     });
 
-    testWidgets('Escape drops a mark in progress', (tester) async {
-      final c = await pumpCanvas(tester);
-      final marks = RecordingMarks();
-      c.tools = ToolRouter({CanvasTool.mark: MarkHandler(marks)});
+    testWidgets('Escape drops a stroke in progress', (tester) async {
+      final c = await pumpCanvas(tester, tool: CanvasTool.ink);
+      final rec = RecordingTools();
+      c.tools = rec;
       final g = await tester.startGesture(
         const Offset(500, 400),
         kind: PointerDeviceKind.stylus,
@@ -403,28 +405,19 @@ void main() {
       await g.moveTo(const Offset(540, 420));
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await g.up();
-      expect(marks.log, ['start 500,400', 'move 540,420', 'cancel']);
+      expect(rec.log, ['start', 'cancel']);
     });
 
-    testWidgets('Ctrl+C asks to copy the Extract list', (tester) async {
-      var copies = 0;
-      await pumpCanvas(tester, onCopy: () => copies++);
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
-      expect(copies, 1);
-    });
-
-    testWidgets('the mouse shows a text cursor under the Mark tool', (
+    testWidgets('the mouse shows a precise cursor under the Ink tool', (
       tester,
     ) async {
-      await pumpCanvas(tester);
+      await pumpCanvas(tester, tool: CanvasTool.ink);
       final mouse = TestPointer(1, PointerDeviceKind.mouse);
       await tester.sendEventToBinding(mouse.hover(const Offset(500, 400)));
       await tester.pump();
       expect(
         RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
-        SystemMouseCursors.text,
+        SystemMouseCursors.precise,
       );
     });
   });
@@ -442,18 +435,15 @@ void main() {
       final c = await pumpCanvas(tester, tool: tool);
       final rec = RecordingTools();
       c.tools = rec;
-      PointerEvent ev(PointerEvent Function() make) => make();
       await tester.sendEventToBinding(
-        ev(
-          () => PointerDownEvent(
-            kind: kind,
-            pointer: 5,
-            position: const Offset(400, 300),
-            buttons: buttons,
-            pressure: pressure,
-            pressureMin: min,
-            pressureMax: max,
-          ),
+        PointerDownEvent(
+          kind: kind,
+          pointer: 5,
+          position: const Offset(400, 300),
+          buttons: buttons,
+          pressure: pressure,
+          pressureMin: min,
+          pressureMax: max,
         ),
       );
       await tester.sendEventToBinding(
@@ -532,157 +522,7 @@ void main() {
     });
   });
 
-  group('pen long-press', () {
-    testWidgets(
-      'a pen held still half a second opens the radial menu and cancels the dot',
-      (tester) async {
-        final tools = RecordingTools();
-        final radial = <Offset>[];
-        final c = await pumpCanvas(
-          tester,
-          tool: CanvasTool.ink,
-          onPenLongPress: (local, global) => radial.add(global),
-        );
-        c.tools = tools;
-        final g = await tester.startGesture(
-          const Offset(400, 300),
-          kind: PointerDeviceKind.stylus,
-        );
-        await tester.pump(const Duration(milliseconds: 700));
-        expect(radial, hasLength(1));
-        expect(
-          tools.log.last,
-          'cancel',
-          reason: 'the dot is undone, no stroke',
-        );
-        // Releasing while the menu is open reports the release.
-        await g.up();
-        await tester.pump();
-      },
-    );
-
-    testWidgets('a pen drag never opens it; only a hold', (tester) async {
-      final radial = <Offset>[];
-      await pumpCanvas(
-        tester,
-        tool: CanvasTool.ink,
-        onPenLongPress: (local, global) => radial.add(global),
-      );
-      final g = await tester.startGesture(
-        const Offset(400, 300),
-        kind: PointerDeviceKind.stylus,
-      );
-      await g.moveBy(const Offset(30, 0));
-      await tester.pump(const Duration(milliseconds: 700));
-      await g.up();
-      expect(radial, isEmpty, reason: 'it moved: a stroke, not a hold');
-    });
-
-    testWidgets('with the Pan tool a pen hold does nothing', (tester) async {
-      final radial = <Offset>[];
-      await pumpCanvas(
-        tester,
-        tool: CanvasTool.pan,
-        onPenLongPress: (local, global) => radial.add(global),
-      );
-      final g = await tester.startGesture(
-        const Offset(400, 300),
-        kind: PointerDeviceKind.stylus,
-      );
-      await tester.pump(const Duration(milliseconds: 700));
-      await g.up();
-      expect(radial, isEmpty);
-    });
-  });
-
-  group('context menu and selection keys', () {
-    testWidgets(
-      'a right click with the mouse asks for the menu, and nothing else',
-      (tester) async {
-        final asked = <Offset>[];
-        final c = await pumpCanvas(
-          tester,
-          onContextMenu: (local, global) => asked.add(local),
-        );
-        final marks = RecordingMarks();
-        c.tools = ToolRouter({CanvasTool.mark: MarkHandler(marks)});
-        final g = await tester.startGesture(
-          const Offset(500, 400),
-          kind: PointerDeviceKind.mouse,
-          buttons: kSecondaryButton,
-        );
-        await g.up();
-        expect(asked, [const Offset(500, 400)]);
-        expect(marks.log, isEmpty, reason: 'a right click is not a mark');
-      },
-    );
-
-    testWidgets('a finger held still for half a second asks for the menu', (
-      tester,
-    ) async {
-      final asked = <Offset>[];
-      await pumpCanvas(tester, onContextMenu: (l, g) => asked.add(l));
-      final g = await tester.startGesture(
-        const Offset(500, 400),
-        kind: PointerDeviceKind.touch,
-      );
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(asked, isEmpty);
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(asked, [const Offset(500, 400)]);
-      await g.up();
-    });
-
-    testWidgets(
-      'moving, lifting early, or a second finger is not a long press',
-      (tester) async {
-        final asked = <Offset>[];
-        await pumpCanvas(tester, onContextMenu: (l, g) => asked.add(l));
-        var g = await tester.startGesture(
-          const Offset(500, 400),
-          kind: PointerDeviceKind.touch,
-        );
-        await g.moveBy(const Offset(40, 0));
-        await tester.pump(const Duration(milliseconds: 700));
-        await g.up();
-        g = await tester.startGesture(
-          const Offset(500, 400),
-          kind: PointerDeviceKind.touch,
-        );
-        await tester.pump(const Duration(milliseconds: 200));
-        await g.up();
-        await tester.pump(const Duration(milliseconds: 700));
-        final a = await tester.startGesture(
-          const Offset(400, 400),
-          kind: PointerDeviceKind.touch,
-          pointer: 11,
-        );
-        final b = await tester.startGesture(
-          const Offset(600, 400),
-          kind: PointerDeviceKind.touch,
-          pointer: 12,
-        );
-        await tester.pump(const Duration(milliseconds: 700));
-        await a.up();
-        await b.up();
-        expect(asked, isEmpty);
-      },
-    );
-
-    testWidgets('a pen or mouse held still does not open the menu', (
-      tester,
-    ) async {
-      final asked = <Offset>[];
-      await pumpCanvas(tester, onContextMenu: (l, g) => asked.add(l));
-      final g = await tester.startGesture(
-        const Offset(500, 400),
-        kind: PointerDeviceKind.stylus,
-      );
-      await tester.pump(const Duration(milliseconds: 800));
-      await g.up();
-      expect(asked, isEmpty);
-    });
-
+  group('keys for the screen', () {
     testWidgets('Escape and Delete reach the screen', (tester) async {
       var escapes = 0, deletes = 0;
       await pumpCanvas(
@@ -695,75 +535,8 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
       expect((escapes, deletes), (1, 2));
     });
-  });
 
-  group('taps with the Pan tool', () {
-    testWidgets(
-      'a short press that does not move is a tap, for pen and finger',
-      (tester) async {
-        for (final kind in [
-          PointerDeviceKind.stylus,
-          PointerDeviceKind.touch,
-        ]) {
-          final taps = <Offset>[];
-          await pumpCanvas(tester, tool: CanvasTool.pan, onTap: taps.add);
-          final g = await tester.startGesture(
-            const Offset(400, 300),
-            kind: kind,
-          );
-          await g.up();
-          await tester.pump(const Duration(seconds: 1));
-          expect(taps, [const Offset(400, 300)], reason: '$kind');
-        }
-      },
-    );
-
-    testWidgets('a drag is not a tap', (tester) async {
-      final taps = <Offset>[];
-      await pumpCanvas(tester, tool: CanvasTool.pan, onTap: taps.add);
-      final g = await tester.startGesture(
-        const Offset(400, 300),
-        kind: PointerDeviceKind.stylus,
-      );
-      await g.moveBy(const Offset(40, 0));
-      await g.up();
-      await tester.pump(const Duration(seconds: 1));
-      expect(taps, isEmpty);
-    });
-
-    testWidgets('a long hold is not a tap', (tester) async {
-      final taps = <Offset>[];
-      await pumpCanvas(tester, tool: CanvasTool.pan, onTap: taps.add);
-      final g = await tester.startGesture(
-        const Offset(400, 300),
-        kind: PointerDeviceKind.stylus,
-      );
-      await tester.pump(const Duration(milliseconds: 600));
-      await g.up();
-      expect(taps, isEmpty);
-    });
-
-    testWidgets('only with the Pan tool', (tester) async {
-      final taps = <Offset>[];
-      await pumpCanvas(tester, tool: CanvasTool.mark, onTap: taps.add);
-      final g = await tester.startGesture(const Offset(400, 300));
-      await g.up();
-      await tester.pump(const Duration(seconds: 1));
-      expect(taps, isEmpty);
-    });
-
-    testWidgets('two fingers are a pinch, not a tap', (tester) async {
-      final taps = <Offset>[];
-      await pumpCanvas(tester, tool: CanvasTool.pan, onTap: taps.add);
-      final a = await tester.startGesture(const Offset(400, 300), pointer: 1);
-      final b = await tester.startGesture(const Offset(500, 300), pointer: 2);
-      await a.up();
-      await b.up();
-      await tester.pump(const Duration(seconds: 1));
-      expect(taps, isEmpty);
-    });
-
-    testWidgets('any press on the canvas reports itself (to close menus)', (
+    testWidgets('any press on the canvas reports itself (to close panels)', (
       tester,
     ) async {
       var downs = 0;
@@ -779,27 +552,21 @@ void main() {
   });
 
   group('tool keys', () {
-    testWidgets('H M P E N L S choose the tools', (tester) async {
+    testWidgets('H P E S choose the tools', (tester) async {
       final chosen = <CanvasTool>[];
       await pumpCanvas(tester, onTool: chosen.add);
       for (final k in [
         LogicalKeyboardKey.keyH,
-        LogicalKeyboardKey.keyM,
         LogicalKeyboardKey.keyP,
         LogicalKeyboardKey.keyE,
-        LogicalKeyboardKey.keyN,
-        LogicalKeyboardKey.keyL,
         LogicalKeyboardKey.keyS,
       ]) {
         await tester.sendKeyEvent(k);
       }
       expect(chosen, [
         CanvasTool.pan,
-        CanvasTool.mark,
         CanvasTool.ink,
         CanvasTool.erase,
-        CanvasTool.note,
-        CanvasTool.link,
         CanvasTool.select,
       ]);
     });

@@ -1,16 +1,30 @@
+import '../../core/id/id_generator.dart';
 import '../../domain/commands/command.dart';
 import '../../domain/commands/command_bus.dart';
 import '../../domain/model/models.dart';
+import '../../domain/ops/op.dart';
 import '../../domain/ops/op_store.dart';
 
-/// Rename and delete for the library, each undoable.
+/// Rename and delete for the library, each undoable; and board creation.
 class LibraryActions {
-  LibraryActions({required this.store, required this.bus})
+  LibraryActions({required this.store, required this.bus, required this.ids})
     : _factory = CommandFactory(store);
 
   final OpStore store;
   final CommandBus bus;
+  final IdGenerator ids;
   final CommandFactory _factory;
+
+  /// A new empty board. Returns its id.
+  Future<String> createBoard() async {
+    final id = ids.next();
+    await bus.run(
+      _factory.create(EntityKind.document, id, {
+        'title': 'Untitled board',
+      }, label: 'New board'),
+    );
+    return id;
+  }
 
   Future<void> rename(String docId, String title) async {
     final clean = title.trim();

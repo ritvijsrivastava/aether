@@ -71,6 +71,7 @@ final libraryActionsProvider = Provider<LibraryActions>(
   (ref) => LibraryActions(
     store: ref.watch(opStoreProvider),
     bus: ref.watch(libraryBusProvider),
+    ids: ref.watch(idGeneratorProvider),
   ),
 );
 

@@ -42,34 +42,41 @@ void main() {
 
   test('commit writes the log and the snapshot together', () async {
     final bus = bus0();
-    const note = Note(
+    final ink = Ink(
       id: 'n1',
       docId: 'd1',
       pageId: 'p1',
-      x: 3,
-      y: 4,
-      text: 'hello',
+      samples: Float32List.fromList([1, 2, 0.5, 3, 4, 0.5]),
+      width: 2,
+      color: 0xFF000000,
     );
     await bus.run(
-      CommandFactory(store).create(EntityKind.mark, 'n1', note.toFields()),
+      CommandFactory(store).create(EntityKind.mark, 'n1', ink.toFields()),
     );
-    expect((await store.allOps()).length, note.toFields().length + 1);
+    expect((await store.allOps()).length, ink.toFields().length + 1);
     final e = (await store.entity('n1'))!;
-    expect(Mark.fromState(e), isA<Note>());
-    expect(e.fields['text'], 'hello');
+    expect(Mark.fromState(e), isA<Ink>());
+    expect(e.fields['points'], ink.toFields()['points']);
   });
 
   test('indexed columns mirror well-known fields', () async {
     final bus = bus0();
-    const n = Note(id: 'n1', docId: 'd1', pageId: 'p1', x: 10, y: 20);
+    final n = Ink(
+      id: 'n1',
+      docId: 'd1',
+      pageId: 'p1',
+      samples: Float32List.fromList([10, 20, 0.5, 30, 20, 0.5]),
+      width: 2,
+      color: 0xFF000000,
+    );
     await bus.run(
       CommandFactory(store).create(EntityKind.mark, 'n1', n.toFields()),
     );
     final row = await (db.select(
       db.entities,
     )..where((e) => e.id.equals('n1'))).getSingle();
-    expect((row.docId, row.pageId, row.markType), ('d1', 'p1', 'note'));
-    expect((row.bx0, row.by0, row.bx1), (10.0, 20.0, 230.0));
+    expect((row.docId, row.pageId, row.markType), ('d1', 'p1', 'ink'));
+    expect((row.bx0, row.by0, row.bx1), (9.0, 19.0, 31.0));
   });
 
   test('entities() filters by kind, document and deletion', () async {

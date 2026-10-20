@@ -3,13 +3,10 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 
 import '../../../domain/model/models.dart';
-import '../engine/scene.dart';
 import '../engine/view_state.dart';
 import '../ink/ink_layer.dart';
 import '../input/tool_gestures.dart';
-import '../marks/mark_layers.dart';
-import '../notes/notes_layer.dart';
-import 'mark_hit.dart';
+import 'ink_hit.dart';
 import 'selection.dart';
 
 /// Where finished selection edits go.
@@ -61,28 +58,21 @@ class LiveLasso extends ChangeNotifier {
 /// - Draw a loop round marks to select them (half of a mark inside counts);
 ///   Shift-drag with a mouse draws a rectangle instead.
 /// - Tap a mark to select just it; tap empty canvas to clear.
-/// - Drag inside the dashed outline to move the selection (ink and notes; a
-///   highlight belongs to its text and stays).
+/// - Drag inside the dashed outline to move the selection (ink).
 class SelectToolController implements ToolHandler {
   SelectToolController({
     required this.view,
-    required this.scene,
     required this.selection,
     required this.live,
     required this.ink,
-    required this.highlights,
-    required this.notes,
     required this.shift,
     this.sink,
   });
 
   final ValueListenable<ViewState> view;
-  final ValueListenable<Scene> scene;
   final SelectionState selection;
   final LiveLasso live;
   final InkLayer ink;
-  final HighlightLayer highlights;
-  final NotesLayer notes;
 
   /// Whether Shift is held (a rectangle instead of a loop).
   final bool Function() shift;
@@ -94,12 +84,7 @@ class SelectToolController implements ToolHandler {
   /// How far outside the dashed outline a press still grabs the selection.
   static const double grabPx = 8;
 
-  MarkHitTester get _hit => MarkHitTester(
-    scene: scene.value,
-    ink: ink,
-    highlights: highlights,
-    notes: notes,
-  );
+  InkHitTester get _hit => InkHitTester(ink: ink);
 
   _Mode _mode = _Mode.idle;
   Offset _downScreen = Offset.zero;
@@ -109,7 +94,6 @@ class SelectToolController implements ToolHandler {
   // For a move: the marks as they were, to restore on cancel and to measure
   // the shift from.
   final Map<String, Ink> _inkBefore = {};
-  final Map<String, Note> _notesBefore = {};
   Offset _applied = Offset.zero;
 
   bool get isActive => _mode != _Mode.idle;
@@ -125,8 +109,7 @@ class SelectToolController implements ToolHandler {
         _movable.isNotEmpty) {
       _mode = _Mode.move;
       for (final r in _movable) {
-        if (r.kind == MarkKind.ink) _inkBefore[r.id] = ink.byId(r.id)!;
-        if (r.kind == MarkKind.note) _notesBefore[r.id] = notes.byId(r.id)!;
+        _inkBefore[r.id] = ink.byId(r.id)!;
       }
       return;
     }
@@ -135,11 +118,7 @@ class SelectToolController implements ToolHandler {
 
   List<MarkRef> get _movable => [
     for (final r in selection.refs)
-      if (r.kind != MarkKind.highlight &&
-          (r.kind == MarkKind.ink
-              ? ink.byId(r.id) != null
-              : notes.byId(r.id) != null))
-        r,
+      if (r.kind == MarkKind.ink && ink.byId(r.id) != null) r,
   ];
 
   bool _grabsSelection(Offset world) {
@@ -166,13 +145,8 @@ class SelectToolController implements ToolHandler {
   void _applyShift(Offset d) {
     if (d == _applied) return;
     _applied = d;
-    // Ink and notes are in their page's space, which is world space shifted,
-    // so the same shift applies to all of them.
     for (final s in _inkBefore.values) {
       ink.add(s.translated(d.dx, d.dy));
-    }
-    for (final n in _notesBefore.values) {
-      notes.update(n.copyWith(x: n.x + d.dx, y: n.y + d.dy));
     }
   }
 
@@ -187,7 +161,6 @@ class SelectToolController implements ToolHandler {
           _applyShift(world - _downWorld);
           final finals = <Mark>[
             for (final id in _inkBefore.keys) ink.byId(id)!,
-            for (final id in _notesBefore.keys) notes.byId(id)!,
           ];
           if (_applied != Offset.zero && finals.isNotEmpty) {
             sink?.commitMove(finals);
@@ -200,9 +173,7 @@ class SelectToolController implements ToolHandler {
           final hit = _hit;
           final marks = live.marquee
               ? hit.inRect(Rect.fromPoints(_downWorld, world))
-              : hit.inLoop([
-                  for (final q in live.points) ...[q.dx, q.dy],
-                ]);
+              : hit.inLoop(live.points);
           selection.set(marks);
         } else {
           _tap(world);
@@ -224,9 +195,6 @@ class SelectToolController implements ToolHandler {
       for (final s in _inkBefore.values) {
         ink.add(s);
       }
-      for (final n in _notesBefore.values) {
-        notes.update(n);
-      }
     }
     _reset();
   }
@@ -235,7 +203,6 @@ class SelectToolController implements ToolHandler {
     _mode = _Mode.idle;
     _moved = false;
     _inkBefore.clear();
-    _notesBefore.clear();
     _applied = Offset.zero;
     if (live.active) live.end();
   }

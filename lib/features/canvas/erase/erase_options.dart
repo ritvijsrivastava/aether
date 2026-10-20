@@ -6,16 +6,10 @@ import '../../../ui/theme/tokens.dart';
 import '../../../ui/widgets/panel_surface.dart';
 import '../canvas_ui_state.dart';
 
-/// What the Erase panel's "clear" buttons do.
+/// What the Erase panel's clear button does.
 abstract interface class EraseClearActions {
-  /// All ink on the page in view.
-  void clearPageInk();
-
-  /// All ink on every page and off them.
+  /// All ink on the board, one undo step.
   void clearAllInk();
-
-  /// Everything: ink, highlights, notes and links. The caller confirms first.
-  void clearBoard();
 }
 
 /// The Erase tool's options as a column: the partial-erase switch, then the
@@ -63,9 +57,7 @@ class EraseOptions extends ConsumerWidget {
           ),
           if (a != null) ...[
             Container(height: 1, color: t.hairline),
-            _Clear('Clear page ink', a.clearPageInk, t.ink),
             _Clear('Clear all ink', a.clearAllInk, t.ink),
-            _Clear('Clear board', a.clearBoard, t.danger),
           ],
         ],
       ),

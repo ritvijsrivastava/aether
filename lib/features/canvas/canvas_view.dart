@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,17 +9,13 @@ import 'engine/page_surface.dart';
 import 'engine/painters.dart';
 import 'erase/erase_tool.dart';
 import 'ink/ink_layer.dart';
-import 'marks/flash.dart';
-import 'notes/notes_layer.dart';
-import 'select/select_tool.dart';
-import 'select/selection.dart';
-import 'select/selection_view.dart';
-import 'marks/mark_layers.dart';
 import 'input/input_arbiter.dart';
 import 'input/pen_config.dart';
-import 'links/links_layer.dart';
+import 'select/select_tool.dart' show LiveLasso;
+import 'select/selection.dart';
+import 'select/selection_view.dart';
 
-/// The interactive surface: grid, cards, drag handles, and the pointer and
+/// The interactive surface: dot grid, ink, selection, and the pointer and
 /// keyboard handling that drives a [CanvasController].
 ///
 /// Everything here repaints from the controller's notifiers; a pan or zoom
@@ -32,26 +26,13 @@ class CanvasView extends StatefulWidget {
     required this.controller,
     required this.surface,
     required this.tool,
-    this.highlights,
-    this.live,
-    this.flash,
-    this.ink,
+    required this.ink,
     this.liveInk,
     this.eraser,
-    this.overlay,
-    this.links,
-    this.notes,
-    this.liveLink,
     this.onDelete,
     this.selection,
     this.lasso,
-    this.onContextMenu,
-    this.onPenLongPress,
-    this.onRadialMove,
-    this.onRadialRelease,
-    this.onTap,
     this.onPointerDownOnCanvas,
-    this.touchStats,
     this.onEscape,
     this.onTool,
     this.pen = const PenConfig(),
@@ -59,95 +40,53 @@ class CanvasView extends StatefulWidget {
     this.onReady,
     this.onUndo,
     this.onRedo,
-    this.onCopy,
   });
 
   final CanvasController controller;
   final PageSurface surface;
   final CanvasTool tool;
 
-  /// The document's highlights and the one being dragged; null in the
-  /// synthetic test documents.
-  final HighlightLayer? highlights;
-  final ValueNotifier<LiveMark?>? live;
-
-  /// The outline shown on a highlight after jumping to it from Extract.
-  final FlashController? flash;
-
-  /// Committed ink and the stroke being drawn; null in the synthetic test
-  /// documents.
+  /// Committed ink and the stroke being drawn.
   final InkLayer? ink;
+
+  /// The stroke being drawn.
   final LiveInk? liveInk;
 
   /// The ring shown under the pen while erasing.
   final EraserState? eraser;
 
-  /// Widgets drawn above the canvas and handling their own pointers (notes).
-  final Widget? overlay;
-
-  /// Link lines and the one being dragged out, drawn under the notes.
-  final LinksLayer? links;
-  final NotesLayer? notes;
-  final LiveLink? liveLink;
-
   /// Delete or Backspace: remove what is selected.
   final VoidCallback? onDelete;
 
-  /// The selected marks and the loop being drawn round them.
+  /// The selected strokes and the loop being drawn round them.
   final SelectionState? selection;
   final LiveLasso? lasso;
-
-  /// A right-click, or a long press with a finger, at a canvas position (local
-  /// and global).
-  final void Function(Offset local, Offset global)? onContextMenu;
-
-  /// A pen held still for half a second: the stroke it started is cancelled
-  /// first, then this runs (the radial menu, or a mark's own menu).
-  final void Function(Offset local, Offset global)? onPenLongPress;
-
-  /// Moves and the release of the press that opened the radial menu.
-  final void Function(Offset global)? onRadialMove;
-  final VoidCallback? onRadialRelease;
-
-  /// A tap (a short press that does not move) with the Pan tool, at a canvas
-  /// position.
-  final ValueChanged<Offset>? onTap;
-
-  /// What touch contacts have looked like (shown in the performance overlay).
-  final TouchStats? touchStats;
 
   /// Any pointer going down on the canvas (not on a widget above it).
   final VoidCallback? onPointerDownOnCanvas;
 
-  /// Escape: clear what is selected.
+  /// Escape: cancel the stroke in progress and clear the selection.
   final VoidCallback? onEscape;
 
-  /// Tool keys (H M P E N L S).
+  /// Tool keys.
   final ValueChanged<CanvasTool>? onTool;
 
   /// Pen button bits and pressure curve for this device.
   final PenConfig pen;
   final bool fingerDraws;
 
-  /// Called once the first non-empty layout is known (to fit the first page).
+  /// Called once the first layout is known (to restore the last view).
   final VoidCallback? onReady;
 
   /// Ctrl+Z and Ctrl+Shift+Z / Ctrl+Y. Null when there is no history.
   final VoidCallback? onUndo, onRedo;
-
-  /// Ctrl+C: with nothing selected, copy the Extract list as Markdown.
-  final VoidCallback? onCopy;
 
   @override
   State<CanvasView> createState() => _CanvasViewState();
 }
 
 class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
-  late final InputArbiter _arbiter = InputArbiter(
-    widget.controller,
-    this,
-    stats: widget.touchStats,
-  );
+  late final InputArbiter _arbiter = InputArbiter(widget.controller, this);
   final FocusNode _focus = FocusNode(debugLabel: 'canvas');
   bool _space = false;
   bool _ready = false;
@@ -209,10 +148,8 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
         : handleAt(p) != null
         ? SystemMouseCursors.grab
         : switch (widget.tool) {
-            CanvasTool.mark => SystemMouseCursors.text,
             CanvasTool.ink ||
             CanvasTool.erase ||
-            CanvasTool.link ||
             CanvasTool.select => SystemMouseCursors.precise,
             _ => SystemMouseCursors.basic,
           };
@@ -272,10 +209,6 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
       widget.onRedo?.call();
       return KeyEventResult.handled;
     }
-    if (ctrl && k == LogicalKeyboardKey.keyC && widget.onCopy != null) {
-      widget.onCopy!();
-      return KeyEventResult.handled;
-    }
     if (ctrl && k == LogicalKeyboardKey.digit0) {
       c.fitPage();
       return KeyEventResult.handled;
@@ -287,108 +220,8 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
     return KeyEventResult.ignored;
   }
 
-  // --- tap (Pan tool) --------------------------------------------------------
-
-  bool _radial = false;
-  int? _tapPointer;
-  Offset _tapStart = Offset.zero;
-  Timer? _tapTimer;
-
-  void _watchTap(PointerDownEvent e) {
-    // A second pointer is a pinch, not a tap.
-    if (_tapPointer != null) {
-      _tapPointer = null;
-      return;
-    }
-    if (widget.onTap == null || !_panTool) return;
-    _tapPointer = e.pointer;
-    _tapStart = e.localPosition;
-    _tapTimer?.cancel();
-    _tapTimer = Timer(const Duration(milliseconds: 400), () {
-      _tapPointer = null;
-    });
-  }
-
-  void _tapMoved(PointerMoveEvent e) {
-    if (_radial && widget.onRadialMove != null) {
-      widget.onRadialMove!(e.position);
-    }
-    if (e.pointer == _tapPointer &&
-        (e.localPosition - _tapStart).distance > 8) {
-      _tapPointer = null;
-    }
-  }
-
-  void _tapUp(PointerUpEvent e) {
-    if (_radial) {
-      _radial = false;
-      widget.onRadialRelease?.call();
-    }
-    if (e.pointer != _tapPointer) return;
-    _tapPointer = null;
-    _tapTimer?.cancel();
-    widget.onTap?.call(e.localPosition);
-  }
-
-  // --- long press (a finger): the context menu ----------------------------------
-
-  Timer? _longPress;
-  int? _longPressPointer;
-  Offset _longPressStart = Offset.zero;
-  static const Duration _longPressTime = Duration(milliseconds: 500);
-  static const double _longPressSlop = 10;
-
-  void _watchLongPress(PointerDownEvent e) {
-    // A second finger is a pinch: not a long press.
-    if (_longPressPointer != null) {
-      _stopLongPress(_longPressPointer!);
-      return;
-    }
-    final pen =
-        e.kind == PointerDeviceKind.stylus ||
-        e.kind == PointerDeviceKind.invertedStylus;
-    if (e.kind != PointerDeviceKind.touch && !pen) return;
-    if (pen) {
-      // The radial menu is a pen thing; with the Pan tool the hold pans.
-      if (widget.onPenLongPress == null || _panTool) return;
-    } else if (widget.onContextMenu == null) {
-      return;
-    }
-    _longPressPointer = e.pointer;
-    _longPressStart = e.localPosition;
-    final global = e.position;
-    _longPress = Timer(_longPressTime, () {
-      _longPress = null;
-      _longPressPointer = null;
-      if (pen) {
-        // The dot the pen made so far goes away; no stroke, no undo step.
-        _radial = true;
-        _arbiter.escape();
-        widget.onPenLongPress?.call(_longPressStart, global);
-      } else {
-        widget.onContextMenu?.call(_longPressStart, global);
-      }
-    });
-  }
-
-  void _longPressMoved(PointerMoveEvent e) {
-    if (e.pointer == _longPressPointer &&
-        (e.localPosition - _longPressStart).distance > _longPressSlop) {
-      _stopLongPress(e.pointer);
-    }
-  }
-
-  void _stopLongPress(int pointer) {
-    if (pointer != _longPressPointer) return;
-    _longPress?.cancel();
-    _longPress = null;
-    _longPressPointer = null;
-  }
-
   @override
   void dispose() {
-    _tapTimer?.cancel();
-    _longPress?.cancel();
     _focus.dispose();
     super.dispose();
   }
@@ -410,13 +243,13 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
             c.refitOnResize ? c.fitFirst() : c.setView(c.view.value);
           });
         }
-        if (!_ready && !size.isEmpty && !c.scene.value.isEmpty) {
+        if (!_ready && !size.isEmpty) {
           _ready = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) widget.onReady?.call();
           });
         }
-        final surface = Focus(
+        return Focus(
           focusNode: _focus,
           autofocus: true,
           onKeyEvent: _onKey,
@@ -427,35 +260,11 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
               onPointerDown: (e) {
                 _focus.requestFocus();
                 widget.onPointerDownOnCanvas?.call();
-                _watchTap(e);
-                if (e.kind == PointerDeviceKind.mouse &&
-                    e.buttons & kSecondaryButton != 0 &&
-                    widget.onContextMenu != null) {
-                  widget.onContextMenu!(e.localPosition, e.position);
-                  return;
-                }
-                _watchLongPress(e);
                 _arbiter.down(_sample(e));
               },
-              onPointerMove: (e) {
-                _tapMoved(e);
-                _longPressMoved(e);
-                _arbiter.move(_sample(e));
-              },
-              onPointerUp: (e) {
-                _tapUp(e);
-                _stopLongPress(e.pointer);
-                _arbiter.up(_sample(e));
-              },
-              onPointerCancel: (e) {
-                if (_radial) {
-                  _radial = false;
-                  widget.onRadialRelease?.call();
-                }
-                if (e.pointer == _tapPointer) _tapPointer = null;
-                _stopLongPress(e.pointer);
-                _arbiter.cancel(_sample(e));
-              },
+              onPointerMove: (e) => _arbiter.move(_sample(e)),
+              onPointerUp: (e) => _arbiter.up(_sample(e)),
+              onPointerCancel: (e) => _arbiter.cancel(_sample(e)),
               onPointerHover: (e) {
                 _arbiter.hover(_sample(e));
                 _updateCursor(e.localPosition);
@@ -493,31 +302,9 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
                           devicePixelRatio: MediaQuery.devicePixelRatioOf(
                             context,
                           ),
-                          highlights: widget.highlights,
                         ),
                       ),
                     ),
-                    if (widget.flash != null)
-                      RepaintBoundary(
-                        child: CustomPaint(
-                          painter: FlashPainter(
-                            view: c.view,
-                            scene: c.scene,
-                            flash: widget.flash!,
-                            tokens: t,
-                          ),
-                        ),
-                      ),
-                    if (widget.live != null)
-                      RepaintBoundary(
-                        child: CustomPaint(
-                          painter: LiveMarkPainter(
-                            view: c.view,
-                            scene: c.scene,
-                            live: widget.live!,
-                          ),
-                        ),
-                      ),
                     if (widget.ink != null)
                       RepaintBoundary(
                         child: CustomPaint(
@@ -541,26 +328,9 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
                           ),
                         ),
                       ),
-                    if (widget.links != null &&
-                        widget.notes != null &&
-                        widget.highlights != null)
-                      RepaintBoundary(
-                        child: CustomPaint(
-                          painter: LinksPainter(
-                            view: c.view,
-                            scene: c.scene,
-                            links: widget.links!,
-                            notes: widget.notes!,
-                            highlights: widget.highlights!,
-                            tokens: t,
-                          ),
-                        ),
-                      ),
                     if (widget.selection != null &&
                         widget.lasso != null &&
-                        widget.ink != null &&
-                        widget.highlights != null &&
-                        widget.notes != null)
+                        widget.ink != null)
                       RepaintBoundary(
                         child: CustomPaint(
                           painter: SelectionPainter(
@@ -569,18 +339,6 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
                             selection: widget.selection!,
                             lasso: widget.lasso!,
                             ink: widget.ink!,
-                            highlights: widget.highlights!,
-                            notes: widget.notes!,
-                            tokens: t,
-                          ),
-                        ),
-                      ),
-                    if (widget.liveLink != null)
-                      RepaintBoundary(
-                        child: CustomPaint(
-                          painter: LiveLinkPainter(
-                            view: c.view,
-                            live: widget.liveLink!,
                             tokens: t,
                           ),
                         ),
@@ -608,13 +366,6 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
               ),
             ),
           ),
-        );
-        // Overlay widgets (the notes) sit above the pointer handling, as
-        // siblings of it, so a touch on one never reaches the canvas gestures.
-        if (widget.overlay == null) return surface;
-        return Stack(
-          fit: StackFit.expand,
-          children: [surface, widget.overlay!],
         );
       },
     );

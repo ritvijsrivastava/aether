@@ -14,19 +14,9 @@ abstract final class Swatch {
   static const int amber = 0xFFF2C94C;
   static const int blue = 0xFF6FB1EE;
   static const List<int> defaults = [coral, amber, blue];
-
-  // The old meaning names, for data written before colour became free.
-  static const int claim = coral, method = amber, question = blue;
-
-  /// The colour of a highlight stored with the old `meaning` field.
-  static int fromLegacyMeaning(String? id) => switch (id) {
-    'method' => method,
-    'question' => question,
-    _ => claim,
-  };
 }
 
-enum MarkType { highlight, ink, note }
+enum MarkType { ink }
 
 /// Field names used in op values. Kept in one place so writers and readers
 /// cannot drift apart.
@@ -42,21 +32,8 @@ abstract final class F {
   static const cardX = 'cardX';
   static const cardY = 'cardY';
   static const type = 'type';
-  static const meaning = 'meaning';
-  static const startChar = 'startChar';
-  static const endChar = 'endChar';
-  static const quote = 'quote';
-  static const contextBefore = 'contextBefore';
-  static const contextAfter = 'contextAfter';
-  static const rects = 'rects';
   static const points = 'points';
   static const color = 'color';
-  static const x = 'x';
-  static const y = 'y';
-  static const text = 'text';
-  static const z = 'z';
-  static const fromNoteId = 'fromNoteId';
-  static const toHighlightId = 'toHighlightId';
   static const bx0 = 'bx0';
   static const by0 = 'by0';
   static const bx1 = 'bx1';
@@ -158,112 +135,15 @@ sealed class Mark {
   Map<String, Object?> toFields();
 
   static Mark fromState(EntityState s) {
-    final docId = s.field<String>(F.docId) ?? '';
-    final pageId = s.field<String>(F.pageId);
-    switch (MarkType.values.byName(s.field<String>(F.type) ?? 'note')) {
-      case MarkType.highlight:
-        return Highlight(
-          id: s.id,
-          docId: docId,
-          pageId: pageId,
-          color:
-              (s.field<num>(F.color) ??
-                      Swatch.fromLegacyMeaning(s.field<String>(F.meaning)))
-                  .toInt(),
-          startChar: (s.field<num>(F.startChar) ?? 0).toInt(),
-          endChar: (s.field<num>(F.endChar) ?? 0).toInt(),
-          quote: s.field<String>(F.quote) ?? '',
-          contextBefore: s.field<String>(F.contextBefore) ?? '',
-          contextAfter: s.field<String>(F.contextAfter) ?? '',
-          rects: [
-            for (final r in (s.field<List<dynamic>>(F.rects) ?? const []))
-              Box.fromJson(r as List<dynamic>),
-          ],
-        );
-      case MarkType.ink:
-        return Ink(
-          id: s.id,
-          docId: docId,
-          pageId: pageId,
-          samples: InkCodec.decode(s.field<String>(F.points) ?? ''),
-          width: (s.field<num>(F.width) ?? 2.5).toDouble(),
-          color: (s.field<num>(F.color) ?? 0xFF2B2723).toInt(),
-        );
-      case MarkType.note:
-        return Note(
-          id: s.id,
-          docId: docId,
-          pageId: pageId,
-          x: (s.field<num>(F.x) ?? 0).toDouble(),
-          y: (s.field<num>(F.y) ?? 0).toDouble(),
-          width: (s.field<num>(F.width) ?? Note.defaultWidth).toDouble(),
-          height: (s.field<num>(F.height) ?? Note.defaultHeight).toDouble(),
-          text: s.field<String>(F.text) ?? '',
-          z: (s.field<num>(F.z) ?? 0).toInt(),
-        );
-    }
+    return Ink(
+      id: s.id,
+      docId: s.field<String>(F.docId) ?? '',
+      pageId: s.field<String>(F.pageId),
+      samples: InkCodec.decode(s.field<String>(F.points) ?? ''),
+      width: (s.field<num>(F.width) ?? 2.5).toDouble(),
+      color: (s.field<num>(F.color) ?? 0xFF2B2723).toInt(),
+    );
   }
-}
-
-class Highlight extends Mark {
-  const Highlight({
-    required super.id,
-    required super.docId,
-    super.pageId,
-    required this.color,
-    required this.startChar,
-    required this.endChar,
-    required this.quote,
-    this.contextBefore = '',
-    this.contextAfter = '',
-    required this.rects,
-  });
-
-  /// ARGB highlight colour.
-  final int color;
-  final int startChar, endChar;
-
-  Highlight copyWith({int? color}) => Highlight(
-    id: id,
-    docId: docId,
-    pageId: pageId,
-    color: color ?? this.color,
-    startChar: startChar,
-    endChar: endChar,
-    quote: quote,
-    contextBefore: contextBefore,
-    contextAfter: contextAfter,
-    rects: rects,
-  );
-
-  /// The quoted text as it was at creation time.
-  final String quote;
-
-  /// About 24 characters either side, for re-anchoring if the text layer changes.
-  final String contextBefore, contextAfter;
-
-  /// One rect per visual line, in page space.
-  final List<Box> rects;
-
-  @override
-  MarkType get type => MarkType.highlight;
-
-  @override
-  Box get bounds => rects.isEmpty
-      ? const Box(0, 0, 0, 0)
-      : rects.reduce((a, b) => a.union(b));
-
-  @override
-  Map<String, Object?> toFields() => {
-    ...baseFields(),
-    F.color: color,
-    F.startChar: startChar,
-    F.endChar: endChar,
-    F.quote: quote,
-    F.contextBefore: contextBefore,
-    F.contextAfter: contextAfter,
-    F.rects: [for (final r in rects) r.toJson()],
-  };
 }
 
 class Ink extends Mark {
@@ -336,97 +216,5 @@ class Ink extends Mark {
     F.points: InkCodec.encode(samples),
     F.width: width,
     F.color: color,
-  };
-}
-
-class Note extends Mark {
-  const Note({
-    required super.id,
-    required super.docId,
-    super.pageId,
-    required this.x,
-    required this.y,
-    this.width = defaultWidth,
-    this.height = defaultHeight,
-    this.text = '',
-    this.z = 0,
-  });
-
-  static const double defaultWidth = 220;
-  static const double defaultHeight = 120;
-
-  /// The smallest a note may be resized to (page points).
-  static const double minWidth = 140, minHeight = 80;
-
-  /// Top-left in page space ([pageId] set) or canvas space (null).
-  final double x, y;
-  final double width, height;
-  final String text;
-
-  /// Stacking order among notes: higher is in front.
-  final int z;
-
-  Note copyWith({
-    double? x,
-    double? y,
-    double? width,
-    double? height,
-    String? text,
-    int? z,
-  }) => Note(
-    id: id,
-    docId: docId,
-    pageId: pageId,
-    x: x ?? this.x,
-    y: y ?? this.y,
-    width: width ?? this.width,
-    height: height ?? this.height,
-    text: text ?? this.text,
-    z: z ?? this.z,
-  );
-
-  @override
-  MarkType get type => MarkType.note;
-
-  @override
-  Box get bounds => Box(x, y, x + width, y + height);
-
-  @override
-  Map<String, Object?> toFields() => {
-    ...baseFields(),
-    F.x: x,
-    F.y: y,
-    F.width: width,
-    F.height: height,
-    F.text: text,
-    F.z: z,
-  };
-}
-
-/// Connects a note to a highlight. A note may have many links.
-@immutable
-class Link {
-  const Link({
-    required this.id,
-    required this.docId,
-    required this.fromNoteId,
-    required this.toHighlightId,
-  });
-
-  factory Link.fromState(EntityState s) => Link(
-    id: s.id,
-    docId: s.field<String>(F.docId) ?? '',
-    fromNoteId: s.field<String>(F.fromNoteId) ?? '',
-    toHighlightId: s.field<String>(F.toHighlightId) ?? '',
-  );
-
-  final String id;
-  final String docId;
-  final String fromNoteId, toHighlightId;
-
-  Map<String, Object?> toFields() => {
-    F.docId: docId,
-    F.fromNoteId: fromNoteId,
-    F.toHighlightId: toHighlightId,
   };
 }

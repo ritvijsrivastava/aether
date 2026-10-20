@@ -80,16 +80,14 @@ void main() {
         location: '/doc/synthetic-30',
       );
       expect(find.text('More'), findsOneWidget);
-      expect(find.text('Mark'), findsOneWidget);
-      expect(find.text('Lasso'), findsNothing);
-      // The four primary tools only: Link and Select live under More.
-      expect(find.text('Link'), findsNothing);
-      expect(find.text('Select'), findsNothing);
+      expect(find.text('Ink'), findsOneWidget);
+      expect(find.text('Erase'), findsOneWidget);
+      // The three primary tools only: Pan lives under More.
+      expect(find.text('Select'), findsOneWidget);
+      expect(find.text('Pan'), findsNothing);
     });
 
-    testWidgets('tablet and desktop: all seven tools on a rail', (
-      tester,
-    ) async {
+    testWidgets('tablet and desktop: all tools on a rail', (tester) async {
       await pumpApp(
         tester,
         size: const Size(840, 600),
@@ -131,9 +129,8 @@ void main() {
       );
       await tester.tap(find.text('More'));
       await tester.pumpAndSettle();
-      expect(find.text('Link'), findsOneWidget);
-      expect(find.text('Select'), findsOneWidget);
       expect(find.text('Pan'), findsOneWidget);
+      expect(find.text('Select'), findsOneWidget);
     });
 
     testWidgets('picking a tool changes the active tool', (tester) async {
@@ -156,7 +153,7 @@ void main() {
         size: const Size(1280, 720),
         location: '/doc/synthetic-30',
       );
-      final rightHandedX = tester.getCenter(find.text('Mark')).dx;
+      final rightHandedX = tester.getCenter(find.text('Ink')).dx;
       await pumpApp(
         tester,
         size: const Size(1280, 720),
@@ -164,7 +161,7 @@ void main() {
         settings: const AppSettings(leftHanded: true),
       );
       expect(
-        tester.getCenter(find.text('Mark')).dx,
+        tester.getCenter(find.text('Ink')).dx,
         greaterThan(rightHandedX + 400),
       );
     });

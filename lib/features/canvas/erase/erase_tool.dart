@@ -5,11 +5,9 @@ import 'package:flutter/rendering.dart' show CustomPainter;
 
 import '../../../domain/ink/ink_geometry.dart';
 import '../../../domain/model/models.dart';
-import '../engine/scene.dart';
 import '../engine/view_state.dart';
 import '../ink/ink_layer.dart';
 import '../input/tool_gestures.dart';
-import '../marks/mark_layers.dart';
 import '../../../ui/theme/tokens.dart';
 
 /// Where one finished erase goes: the marks it removed, and the pieces left
@@ -35,8 +33,7 @@ class EraserState extends ChangeNotifier {
   }
 }
 
-/// The Erase tool (SPEC 8): wipe across strokes and highlights to remove
-/// them. By default a touched stroke goes whole; with partial erase on, only
+/// The Erase tool: wipe across strokes to remove them. By default a touched stroke goes whole; with partial erase on, only
 /// the part under the eraser goes and the rest stays as separate strokes.
 ///
 /// Marks vanish from the page as the eraser touches them, so the user sees
@@ -45,9 +42,7 @@ class EraserState extends ChangeNotifier {
 class EraseToolController implements ToolHandler {
   EraseToolController({
     required this.view,
-    required this.scene,
     required this.ink,
-    required this.highlights,
     required this.eraser,
     required this.partial,
     this.sink,
@@ -57,9 +52,7 @@ class EraseToolController implements ToolHandler {
   static const double radiusDp = 14;
 
   final ValueListenable<ViewState> view;
-  final ValueListenable<Scene> scene;
   final InkLayer ink;
-  final HighlightLayer highlights;
   final EraserState eraser;
 
   /// Partial erase on or off, read when the wipe starts.
@@ -72,7 +65,7 @@ class EraseToolController implements ToolHandler {
   Offset? _lastWorld;
 
   // What this wipe has taken from the page, kept so a cancel can put it back.
-  final Map<String, Object> _removed = {}; // id -> Ink | Highlight
+  final Map<String, Ink> _removed = {};
   final Map<String, Ink> _made = {}; // pieces created by partial erase
 
   bool get isActive => _active;
@@ -117,8 +110,7 @@ class EraseToolController implements ToolHandler {
       ink.remove(m);
     }
     for (final m in _removed.values) {
-      if (m is Ink) ink.add(m);
-      if (m is Highlight) highlights.add(m);
+      ink.add(m);
     }
     _reset();
   }
@@ -147,25 +139,6 @@ class EraseToolController implements ToolHandler {
   }
 
   void _eraseAt(Offset w, double r) {
-    for (final card in scene.value.cards) {
-      final local = w - card.rect.topLeft;
-      final b = ink.boundsOf(card.id);
-      final nearPage = card.rect.inflate(r).contains(w);
-      final nearInk =
-          b != null &&
-          local.dx >= b.x0 - r &&
-          local.dx <= b.x1 + r &&
-          local.dy >= b.y0 - r &&
-          local.dy <= b.y1 + r;
-      if (!nearPage && !nearInk) continue;
-      for (final h in highlights.touching(card.id, local.dx, local.dy, r)) {
-        highlights.remove(h.id);
-        _removed[h.id] = h;
-      }
-      for (final s in ink.touching(card.id, local.dx, local.dy, r)) {
-        _eraseInk(s, local, r);
-      }
-    }
     for (final s in ink.touching(null, w.dx, w.dy, r)) {
       _eraseInk(s, w, r);
     }

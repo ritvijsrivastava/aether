@@ -40,10 +40,10 @@ void main() {
 
   testWidgets('tapping a colour chooses it', (tester) async {
     final c = await pump(tester);
-    await tester.tap(find.byTooltip('Coral'));
+    await tester.tap(find.byTooltip('Colour').at(1));
     await tester.pump();
     expect(c.read(canvasUiProvider).inkColor, Swatch.coral);
-    await tester.tap(find.byTooltip('Blue'));
+    await tester.tap(find.byTooltip('Colour').at(3));
     await tester.pump();
     expect(c.read(canvasUiProvider).inkColor, Swatch.blue);
   });
@@ -53,17 +53,12 @@ void main() {
   ) async {
     final handle = tester.ensureSemantics();
     await pump(tester);
-    for (final name in [
-      'Warm ink'.replaceAll('Warm ink', 'Black'),
-      'Coral',
-      'Amber',
-      'Blue',
-    ]) {
-      final size = tester.getSize(find.byTooltip(name));
+    for (var i = 0; i < 4; i++) {
+      final size = tester.getSize(find.byTooltip('Colour').at(i));
       expect(size.width, greaterThanOrEqualTo(48));
       expect(size.height, greaterThanOrEqualTo(48));
-      expect(find.bySemanticsLabel('Pen colour $name'), findsOneWidget);
     }
+    expect(find.bySemanticsLabel('Other Pen colour'), findsOneWidget);
     handle.dispose();
   });
 

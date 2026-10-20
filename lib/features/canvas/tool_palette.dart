@@ -5,7 +5,6 @@ import '../../ui/theme/tokens.dart';
 import '../../ui/widgets/panel_surface.dart';
 import '../../ui/widgets/tool_button.dart';
 import 'canvas_ui_state.dart';
-import 'colour_strip.dart';
 
 /// Vertical floating tool rail (tablet and desktop).
 class ToolRail extends ConsumerWidget {
@@ -124,28 +123,4 @@ Future<void> showMoreTools(BuildContext context) {
       },
     ),
   );
-}
-
-/// The marker's options: a column of its last five colours and any other
-/// colour. Shown beside the rail (or above the toolbar) while Mark is active.
-class MarkOptions extends ConsumerWidget {
-  const MarkOptions({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colours = ref.watch(canvasUiProvider.select((u) => u.markColors));
-    return PanelSurface(
-      radius: AetherTokens.rCard,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AetherTokens.s1,
-        vertical: AetherTokens.s1,
-      ),
-      child: ColourStrip(
-        colours: colours,
-        prefix: 'Marker',
-        axis: Axis.vertical,
-        onPick: ref.read(canvasUiProvider.notifier).setMarkColor,
-      ),
-    );
-  }
 }

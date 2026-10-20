@@ -43,51 +43,29 @@ void main() {
   });
 
   group('the notifier', () {
-    test('ink and marker start on their own defaults', () {
+    test('ink starts on its default', () {
       final u = make().read(canvasUiProvider);
       expect(u.inkColor, InkPalette.warmInk);
-      expect(u.markColor, Swatch.coral);
       expect(u.inkColors.recent, hasLength(4));
-      expect(u.markColors.recent, hasLength(3));
     });
 
-    test('each tool keeps its own colours and recents', () {
+    test('choosing an ink colour keeps the tool and updates recents', () {
       final c = make();
       final n = c.read(canvasUiProvider.notifier);
-      n.setInkColor(0xFF112233);
-      n.setMarkColor(0xFF445566);
-      final u = c.read(canvasUiProvider);
-      expect(u.inkColor, 0xFF112233);
-      expect(u.markColor, 0xFF445566);
-      expect(u.inkColors.recent, contains(0xFF112233));
-      expect(u.inkColors.recent, isNot(contains(0xFF445566)));
-      expect(u.markColors.recent, isNot(contains(0xFF112233)));
+      n.setTool(CanvasTool.pan);
+      n.setInkColor(0xFF010203);
+      expect(c.read(canvasUiProvider).tool, CanvasTool.pan);
+      expect(c.read(canvasUiProvider).inkColors.recent.first, 0xFF010203);
     });
 
-    test(
-      'choosing a marker colour switches to Mark, an ink colour does not',
-      () {
-        final c = make();
-        final n = c.read(canvasUiProvider.notifier);
-        n.setTool(CanvasTool.pan);
-        n.setInkColor(0xFF010203);
-        expect(c.read(canvasUiProvider).tool, CanvasTool.pan);
-        n.setMarkColor(0xFF010203);
-        expect(c.read(canvasUiProvider).tool, CanvasTool.mark);
-      },
-    );
-
-    test('switching tools never changes either tool\'s colour', () {
+    test('switching tools never changes the ink colour', () {
       final c = make();
       final n = c.read(canvasUiProvider.notifier)
         ..setInkColor(0xFF0A0B0C)
-        ..setMarkColor(0xFF0D0E0F)
         ..setTool(CanvasTool.ink)
-        ..setTool(CanvasTool.mark)
         ..setTool(CanvasTool.erase)
         ..setTool(CanvasTool.ink);
       expect(n.state.inkColor, 0xFF0A0B0C);
-      expect(n.state.markColor, 0xFF0D0E0F);
     });
 
     test('colours come back after a restart', () async {
@@ -95,8 +73,7 @@ void main() {
       final a = make(store);
       a.read(canvasUiProvider.notifier)
         ..setInkColor(0xFF111111)
-        ..setInkColor(0xFF222222)
-        ..setMarkColor(0xFF333333);
+        ..setInkColor(0xFF222222);
       await Future<void>.delayed(Duration.zero);
 
       final b = make(store);
@@ -105,7 +82,6 @@ void main() {
       final u = b.read(canvasUiProvider);
       expect(u.inkColor, 0xFF222222);
       expect(u.inkColors.recent.take(2), [0xFF222222, 0xFF111111]);
-      expect(u.markColor, 0xFF333333);
     });
 
     test(
@@ -149,19 +125,15 @@ void main() {
     ) async {
       final h = tester.ensureSemantics();
       await pumpStrip(tester, ToolColours.inkDefault);
-      for (final name in ['Black', 'Coral', 'Amber', 'Blue']) {
-        final size = tester.getSize(find.byTooltip(name));
-        expect(size.shortestSide, greaterThanOrEqualTo(48));
-        expect(find.bySemanticsLabel('Pen colour $name'), findsOneWidget);
-      }
+      expect(find.byTooltip('Colour'), findsNWidgets(4));
       expect(find.bySemanticsLabel('Other Pen colour'), findsOneWidget);
       h.dispose();
     });
 
     testWidgets('tapping a colour picks it', (tester) async {
       final picked = await pumpStrip(tester, ToolColours.inkDefault);
-      await tester.tap(find.byTooltip('Amber'));
-      expect(picked, [Swatch.amber]);
+      await tester.tap(find.byTooltip('Colour').at(2));
+      expect(picked, [Swatch.amber], reason: 'the third swatch is amber');
     });
 
     testWidgets('the current colour is marked selected', (tester) async {
@@ -171,11 +143,11 @@ void main() {
         const ToolColours(Swatch.blue, [Swatch.blue, Swatch.coral]),
       );
       expect(
-        tester.getSemantics(find.bySemanticsLabel('Pen colour Blue')),
+        tester.getSemantics(find.byTooltip('Colour').first),
         isSemantics(isSelected: true),
       );
       expect(
-        tester.getSemantics(find.bySemanticsLabel('Pen colour Coral')),
+        tester.getSemantics(find.byTooltip('Colour').last),
         isSemantics(isSelected: false),
       );
       h.dispose();

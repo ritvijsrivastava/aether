@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../domain/marks/colour_name.dart';
 import '../../ui/theme/tokens.dart';
 import '../../ui/widgets/colour_picker.dart';
 import '../../ui/widgets/color_disc.dart';
@@ -35,7 +34,7 @@ class ColourStrip extends StatelessWidget {
           _Swatch(
             color: c,
             selected: c == colours.current,
-            label: '$prefix colour ${colourName(c)}',
+            label: 'A $prefix colour',
             onTap: () => onPick(c),
           ),
         _MoreButton(
@@ -69,7 +68,7 @@ class _Swatch extends StatelessWidget {
       excludeSemantics: true,
       onTap: onTap,
       child: Tooltip(
-        message: colourName(color),
+        message: 'Colour',
         child: InkResponse(
           radius: 24,
           onTap: onTap,
