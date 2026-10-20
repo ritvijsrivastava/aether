@@ -32,6 +32,9 @@ Future<CanvasController> pumpCanvas(
   ValueChanged<CanvasTool>? onTool,
   ValueChanged<Offset>? onTap,
   VoidCallback? onPointerDownOnCanvas,
+  void Function(Offset local, Offset global)? onPenLongPress,
+  void Function(Offset global)? onRadialMove,
+  VoidCallback? onRadialRelease,
 }) async {
   tester.view.physicalSize = _size;
   tester.view.devicePixelRatio = 1;
@@ -57,6 +60,9 @@ Future<CanvasController> pumpCanvas(
           onTool: onTool,
           onTap: onTap,
           onPointerDownOnCanvas: onPointerDownOnCanvas,
+          onPenLongPress: onPenLongPress,
+          onRadialMove: onRadialMove,
+          onRadialRelease: onRadialRelease,
         ),
       ),
     ),
@@ -79,12 +85,14 @@ class RecordingMarks implements MarkGestures {
 }
 
 class RecordingTools implements ToolGestures {
+  final List<String> log = [];
   final List<(CanvasTool, ToolPoint)> starts = [];
   final List<ToolPoint> points = [];
   @override
   void toolStart(CanvasTool tool, ToolPoint p) {
     starts.add((tool, p));
     points.add(p);
+    log.add('start');
   }
 
   @override
@@ -92,7 +100,7 @@ class RecordingTools implements ToolGestures {
   @override
   void toolEnd(ToolPoint p) => points.add(p);
   @override
-  void toolCancel() {}
+  void toolCancel() => log.add('cancel');
 }
 
 void main() {
@@ -521,6 +529,69 @@ void main() {
         buttons: kPrimaryStylusButton,
       );
       expect(rec.starts.single.$1, CanvasTool.erase);
+    });
+  });
+
+  group('pen long-press', () {
+    testWidgets(
+      'a pen held still half a second opens the radial menu and cancels the dot',
+      (tester) async {
+        final tools = RecordingTools();
+        final radial = <Offset>[];
+        final c = await pumpCanvas(
+          tester,
+          tool: CanvasTool.ink,
+          onPenLongPress: (local, global) => radial.add(global),
+        );
+        c.tools = tools;
+        final g = await tester.startGesture(
+          const Offset(400, 300),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump(const Duration(milliseconds: 700));
+        expect(radial, hasLength(1));
+        expect(
+          tools.log.last,
+          'cancel',
+          reason: 'the dot is undone, no stroke',
+        );
+        // Releasing while the menu is open reports the release.
+        await g.up();
+        await tester.pump();
+      },
+    );
+
+    testWidgets('a pen drag never opens it; only a hold', (tester) async {
+      final radial = <Offset>[];
+      await pumpCanvas(
+        tester,
+        tool: CanvasTool.ink,
+        onPenLongPress: (local, global) => radial.add(global),
+      );
+      final g = await tester.startGesture(
+        const Offset(400, 300),
+        kind: PointerDeviceKind.stylus,
+      );
+      await g.moveBy(const Offset(30, 0));
+      await tester.pump(const Duration(milliseconds: 700));
+      await g.up();
+      expect(radial, isEmpty, reason: 'it moved: a stroke, not a hold');
+    });
+
+    testWidgets('with the Pan tool a pen hold does nothing', (tester) async {
+      final radial = <Offset>[];
+      await pumpCanvas(
+        tester,
+        tool: CanvasTool.pan,
+        onPenLongPress: (local, global) => radial.add(global),
+      );
+      final g = await tester.startGesture(
+        const Offset(400, 300),
+        kind: PointerDeviceKind.stylus,
+      );
+      await tester.pump(const Duration(milliseconds: 700));
+      await g.up();
+      expect(radial, isEmpty);
     });
   });
 

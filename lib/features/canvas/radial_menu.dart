@@ -60,7 +60,7 @@ class RadialMenuController extends ChangeNotifier {
       var angle = (at - centre).direction;
       if (angle < 0) angle += 2 * math.pi;
       final slice = 2 * math.pi / items.length;
-      next = ((angle - math.pi / 2 + slice / 2) % (2 * math.pi)) ~/ slice;
+      next = ((angle + math.pi / 2 + slice / 2) % (2 * math.pi)) ~/ slice;
       if (next >= items.length) next = null;
     }
     if (hovered != next) {
@@ -171,8 +171,6 @@ class _Disc extends StatelessWidget {
     return Positioned(
       left: centre.dx - size / 2,
       top: centre.dy - size / 2,
-      width: size,
-      height: size,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
