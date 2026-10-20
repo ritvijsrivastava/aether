@@ -13,6 +13,7 @@ import '../../app/providers.dart';
 import '../../core/geometry/box.dart';
 import '../../data/pdf/page_text_service.dart';
 import '../../domain/export/markdown_exporter.dart';
+import '../../domain/marks/link_geometry.dart';
 import '../../domain/model/models.dart';
 import '../../domain/marks/colour_name.dart';
 import '../../ui/widgets/color_disc.dart';
@@ -492,6 +493,8 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     final highlight = target?.kind == MarkKind.highlight
         ? session.highlights.byId(target!.id)
         : null;
+    // A link line passing the press point can be removed from this menu too.
+    final linkId = _linkLineNear(session, world, v.zoom);
     final overlay =
         Overlay.of(context).context.findRenderObject()! as RenderBox;
     final choice = await showMenu<String>(
@@ -521,6 +524,11 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
           const PopupMenuDivider(),
           const PopupMenuItem(value: 'note', child: Text('Add note')),
           const PopupMenuItem(value: 'copy', child: Text('Copy quote')),
+          if (linkId != null)
+            const PopupMenuItem(
+              value: 'unlink-line',
+              child: Text('Remove link'),
+            ),
         ] else if (target == null)
           const PopupMenuItem(value: 'note-here', child: Text('Add note here')),
         if (target != null)
@@ -528,7 +536,9 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       ],
     );
     if (choice == null || !mounted) return;
-    if (choice == 'colour:other') {
+    if (choice == 'unlink-line') {
+      session.deleteLink(linkId!);
+    } else if (choice == 'colour:other') {
       final c = await showColourPicker(
         context,
         initial: highlight?.color ?? Swatch.coral,
@@ -683,6 +693,32 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
           action: SnackBarAction(label: 'Undo', onPressed: session.undo),
         ),
       );
+  }
+
+  /// The link whose line passes nearest [world] within reach, if any.
+  String? _linkLineNear(DocumentSession session, Offset world, double zoom) {
+    final layout = LinkLayout(
+      scene: _controller.scene.value,
+      notes: session.notes,
+      highlights: session.highlights,
+    );
+    String? best;
+    var bestD = 14 / zoom;
+    for (final l in session.links.all) {
+      final e = layout.ends(l);
+      if (e == null) continue;
+      final d = LinkGeometry.distanceToCurve(
+        world,
+        e.note,
+        e.control,
+        e.highlight,
+      );
+      if (d <= bestD) {
+        bestD = d;
+        best = l.id;
+      }
+    }
+    return best;
   }
 
   Future<void> _copyQuote(Highlight h) async {
