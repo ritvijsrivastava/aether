@@ -370,39 +370,6 @@ class DocumentSession
     });
   }
 
-  /// Brings the selected notes in front of every other note (keeping their
-  /// order among themselves), or sends them behind: one undo step. Drafts
-  /// are left alone.
-  void reorderNotes(Iterable<MarkRef> refs, {required bool front}) {
-    final picked = [
-      for (final r in refs)
-        if (r.kind == MarkKind.note &&
-            notes.byId(r.id) != null &&
-            !notes.isDraft(r.id))
-          notes.byId(r.id)!,
-    ]..sort((a, b) => a.z != b.z ? a.z.compareTo(b.z) : a.id.compareTo(b.id));
-    if (picked.isEmpty) return;
-    final ids = {for (final n in picked) n.id};
-    final others = [
-      for (final n in notes.all)
-        if (!ids.contains(n.id)) n.z,
-    ];
-    if (others.isEmpty) return;
-    final top = others.reduce((a, b) => a > b ? a : b);
-    final bottom = others.reduce((a, b) => a < b ? a : b);
-    // Already there: the picked ones are all beyond the others, in order.
-    final finals = <Mark>[];
-    for (var i = 0; i < picked.length; i++) {
-      final z = front ? top + 1 + i : bottom - picked.length + i;
-      if (picked[i].z != z) finals.add(picked[i].copyWith(z: z));
-    }
-    if (finals.isEmpty) return;
-    for (final m in finals) {
-      notes.update(m as Note);
-    }
-    _saveMarkEdits(finals, front ? 'Bring forward' : 'Send back');
-  }
-
   /// Deletes the given marks (and links to them) as one undoable step.
   void deleteMarks(Iterable<MarkRef> refs) {
     final ids = <String>{};
