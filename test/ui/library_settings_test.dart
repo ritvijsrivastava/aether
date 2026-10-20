@@ -31,12 +31,11 @@ void main() {
       tester,
       size: const Size(840, 600),
       docs: const [
-        Document(id: 'd1', title: 'MapReduce', sourceHash: 'h', pageCount: 13),
-        Document(id: 'd2', title: 'One pager', sourceHash: 'h2', pageCount: 1),
+        Document(id: 'd1', title: 'MapReduce'),
+        Document(id: 'd2', title: 'One pager'),
       ],
     );
-    expect(find.textContaining('13 pages · Added'), findsOneWidget);
-    expect(find.textContaining('1 page · Added'), findsOneWidget);
+    expect(find.textContaining('Added'), findsNWidgets(2));
     await tester.tap(find.text('MapReduce'));
     await tester.pumpAndSettle();
     expect(

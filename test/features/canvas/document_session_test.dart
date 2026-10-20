@@ -9,8 +9,6 @@ import 'package:aether/data/db/drift_op_store.dart';
 import 'package:aether/domain/commands/command.dart';
 import 'package:aether/domain/commands/command_bus.dart';
 import 'package:aether/domain/ops/entity_state.dart';
-import 'package:aether/core/geometry/box.dart';
-import 'package:aether/domain/model/ink_codec.dart';
 import 'package:aether/domain/model/models.dart';
 import 'package:aether/features/canvas/select/selection.dart'
     show MarkKind, MarkRef;
@@ -18,7 +16,6 @@ import 'package:aether/domain/ops/op.dart';
 import 'package:aether/domain/ops/op_store.dart';
 import 'package:aether/features/canvas/document_session.dart';
 import 'package:aether/features/canvas/engine/canvas_controller.dart';
-import 'package:aether/features/canvas/engine/scene.dart';
 import 'package:aether/features/canvas/engine/view_state.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
@@ -61,8 +58,7 @@ void main() {
     OpStore? overStore,
     Duration delay = const Duration(milliseconds: 40),
   }) {
-    final controller = CanvasController(scene: const Scene([]))
-      ..viewport = const Size(1000, 800);
+    final controller = CanvasController()..viewport = const Size(1000, 800);
     addTearDown(controller.dispose);
     final session = DocumentSession(
       docId: id ?? docId,
@@ -111,48 +107,6 @@ void main() {
       final s = open(id: 'nope');
       expect(await s.load(), isFalse);
     });
-
-    test('old page-space strokes are translated into world space', () async {
-      // A page sitting at (100, 50) and a stroke stored in its space.
-      final bus = CommandBus(
-        store: store,
-        clock: HlcClock('old', now: () => 2000),
-        ids: SequentialIdGenerator('old'),
-      );
-      final factory = CommandFactory(store);
-      final pageId = 'page-old';
-      await bus.run(
-        factory.create(EntityKind.page, pageId, {
-          F.docId: docId,
-          F.index: 0,
-          F.width: 612.0,
-          F.height: 792.0,
-          F.cardX: 100.0,
-          F.cardY: 50.0,
-        }, label: 'Page'),
-      );
-      await bus.run(
-        factory.create(EntityKind.mark, 'stroke-old', {
-          F.type: 'ink',
-          F.docId: docId,
-          F.pageId: pageId,
-          F.points: InkCodec.encode(
-            Float32List.fromList([10, 10, 0.5, 20, 10, 0.5]),
-          ),
-          F.width: 2.0,
-          F.color: 0xFF2B2723,
-        }, label: 'Ink'),
-      );
-      final s = open();
-      expect(await s.load(), isTrue);
-      final stroke = s.ink.all.single;
-      expect(stroke.pageId, isNull, reason: 'translated out of the page');
-      expect(
-        stroke.bounds,
-        Box(109, 59, 121, 61),
-        reason: 'the stroke moved with its page, half its width padded',
-      );
-    });
   });
 
   group('ink', () {
@@ -176,7 +130,6 @@ void main() {
       final saved = (await storedInk()).single;
       expect(saved.id, id);
       final back = Mark.fromState(saved) as Ink;
-      expect(back.pageId, isNull);
       expect(back.width, 3);
       expect(back.color, 0xFFF4877E);
       expect(back.samples, line());

@@ -18,15 +18,13 @@ class InkHitTester {
   /// The stroke under [world] when the view is at [zoom].
   MarkRef? markAt(Offset world, double zoom) {
     final r = inkReachPx / zoom;
-    final hits = ink.touching(null, world.dx, world.dy, r);
+    final hits = ink.touching(world.dx, world.dy, r);
     return hits.isEmpty ? null : MarkRef(MarkKind.ink, hits.last.id);
   }
 
   Rect? boundsOf(MarkRef ref) {
-    final s = ink.byId(ref.id);
-    if (s == null) return null;
-    final b = s.bounds;
-    return Rect.fromLTRB(b.x0, b.y0, b.x1, b.y1);
+    final b = ink.byId(ref.id)?.bounds;
+    return b == null ? null : Rect.fromLTRB(b.x0, b.y0, b.x1, b.y1);
   }
 
   /// The box round all of [refs] that still exist.

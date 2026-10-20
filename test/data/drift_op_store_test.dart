@@ -45,7 +45,6 @@ void main() {
     final ink = Ink(
       id: 'n1',
       docId: 'd1',
-      pageId: 'p1',
       samples: Float32List.fromList([1, 2, 0.5, 3, 4, 0.5]),
       width: 2,
       color: 0xFF000000,
@@ -64,7 +63,6 @@ void main() {
     final n = Ink(
       id: 'n1',
       docId: 'd1',
-      pageId: 'p1',
       samples: Float32List.fromList([10, 20, 0.5, 30, 20, 0.5]),
       width: 2,
       color: 0xFF000000,
@@ -75,7 +73,7 @@ void main() {
     final row = await (db.select(
       db.entities,
     )..where((e) => e.id.equals('n1'))).getSingle();
-    expect((row.docId, row.pageId, row.markType), ('d1', 'p1', 'ink'));
+    expect((row.docId, row.pageId, row.markType), ('d1', null, 'ink'));
     expect((row.bx0, row.by0, row.bx1), (9.0, 19.0, 31.0));
   });
 
@@ -245,7 +243,6 @@ void main() {
     final ink = Ink(
       id: 'i1',
       docId: 'd1',
-      pageId: 'p1',
       samples: Float32List.fromList([1, 2, .5, 3, 4, .6, 5, 6, .7]),
     );
     await bus.run(

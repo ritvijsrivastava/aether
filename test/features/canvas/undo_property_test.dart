@@ -14,7 +14,6 @@ import 'package:aether/domain/model/models.dart';
 import 'package:aether/domain/ops/op.dart';
 import 'package:aether/features/canvas/document_session.dart';
 import 'package:aether/features/canvas/engine/canvas_controller.dart';
-import 'package:aether/features/canvas/engine/scene.dart';
 import 'package:aether/features/canvas/select/selection.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
@@ -33,8 +32,7 @@ void main() {
   var tick = 0;
 
   DocumentSession open() {
-    final controller = CanvasController(scene: const Scene([]))
-      ..viewport = const Size(1000, 800);
+    final controller = CanvasController()..viewport = const Size(1000, 800);
     addTearDown(controller.dispose);
     final s = DocumentSession(
       docId: docId,
@@ -65,18 +63,6 @@ void main() {
         'title': 'Undo property board',
       }, label: 'New board'),
     );
-    for (var i = 0; i < 3; i++) {
-      await bus.run(
-        f.create(EntityKind.page, 'page$i', {
-          F.docId: docId,
-          F.index: i,
-          F.width: 612.0,
-          F.height: 792.0,
-          F.cardX: i * 700.0,
-          F.cardY: 0.0,
-        }, label: 'Page'),
-      );
-    }
   });
   tearDown(() async {
     await db.close();

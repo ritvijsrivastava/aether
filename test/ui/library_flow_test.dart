@@ -1,85 +1,24 @@
-import 'dart:io';
-
-import 'package:aether/app/providers.dart';
 import 'package:aether/domain/model/models.dart';
-import 'package:aether/features/library/import/import_flow.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
-import '../support/fakes.dart';
 import '../support/harness.dart';
 
 const phone = Size(360, 800);
 const desktop = Size(1280, 720);
 
 void main() {
-  late Directory src;
-  late FakeInspector inspector;
-  late FakePicker picker;
-
-  setUp(() {
-    src = Directory.systemTemp.createTempSync('aether_src_');
-    inspector = FakeInspector();
-    picker = FakePicker();
-  });
-  tearDown(() => src.deleteSync(recursive: true));
-
-  List<Override> fakes() => [
-    pdfInspectorProvider.overrideWithValue(inspector),
-    pdfPickerProvider.overrideWithValue(picker),
-  ];
-
-  group('progress', () {
-    testWidgets('a running import shows its progress and disables Import', (
-      tester,
-    ) async {
-      await pumpApp(tester, size: desktop, overrides: fakes());
-      final container = ProviderScope.containerOf(
-        tester.element(find.text('Aether')),
-      );
-      container
-          .read(importProgressProvider.notifier)
-          .set(const ImportProgress(total: 3, done: 1, current: 'Big.pdf'));
-      await tester.pump();
-      expect(find.text('Importing 2 of 3: Big.pdf'), findsOneWidget);
-      expect(
-        tester
-            .widget<ButtonStyleButton>(
-              find.widgetWithText(FilledButton, 'New board'),
-            )
-            .onPressed,
-        isNull,
-      );
-    });
-  });
-
   group('the library list', () {
     final docs = [
-      const Document(
-        id: 'd1',
-        title: 'MapReduce',
-        sourceHash: 'h1',
-        pageCount: 13,
-      ),
-      const Document(
-        id: 'd2',
-        title: 'Attention is all you need',
-        sourceHash: 'h2',
-        pageCount: 15,
-      ),
+      const Document(id: 'd1', title: 'MapReduce'),
+      const Document(id: 'd2', title: 'Attention is all you need'),
     ];
 
-    testWidgets(
-      'lists documents, with a placeholder where there is no thumbnail',
-      (tester) async {
-        await pumpApp(tester, size: phone, docs: docs);
-        expect(find.text('MapReduce'), findsOneWidget);
-        expect(find.textContaining('15 pages · Added'), findsOneWidget);
-        expect(find.byType(Image), findsNWidgets(2));
-      },
-    );
+    testWidgets('lists documents', (tester) async {
+      await pumpApp(tester, size: phone, docs: docs);
+      expect(find.text('MapReduce'), findsOneWidget);
+      expect(find.textContaining('Added'), findsNWidgets(2));
+    });
 
     testWidgets('search narrows the list and says when nothing matches', (
       tester,
@@ -134,14 +73,7 @@ void main() {
         await pumpApp(
           tester,
           size: desktop,
-          docs: const [
-            Document(
-              id: 'd1',
-              title: 'Gone',
-              sourceHash: 'nohash',
-              pageCount: 2,
-            ),
-          ],
+          docs: const [Document(id: 'd1', title: 'Gone')],
           location: '/doc/d1',
         );
         await pumpUntil(tester, find.text('Gone'));

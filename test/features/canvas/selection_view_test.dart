@@ -1,7 +1,6 @@
 import 'dart:ui';
 
 import 'package:aether/domain/model/models.dart';
-import 'package:aether/features/canvas/engine/scene.dart';
 import 'package:aether/features/canvas/engine/view_state.dart';
 import 'package:aether/features/canvas/ink/ink_layer.dart';
 import 'package:aether/features/canvas/select/select_tool.dart';
@@ -142,7 +141,6 @@ void main() {
         final rec = PictureRecorder();
         SelectionPainter(
           view: ValueNotifier(const ViewState()),
-          scene: ValueNotifier(const Scene([])),
           selection: selection,
           lasso: lasso,
           ink: ink,

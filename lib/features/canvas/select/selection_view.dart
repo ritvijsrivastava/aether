@@ -11,7 +11,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../canvas_ui_state.dart';
 import '../colour_strip.dart';
-import '../engine/scene.dart';
 import '../engine/view_state.dart';
 import '../ink/ink_layer.dart';
 import 'ink_hit.dart';
@@ -23,15 +22,13 @@ import 'selection.dart';
 class SelectionPainter extends CustomPainter {
   SelectionPainter({
     required this.view,
-    required this.scene,
     required this.selection,
     required this.lasso,
     required this.ink,
     required this.tokens,
-  }) : super(repaint: Listenable.merge([view, scene, selection, lasso, ink]));
+  }) : super(repaint: Listenable.merge([view, selection, lasso, ink]));
 
   final ValueListenable<ViewState> view;
-  final ValueListenable<Scene> scene;
   final SelectionState selection;
   final LiveLasso lasso;
   final InkLayer ink;

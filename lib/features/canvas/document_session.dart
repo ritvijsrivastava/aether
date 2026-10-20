@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'dart:ui' show Offset;
 
 import 'package:flutter/foundation.dart' show debugPrint;
 
@@ -27,8 +26,6 @@ import 'select/select_tool.dart';
 /// the ink from the store. The view (pan and zoom) is saved shortly after it
 /// stops changing, and restored on the next open.
 ///
-/// Old documents stored strokes in page space; on load they are translated
-/// into world space by their page's position (in memory, no migration).
 class DocumentSession implements InkSink, EraseSink, SelectSink {
   DocumentSession({
     required this.docId,
@@ -75,28 +72,11 @@ class DocumentSession implements InkSink, EraseSink, SelectSink {
 
   Future<void> _reloadMarks() async {
     final entities = await store.entities(kind: EntityKind.mark, docId: docId);
-    // Page-space strokes from old documents move to where their page sat.
-    final offsets = <String, Offset>{};
-    for (final e in await store.entities(kind: EntityKind.page, docId: docId)) {
-      final p = PageRef.fromState(e);
-      offsets[p.id] = Offset(p.cardX, p.cardY);
-    }
     final strokes = <Ink>[];
     for (final e in entities) {
       final m = Mark.fromState(e);
       if (m is! Ink) continue;
-      final o = m.pageId == null ? null : offsets[m.pageId!];
-      strokes.add(
-        o == null
-            ? m
-            : Ink(
-                id: m.id,
-                docId: m.docId,
-                samples: m.translated(o.dx, o.dy).samples,
-                width: m.width,
-                color: m.color,
-              ),
-      );
+      strokes.add(m);
     }
     if (!_disposed) ink.replaceAll(strokes);
   }
@@ -128,7 +108,6 @@ class DocumentSession implements InkSink, EraseSink, SelectSink {
   /// Shows the stroke at once and saves it behind the queue; one undo step.
   @override
   String addInk({
-    String? pageId,
     required Float32List samples,
     required double width,
     required int color,

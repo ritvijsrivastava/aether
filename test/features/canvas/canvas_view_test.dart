@@ -3,9 +3,6 @@ import 'dart:ui';
 import 'package:aether/features/canvas/canvas_ui_state.dart';
 import 'package:aether/features/canvas/canvas_view.dart';
 import 'package:aether/features/canvas/engine/canvas_controller.dart';
-import 'package:aether/features/canvas/engine/page_surface.dart';
-import 'package:aether/features/canvas/engine/painters.dart';
-import 'package:aether/features/canvas/engine/scene.dart';
 import 'package:aether/features/canvas/engine/view_state.dart';
 import 'package:aether/features/canvas/ink/ink_layer.dart';
 import 'package:aether/features/canvas/input/tool_gestures.dart';
@@ -24,7 +21,6 @@ Future<CanvasController> pumpCanvas(
   WidgetTester tester, {
   CanvasTool tool = CanvasTool.ink,
   bool fingerDraws = false,
-  int pages = 6,
   VoidCallback? onEscape,
   VoidCallback? onDelete,
   ValueChanged<CanvasTool>? onTool,
@@ -33,10 +29,8 @@ Future<CanvasController> pumpCanvas(
   tester.view.physicalSize = _size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
-  final c = CanvasController(
-    scene: Scene.column([for (var i = 0; i < pages; i++) const Size(612, 792)]),
-    view: const ViewState(x: 200, y: 100),
-  )..attach(tester);
+  final c = CanvasController(view: const ViewState(x: 200, y: 100))
+    ..attach(tester);
   addTearDown(c.dispose);
   await tester.pumpWidget(
     MaterialApp(
@@ -44,7 +38,6 @@ Future<CanvasController> pumpCanvas(
       home: Scaffold(
         body: CanvasView(
           controller: c,
-          surface: SyntheticPageSurface(),
           tool: tool,
           ink: InkLayer(),
           fingerDraws: fingerDraws,
@@ -195,24 +188,6 @@ void main() {
     expect(c.view.value.y, closeTo(130, 1e-6));
   });
 
-  testWidgets('dragging a handle moves its card, with any pointer', (
-    tester,
-  ) async {
-    final c = await pumpCanvas(tester);
-    final card = c.scene.value.cards[0];
-    final hit = HandleLayout.hitRect(card, c.view.value)!;
-    final before = card.rect.topLeft;
-    final g = await tester.startGesture(
-      hit.center,
-      kind: PointerDeviceKind.touch,
-    );
-    await g.moveBy(const Offset(120, 60));
-    await g.up();
-    final after = c.scene.value.cards[0].rect.topLeft;
-    expect(after - before, const Offset(120, 60));
-    expect(c.view.value.x, 200, reason: 'the view itself did not pan');
-  });
-
   testWidgets('keyboard: + and - zoom, Ctrl+0 fits, Ctrl+1 is 100%', (
     tester,
   ) async {
@@ -227,11 +202,8 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.digit0);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pumpAndSettle();
-    expect(
-      c.view.value.zoom,
-      lessThan(1),
-      reason: 'a 792 pt page fits an 800 px canvas below 100%',
-    );
+    expect(c.view.value.zoom, 1, reason: 'no content: home is 100%');
+    expect(c.view.value.worldToScreen(Offset.zero), const Offset(500, 400));
   });
 
   testWidgets('a touch by the pen is ignored while it hovers nearby', (
@@ -298,17 +270,6 @@ void main() {
     await finger.moveBy(const Offset(-80, 0));
     expect(c.view.value.x, 120, reason: 'the other hand works');
     await finger.up();
-  });
-
-  testWidgets('painting 500 pages renders without errors at several zooms', (
-    tester,
-  ) async {
-    final c = await pumpCanvas(tester, pages: 500);
-    for (final z in [0.2, 0.5, 1.0, 3.0]) {
-      c.setView(ViewState(x: 100, y: -3000 * z, zoom: z));
-      await tester.pump();
-      expect(tester.takeException(), isNull, reason: 'zoom $z');
-    }
   });
 
   group('ink tool', () {

@@ -22,15 +22,8 @@ enum MarkType { ink }
 /// cannot drift apart.
 abstract final class F {
   static const title = 'title';
-  static const sourceHash = 'sourceHash';
-  static const pageCount = 'pageCount';
   static const docId = 'docId';
-  static const pageId = 'pageId';
-  static const index = 'index';
   static const width = 'width';
-  static const height = 'height';
-  static const cardX = 'cardX';
-  static const cardY = 'cardY';
   static const type = 'type';
   static const points = 'points';
   static const color = 'color';
@@ -42,80 +35,24 @@ abstract final class F {
 
 @immutable
 class Document {
-  const Document({
-    required this.id,
-    required this.title,
-    required this.sourceHash,
-    required this.pageCount,
-  });
+  const Document({required this.id, required this.title});
 
-  factory Document.fromState(EntityState s) => Document(
-    id: s.id,
-    title: s.field<String>(F.title) ?? 'Untitled',
-    sourceHash: s.field<String>(F.sourceHash) ?? '',
-    pageCount: (s.field<num>(F.pageCount) ?? 0).toInt(),
-  );
+  factory Document.fromState(EntityState s) =>
+      Document(id: s.id, title: s.field<String>(F.title) ?? 'Untitled');
 
   final String id;
   final String title;
-  final String sourceHash;
-  final int pageCount;
 
-  Map<String, Object?> toFields() => {
-    F.title: title,
-    F.sourceHash: sourceHash,
-    F.pageCount: pageCount,
-  };
+  Map<String, Object?> toFields() => {F.title: title};
 }
 
-/// One PDF page as a movable card on the canvas.
-@immutable
-class PageRef {
-  const PageRef({
-    required this.id,
-    required this.docId,
-    required this.index,
-    required this.width,
-    required this.height,
-    required this.cardX,
-    required this.cardY,
-  });
-
-  factory PageRef.fromState(EntityState s) => PageRef(
-    id: s.id,
-    docId: s.field<String>(F.docId) ?? '',
-    index: (s.field<num>(F.index) ?? 0).toInt(),
-    width: (s.field<num>(F.width) ?? 612).toDouble(),
-    height: (s.field<num>(F.height) ?? 792).toDouble(),
-    cardX: (s.field<num>(F.cardX) ?? 0).toDouble(),
-    cardY: (s.field<num>(F.cardY) ?? 0).toDouble(),
-  );
-
-  final String id;
-  final String docId;
-  final int index;
-  final double width, height;
-  final double cardX, cardY;
-
-  Map<String, Object?> toFields() => {
-    F.docId: docId,
-    F.index: index,
-    F.width: width,
-    F.height: height,
-    F.cardX: cardX,
-    F.cardY: cardY,
-  };
-}
-
-/// Base for everything the user draws or writes. Stored in page space when
-/// [pageId] is set, in canvas space otherwise.
+/// Base for everything the user draws, in world space.
 @immutable
 sealed class Mark {
-  const Mark({required this.id, required this.docId, this.pageId});
+  const Mark({required this.id, required this.docId});
 
   final String id;
   final String docId;
-  final String? pageId;
 
   MarkType get type;
   Box get bounds;
@@ -125,7 +62,6 @@ sealed class Mark {
   Map<String, Object?> baseFields() => {
     F.type: type.name,
     F.docId: docId,
-    F.pageId: pageId,
     F.bx0: bounds.x0,
     F.by0: bounds.y0,
     F.bx1: bounds.x1,
@@ -138,7 +74,6 @@ sealed class Mark {
     return Ink(
       id: s.id,
       docId: s.field<String>(F.docId) ?? '',
-      pageId: s.field<String>(F.pageId),
       samples: InkCodec.decode(s.field<String>(F.points) ?? ''),
       width: (s.field<num>(F.width) ?? 2.5).toDouble(),
       color: (s.field<num>(F.color) ?? 0xFF2B2723).toInt(),
@@ -150,7 +85,6 @@ class Ink extends Mark {
   const Ink({
     required super.id,
     required super.docId,
-    super.pageId,
     required this.samples,
     this.width = 2.5,
     this.color = 0xFF2B2723,
@@ -168,7 +102,6 @@ class Ink extends Mark {
   Ink copyWith({int? color}) => Ink(
     id: id,
     docId: docId,
-    pageId: pageId,
     samples: samples,
     width: width,
     color: color ?? this.color,
@@ -182,14 +115,7 @@ class Ink extends Mark {
       out[i + 1] = samples[i + 1] + dy;
       out[i + 2] = samples[i + 2];
     }
-    return Ink(
-      id: id,
-      docId: docId,
-      pageId: pageId,
-      samples: out,
-      width: width,
-      color: color,
-    );
+    return Ink(id: id, docId: docId, samples: out, width: width, color: color);
   }
 
   @override

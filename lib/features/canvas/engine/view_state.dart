@@ -41,23 +41,6 @@ class ViewState {
   ViewState withZoomAt(Offset anchor, double newZoom) =>
       zoomAt(anchor, newZoom / zoom);
 
-  /// Keeps the viewport within [content] plus [margin] viewports on each
-  /// side: the user can roam about one screen beyond the cards but can never
-  /// lose them. Always satisfiable, whatever the zoom.
-  ViewState clamped(Size viewport, Rect content, {double margin = 1}) {
-    if (viewport.isEmpty || content.isEmpty) return this;
-    final vw = viewport.width / zoom, vh = viewport.height / zoom;
-    final left = (-x / zoom).clamp(
-      content.left - vw * margin,
-      content.right + vw * margin - vw,
-    );
-    final top = (-y / zoom).clamp(
-      content.top - vh * margin,
-      content.bottom + vh * margin - vh,
-    );
-    return ViewState(x: -left * zoom, y: -top * zoom, zoom: zoom);
-  }
-
   /// A view that shows [target] (world rect) centred in the area of the
   /// viewport left after [insets], at the largest zoom that fits (capped at
   /// [maxFit]).

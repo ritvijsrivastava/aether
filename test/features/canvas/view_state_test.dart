@@ -35,53 +35,12 @@ void main() {
     expect(v.zoomAt(Offset.zero, 0.001).zoom, ViewState.minZoom);
   });
 
-  test('clamped lets you roam one screen beyond the content, no further', () {
-    const viewport = Size(1000, 800);
-    const content = Rect.fromLTWH(0, 0, 2000, 1000);
-    // Far right and down: pushed back so the viewport only touches the content.
-    final far = const ViewState(
-      x: -50000,
-      y: -50000,
-      zoom: 1,
-    ).clamped(viewport, content);
-    final r = far.worldRect(viewport);
-    expect(r.left, closeTo(content.right, 1e-9));
-    expect(r.top, closeTo(content.bottom, 1e-9));
-    // Far left and up: viewport sits one screen before the content.
-    final near = const ViewState(
-      x: 50000,
-      y: 50000,
-      zoom: 1,
-    ).clamped(viewport, content);
-    final n = near.worldRect(viewport);
-    expect(n.right, closeTo(content.left, 1e-9));
-    expect(n.bottom, closeTo(content.top, 1e-9));
-    // Inside the allowed region nothing changes.
-    const ok = ViewState(x: -100, y: -100, zoom: 1);
-    expect(ok.clamped(viewport, content), ok);
+  test('the view is never clamped: any distance from the origin is fine', () {
+    const far = ViewState(x: -1e9, y: 1e9, zoom: 2);
+    final back = far.screenToWorld(far.worldToScreen(const Offset(5, 7)));
+    expect(back.dx, closeTo(5, 1e-3));
+    expect(far.panBy(const Offset(1e6, 1e6)).x, -1e9 + 1e6);
   });
-
-  test(
-    'clamping is always satisfiable, even zoomed out far past the content',
-    () {
-      const viewport = Size(1000, 800);
-      const content = Rect.fromLTWH(0, 0, 300, 300);
-      for (final z in [0.2, 0.5, 1.0, 3.0]) {
-        final v = ViewState(
-          x: 1e6,
-          y: -1e6,
-          zoom: z,
-        ).clamped(viewport, content);
-        expect(v.x.isFinite && v.y.isFinite, isTrue);
-        final rect = v.worldRect(viewport);
-        expect(
-          rect.right >= content.left - 1e-9 &&
-              rect.left <= content.right + 1e-9,
-          isTrue,
-        );
-      }
-    },
-  );
 
   test('fitRect centres the target in the area left after insets', () {
     const viewport = Size(1280, 720);

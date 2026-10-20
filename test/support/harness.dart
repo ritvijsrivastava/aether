@@ -1,13 +1,10 @@
 import 'package:aether/app/app.dart';
 
-import 'dart:io';
-
 import 'package:aether/app/providers.dart';
 import 'package:aether/core/hlc/hlc.dart';
 import 'package:aether/core/id/id_generator.dart';
 import 'package:aether/data/db/database.dart';
 import 'package:aether/data/db/drift_op_store.dart';
-import 'package:aether/data/pdf/pdf_storage.dart';
 import 'package:aether/domain/commands/command.dart';
 import 'package:aether/domain/commands/command_bus.dart';
 import 'package:aether/domain/ops/op.dart';
@@ -70,19 +67,18 @@ Future<void> pumpApp(
   AppSettings settings = const AppSettings(),
   AetherDatabase? db,
   List<Override> overrides = const [],
-
-  /// Use this library folder instead of an empty throwaway one.
-  PdfStorage? storage,
 }) async {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
   final database = db ?? AetherDatabase(NativeDatabase.memory());
   if (db == null) addTearDown(database.close);
-  final root = Directory.systemTemp.createTempSync('aether_lib_');
-  Directory('${root.path}/pdfs').createSync(recursive: true);
-  Directory('${root.path}/thumbs').createSync(recursive: true);
-  final library = storage ?? PdfStorage(root);
-  addTearDown(() => root.deleteSync(recursive: true));
-  await tester.runAsync(() => seedDocuments(database, docs));
+  await tester.runAsync(
+    () => seedDocuments(database, [
+      ...docs,
+      if (location.startsWith('/doc/board') &&
+          !docs.any((d) => d.id == 'board'))
+        const Document(id: 'board', title: 'Board'),
+    ]),
+  );
 
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -95,7 +91,6 @@ Future<void> pumpApp(
       overrides: [
         settingsProvider.overrideWith(() => FakeSettings(settings)),
         databaseProvider.overrideWithValue(database),
-        pdfStorageProvider.overrideWithValue(library),
         hlcClockProvider.overrideWithValue(HlcClock('test')),
         ...overrides,
       ],
@@ -105,7 +100,7 @@ Future<void> pumpApp(
           textScaler: TextScaler.linear(textScale),
           platformBrightness: brightness,
         ),
-        child: AetherApp(initialLocation: location, listenForFiles: false),
+        child: AetherApp(initialLocation: location),
       ),
     ),
   );

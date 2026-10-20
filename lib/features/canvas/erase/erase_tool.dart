@@ -139,7 +139,7 @@ class EraseToolController implements ToolHandler {
   }
 
   void _eraseAt(Offset w, double r) {
-    for (final s in ink.touching(null, w.dx, w.dy, r)) {
+    for (final s in ink.touching(w.dx, w.dy, r)) {
       _eraseInk(s, w, r);
     }
   }
@@ -157,7 +157,6 @@ class EraseToolController implements ToolHandler {
       final piece = Ink(
         id: sink!.newId(),
         docId: s.docId,
-        pageId: s.pageId,
         samples: p,
         width: s.width,
         color: s.color,

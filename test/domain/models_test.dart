@@ -41,7 +41,6 @@ void main() {
     final ink = Ink(
       id: 'i1',
       docId: 'd1',
-      pageId: 'p1',
       width: 4,
       samples: Float32List.fromList([10, 10, 0.5, 30, 50, 0.7]),
     );
@@ -51,7 +50,6 @@ void main() {
     final back = Mark.fromState(stateOf(EntityKind.mark, 'i1', f)) as Ink;
     expect(back.samples, ink.samples);
     expect(back.pointCount, 2);
-    expect(back.pageId, 'p1');
   });
 
   test('Ink.translated keeps everything but the position', () {
@@ -66,28 +64,12 @@ void main() {
     expect((t.id, t.width, t.color), ('i1', 3, ink.color));
   });
 
-  test('Document and PageRef round-trip', () {
-    const d = Document(
-      id: 'd1',
-      title: 'MapReduce',
-      sourceHash: 'abc',
-      pageCount: 13,
-    );
-    final db = Document.fromState(
+  test('Document round-trips', () {
+    const d = Document(id: 'd1', title: 'Sketch');
+    final back = Document.fromState(
       stateOf(EntityKind.document, 'd1', d.toFields()),
     );
-    expect((db.title, db.pageCount), ('MapReduce', 13));
-    const p = PageRef(
-      id: 'p1',
-      docId: 'd1',
-      index: 2,
-      width: 612,
-      height: 792,
-      cardX: 1500,
-      cardY: 0,
-    );
-    final pb = PageRef.fromState(stateOf(EntityKind.page, 'p1', p.toFields()));
-    expect((pb.index, pb.cardX, pb.height), (2, 1500.0, 792.0));
+    expect(back.title, 'Sketch');
   });
 
   test('any colour survives a round trip', () {

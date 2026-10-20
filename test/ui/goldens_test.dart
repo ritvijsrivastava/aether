@@ -11,9 +11,9 @@ import '../support/harness.dart';
 void main() {
   const shots = <String, (Size, String)>{
     'library_phone': (Size(360, 800), '/'),
-    'canvas_phone': (Size(360, 800), '/doc/synthetic-30'),
-    'canvas_tablet': (Size(840, 600), '/doc/synthetic-30'),
-    'canvas_desktop': (Size(1280, 720), '/doc/synthetic-30'),
+    'canvas_phone': (Size(360, 800), '/doc/board'),
+    'canvas_tablet': (Size(840, 600), '/doc/board'),
+    'canvas_desktop': (Size(1280, 720), '/doc/board'),
     'settings_tablet': (Size(840, 600), '/settings'),
   };
   for (final entry in shots.entries) {

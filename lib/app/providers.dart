@@ -7,12 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/hlc/hlc.dart';
 import '../core/id/id_generator.dart';
 import '../data/db/database.dart';
-import '../data/pdf/pdf_password_cache.dart';
-import '../data/pdf/pdf_storage.dart';
 import '../domain/commands/command_bus.dart';
-import '../features/library/import/pdf_importer.dart';
-import '../features/library/import/pdf_inspector.dart';
-import '../features/library/import/pdf_picker.dart';
 import '../features/library/library_actions.dart';
 import '../data/db/drift_op_store.dart';
 import '../domain/model/models.dart';
@@ -30,10 +25,6 @@ final opStoreProvider = Provider<OpStore>(
 );
 
 /// Overridden in `main()` once the library folder exists.
-final pdfStorageProvider = Provider<PdfStorage>(
-  (ref) => throw UnimplementedError('pdfStorageProvider must be overridden'),
-);
-
 /// The device's clock. Overridden in `main()`, where it is seeded with the
 /// newest timestamp already in the log so it never goes backwards.
 final hlcClockProvider = Provider<HlcClock>(
@@ -43,17 +34,6 @@ final hlcClockProvider = Provider<HlcClock>(
 final idGeneratorProvider = Provider<IdGenerator>(
   (ref) => const UuidV7Generator(),
 );
-
-/// Passwords entered this session, in memory only.
-final pdfPasswordsProvider = Provider<PdfPasswordCache>(
-  (ref) => PdfPasswordCache(),
-);
-
-final pdfInspectorProvider = Provider<PdfInspector>(
-  (ref) => const PdfiumInspector(),
-);
-
-final pdfPickerProvider = Provider<PdfPicker>((ref) => platformPdfPicker());
 
 /// The command bus for library-level actions (import, rename, delete).
 /// Documents open on the canvas have their own, so undo stacks never mix.
@@ -72,18 +52,6 @@ final libraryActionsProvider = Provider<LibraryActions>(
     store: ref.watch(opStoreProvider),
     bus: ref.watch(libraryBusProvider),
     ids: ref.watch(idGeneratorProvider),
-  ),
-);
-
-final pdfImporterProvider = Provider<PdfImporter>(
-  (ref) => PdfImporter(
-    store: ref.watch(opStoreProvider),
-    bus: ref.watch(libraryBusProvider),
-    storage: ref.watch(pdfStorageProvider),
-    inspector: ref.watch(pdfInspectorProvider),
-    db: ref.watch(databaseProvider),
-    ids: ref.watch(idGeneratorProvider),
-    passwords: ref.watch(pdfPasswordsProvider),
   ),
 );
 

@@ -16,13 +16,10 @@ import 'document_session.dart';
 import 'erase/erase_options.dart';
 import 'erase/erase_tool.dart';
 import 'ink/ink_layer.dart';
-import 'ink/ink_stress.dart';
 import 'ink/ink_tool.dart';
 import 'input/pen_config.dart';
 import 'input/tool_gestures.dart' show ToolRouter;
 import 'engine/canvas_controller.dart';
-import 'engine/page_surface.dart';
-import 'engine/scene.dart';
 import 'engine/view_state.dart';
 import 'perf_hud.dart';
 import 'select/select_tool.dart';
@@ -31,24 +28,6 @@ import 'select/selection_view.dart' show MarkSelectionOverlay, SelectionActions;
 import 'tool_panel.dart';
 import 'tool_palette.dart';
 import 'zoom_pill.dart';
-
-/// Test documents that need no PDF: `/doc/synthetic-30`, `/doc/synthetic-500`.
-/// Numbered placeholder pages of mixed sizes, for judging the engine.
-const String syntheticPrefix = 'synthetic-';
-
-int? syntheticCount(String docId) => docId.startsWith(syntheticPrefix)
-    ? int.tryParse(docId.substring(syntheticPrefix.length))
-    : null;
-
-Scene syntheticScene(int pages) {
-  const letter = Size(612, 792),
-      landscape = Size(792, 612),
-      a4 = Size(595, 842);
-  return Scene.column([
-    for (var i = 0; i < pages; i++)
-      i % 11 == 10 ? landscape : (i % 7 == 6 ? a4 : letter),
-  ]);
-}
 
 enum _Load { ready, opening, failed }
 
@@ -65,7 +44,6 @@ class CanvasScreen extends ConsumerStatefulWidget {
 class _CanvasScreenState extends ConsumerState<CanvasScreen>
     with TickerProviderStateMixin {
   late final CanvasController _controller;
-  final PageSurface _surface = SyntheticPageSurface();
   DocumentSession? _session;
   final LiveInk _liveInk = LiveInk();
   final EraserState _eraser = EraserState();
@@ -78,21 +56,12 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   String? _error;
   String? _title;
 
-  int? get _synthetic => syntheticCount(widget.docId);
-
   @override
   void initState() {
     super.initState();
-    final n = _synthetic;
-    _controller = CanvasController(
-      scene: n == null ? const Scene([]) : syntheticScene(n),
-    )..attach(this);
-    if (n == null) {
-      _load = _Load.opening;
-      _openDocument();
-    } else {
-      _title = 'Synthetic test, $n pages';
-    }
+    _controller = CanvasController()..attach(this);
+    _load = _Load.opening;
+    _openDocument();
   }
 
   void _fail(String message) {
@@ -128,7 +97,6 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     }
     final inkTool = InkToolController(
       view: _controller.view,
-      scene: _controller.scene,
       live: _liveInk,
       widthDp: () => ref.read(canvasUiProvider).inkWidth,
       color: () => ref.read(canvasUiProvider).inkColor,
@@ -166,16 +134,10 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _history = session.bus.changes.listen((_) {
       if (mounted) setState(() {});
     });
-    if (stressInkEnabled && _controller.scene.value.cards.isNotEmpty) {
-      // Measuring only: strokes held in memory, never saved.
-      session.ink.replaceAll([
-        ...session.ink.all,
-        ...stressStrokes(
-          _controller.scene.value.cards.first.id,
-          stressInkCount,
-        ),
-      ]);
-    }
+    _controller.contentBounds = () {
+      final b = session.ink.bounds;
+      return b == null ? null : Rect.fromLTRB(b.x0, b.y0, b.x1, b.y1);
+    };
     if (mounted) {
       setState(() {
         _load = _Load.ready;
@@ -251,7 +213,9 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   Future<void> _onReady() async {
     final saved = await _session?.savedView();
     if (!mounted) return;
-    saved != null ? _controller.setView(saved) : _controller.fitFirst();
+    saved != null
+        ? _controller.setView(saved)
+        : _controller.fit(animate: false);
   }
 
   @override
@@ -291,7 +255,6 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
 
     final canvasView = CanvasView(
       controller: _controller,
-      surface: _surface,
       tool: ui.tool,
       ink: session?.ink,
       liveInk: _liveInk,
@@ -335,10 +298,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
             child: Padding(
               padding: const EdgeInsets.only(top: AetherTokens.s2),
               child: PerfHud(
-                extra: () => [
-                  _surface.stats,
-                  _liveInk.stats,
-                ].whereType<String>().join('\n'),
+                extra: () => [_liveInk.stats].whereType<String>().join('\n'),
               ),
             ),
           ),
@@ -419,7 +379,7 @@ class _Zoom extends StatelessWidget {
       zoom: v.zoom,
       onZoomOut: () => controller.zoomBy(0.8),
       onZoomIn: () => controller.zoomBy(1.25),
-      onFit: controller.fitPage,
+      onFit: controller.fit,
     ),
   );
 }

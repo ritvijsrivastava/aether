@@ -9,19 +9,21 @@ import 'package:flutter/scheduler.dart';
 import '../input/input_arbiter.dart';
 import '../input/tool_gestures.dart';
 import '../canvas_ui_state.dart' show CanvasTool;
-import 'scene.dart';
 import 'view_state.dart';
 
-/// Owns the canvas view and scene and implements the gestures the arbiter
-/// asks for. Painters listen to [view] and [scene] directly, so a pan or a
-/// card drag repaints layers without rebuilding any widget.
+/// Owns the canvas view and implements the gestures the arbiter asks for.
+/// Painters listen to [view] directly, so a pan or zoom repaints layers
+/// without rebuilding any widget. The view is never clamped: the canvas is
+/// infinite.
 class CanvasController implements GestureSink {
-  CanvasController({required Scene scene, ViewState view = const ViewState()})
-    : scene = ValueNotifier<Scene>(scene),
-      view = ValueNotifier<ViewState>(view);
+  CanvasController({ViewState view = const ViewState()})
+    : view = ValueNotifier<ViewState>(view);
 
-  final ValueNotifier<Scene> scene;
   final ValueNotifier<ViewState> view;
+
+  /// Where the content reaches in world space (null when the board is empty);
+  /// "fit" frames it.
+  Rect? Function()? contentBounds;
 
   /// Size of the canvas surface in logical px; set by the view on layout.
   Size viewport = Size.zero;
@@ -29,23 +31,12 @@ class CanvasController implements GestureSink {
   /// Screen area covered by floating controls; "fit" centres in what is left.
   EdgeInsets insets = EdgeInsets.zero;
 
-  /// While true, a change in the viewport's size re-fits the first page. A
-  /// document can open while the soft keyboard is still folding away, so the
-  /// first fit is made for a screen that then grows; this redoes it. Set by
-  /// [fitFirst] and cleared by anything the user does.
-  bool refitOnResize = false;
-
   /// Receives the active tool's drags. Set once a document is open; until then
   /// tool drags are ignored.
   ToolGestures? tools;
 
-  /// Called after a card drag ends, with the card and its total world shift.
-  void Function(String cardId, Offset delta)? onCardMoved;
-
   Ticker? _ticker;
   _Motion? _motion;
-  String? _dragging;
-  Offset _dragTotal = Offset.zero;
 
   /// Must be called once with the widget's [TickerProvider].
   void attach(TickerProvider vsync) {
@@ -54,7 +45,6 @@ class CanvasController implements GestureSink {
 
   void dispose() {
     _ticker?.dispose();
-    scene.dispose();
     view.dispose();
   }
 
@@ -63,7 +53,7 @@ class CanvasController implements GestureSink {
   // --- view mutation -------------------------------------------------------
 
   void _set(ViewState v) {
-    view.value = v.clamped(viewport, scene.value.bounds);
+    view.value = v;
   }
 
   void setView(ViewState v) {
@@ -73,7 +63,6 @@ class CanvasController implements GestureSink {
 
   @override
   void gestureStart() {
-    refitOnResize = false;
     _stop();
   }
 
@@ -94,33 +83,6 @@ class CanvasController implements GestureSink {
     if (velocity.distance < 80) return;
     _motion = _Fling(view.value, velocity);
     _ticker?.start();
-  }
-
-  // --- card drag -----------------------------------------------------------
-
-  @override
-  void cardDragStart(String cardId) {
-    refitOnResize = false;
-    _dragging = cardId;
-    _dragTotal = Offset.zero;
-  }
-
-  @override
-  void cardDragBy(Offset delta) {
-    final id = _dragging;
-    if (id == null) return;
-    final world = delta / view.value.zoom;
-    _dragTotal += world;
-    scene.value = scene.value.withCardMoved(id, world);
-  }
-
-  @override
-  void cardDragEnd() {
-    final id = _dragging;
-    _dragging = null;
-    if (id != null && _dragTotal != Offset.zero) {
-      onCardMoved?.call(id, _dragTotal);
-    }
   }
 
   // --- tools ---------------------------------------------------------------------
@@ -146,13 +108,11 @@ class CanvasController implements GestureSink {
   );
 
   void zoomBy(double factor, {bool animate = true}) {
-    refitOnResize = false;
     final target = view.value.zoomAt(_focus, factor);
     animate ? animateTo(target) : setView(target);
   }
 
   void zoomTo(double zoom) {
-    refitOnResize = false;
     animateTo(
       view.value.withZoomAt(
         _focus,
@@ -161,61 +121,23 @@ class CanvasController implements GestureSink {
     );
   }
 
-  /// Fit the page nearest the centre of the screen.
-  void fitPage({bool animate = true}) {
-    refitOnResize = false;
-    final s = scene.value;
-    if (s.isEmpty || viewport.isEmpty) return;
-    final here = view.value.screenToWorld(_focus);
-    final card = s.nearest(here)!;
-    final target = ViewState.fitRect(card.rect, viewport, insets: insets);
-    animate ? animateTo(target) : setView(target);
-  }
-
-  /// Takes the view to [world] (a rectangle in world space), centred in the
-  /// area the floating controls leave free. Keeps the current zoom when the
-  /// target is readable and fits; zooms in to 100% from far out, and out just
-  /// enough for a wide target to fit.
-  void reveal(Rect world, {bool animate = true}) {
-    refitOnResize = false;
+  /// Frames the content, or goes home (origin in the middle at 100%) when
+  /// the board is empty.
+  void fit({bool animate = true}) {
     if (viewport.isEmpty) return;
-    final free = Size(
-      viewport.width - insets.horizontal,
-      viewport.height - insets.vertical,
-    );
-    var zoom = view.value.zoom;
-    if (zoom < 0.6) zoom = 1.0;
-    if (world.width * zoom > free.width * 0.85) {
-      zoom = free.width * 0.85 / world.width;
-    }
-    if (world.height * zoom > free.height * 0.85) {
-      zoom = free.height * 0.85 / world.height;
-    }
-    zoom = zoom.clamp(ViewState.minZoom, ViewState.maxZoom);
-    final c = world.center;
-    final target = ViewState(
-      x: _focus.dx - c.dx * zoom,
-      y: _focus.dy - c.dy * zoom,
-      zoom: zoom,
-    );
+    final b = contentBounds?.call();
+    final target = b == null || b.isEmpty
+        ? ViewState(x: _focus.dx, y: _focus.dy)
+        : ViewState.fitRect(b, viewport, insets: insets);
     animate ? animateTo(target) : setView(target);
-  }
-
-  /// Centre the first page, at fit zoom. Used when a document opens.
-  void fitFirst() {
-    final s = scene.value;
-    if (s.isEmpty || viewport.isEmpty) return;
-    setView(ViewState.fitRect(s.cards.first.rect, viewport, insets: insets));
-    refitOnResize = true;
   }
 
   void animateTo(
     ViewState target, {
     Duration duration = const Duration(milliseconds: 240),
   }) {
-    final clamped = target.clamped(viewport, scene.value.bounds);
-    if (clamped == view.value) return;
-    _motion = _Tween(view.value, clamped, duration);
+    if (target == view.value) return;
+    _motion = _Tween(view.value, target, duration);
     _ticker?.start();
   }
 
@@ -232,12 +154,8 @@ class CanvasController implements GestureSink {
       _ticker?.stop();
       return;
     }
-    final next = m.at(elapsed);
-    final clamped = next.clamped(viewport, scene.value.bounds);
-    view.value = clamped;
-    // A fling that runs into the edge stops there instead of grinding on.
-    final hitEdge = m is _Fling && (clamped.x != next.x || clamped.y != next.y);
-    if (m.isDone(elapsed) || hitEdge) _stop();
+    view.value = m.at(elapsed);
+    if (m.isDone(elapsed)) _stop();
   }
 }
 

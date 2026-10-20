@@ -106,9 +106,6 @@ abstract interface class GestureSink {
 
   /// A pan ended; [velocity] is in px/s (zero for no fling).
   void panEnd(Offset velocity);
-  void cardDragStart(String cardId);
-  void cardDragBy(Offset delta);
-  void cardDragEnd();
 
   /// A tool's drag (Mark, Ink, Erase, ...): see [ToolGestures]. [tool] is the
   /// tool the pointer applies, which the pen may have switched to Erase.
@@ -131,9 +128,6 @@ abstract interface class ArbiterContext {
 
   /// Settings: a finger also applies the active tool. Off by default.
   bool get fingerDraws;
-
-  /// The card whose drag handle is under [screen], if any.
-  String? handleAt(Offset screen);
 }
 
 /// Turns raw pointer events into canvas gestures.
@@ -182,7 +176,7 @@ class InputArbiter {
   _Mode _mode = _Mode.idle;
   final Map<int, Offset> _touches = {};
   final Set<int> _ignored = {};
-  int? _lead; // pointer driving pan / cardDrag
+  int? _lead; // pointer driving pan / tool
   Offset _last = Offset.zero;
   Offset _pinchCentroid = Offset.zero;
   double _pinchDistance = 1;
@@ -248,17 +242,6 @@ class InputArbiter {
       }
     }
 
-    // A handle drags its card, whatever dragged it.
-    final handle = context.handleAt(p.position);
-    if (handle != null && _mode == _Mode.idle && _acceptable(p)) {
-      _mode = _Mode.cardDrag;
-      _lead = p.id;
-      _last = p.position;
-      sink.gestureStart();
-      sink.cardDragStart(handle);
-      return;
-    }
-
     switch (p.kind) {
       case PointerDeviceKind.touch:
         final palm = _palmReason(p);
@@ -270,10 +253,6 @@ class InputArbiter {
         }
         stats?.finger(p.radiusMajor);
         stats?.changed();
-        if (_mode == _Mode.cardDrag) {
-          _ignored.add(p.id);
-          return;
-        }
         if (!_touchPans) {
           // Finger-draws is on: a single finger belongs to the tool, but two
           // fingers still pinch.
@@ -461,11 +440,6 @@ class InputArbiter {
         _last = p.position;
         _velocity.add(p.time, p.position);
         if (d != Offset.zero) sink.panBy(d);
-      case _Mode.cardDrag:
-        if (p.id != _lead) return;
-        final d = p.position - _last;
-        _last = p.position;
-        if (d != Offset.zero) sink.cardDragBy(d);
       case _Mode.tool:
         if (p.id != _lead) return;
         if (_touches.containsKey(p.id)) _touches[p.id] = p.position;
@@ -505,9 +479,6 @@ class InputArbiter {
             ? _velocity.estimate()
             : Offset.zero;
         _finish(fling);
-      case _Mode.cardDrag:
-        if (p.id != _lead) return;
-        _finish(Offset.zero);
       case _Mode.tool:
         if (p.id != _lead) return;
         _endTool(at: p);
@@ -553,8 +524,7 @@ class InputArbiter {
     }
     if (_mode == _Mode.tool && p.id == _lead) {
       _endTool(cancel: true);
-    } else if ((_mode == _Mode.pan || _mode == _Mode.cardDrag) &&
-        p.id == _lead) {
+    } else if (_mode == _Mode.pan && p.id == _lead) {
       _finish(Offset.zero);
     }
   }
@@ -601,9 +571,6 @@ class InputArbiter {
       !context.fingerDraws ||
       context.tool == CanvasTool.pan ||
       context.spaceHeld;
-
-  bool _acceptable(PointerSample p) =>
-      p.kind != PointerDeviceKind.touch || _palmReason(p) == null;
 
   void _beginPan(PointerSample p) {
     _mode = _Mode.pan;
@@ -684,15 +651,13 @@ class InputArbiter {
     final m = _mode;
     _mode = _Mode.idle;
     _lead = null;
-    if (m == _Mode.cardDrag) {
-      sink.cardDragEnd();
-    } else if (m == _Mode.pan || m == _Mode.pinch) {
+    if (m == _Mode.pan || m == _Mode.pinch) {
       sink.panEnd(fling);
     }
   }
 }
 
-enum _Mode { idle, pan, pinch, cardDrag, tool }
+enum _Mode { idle, pan, pinch, tool }
 
 /// Velocity from the last ~100 ms of samples.
 class _Velocity {

@@ -10,7 +10,6 @@ import '../../../core/geometry/box.dart';
 import '../../../domain/marks/spatial_grid.dart';
 import '../../../domain/ink/ink_geometry.dart';
 import '../../../domain/model/models.dart';
-import '../engine/scene.dart';
 import '../engine/view_state.dart';
 import '../input/pen_config.dart';
 
@@ -36,7 +35,7 @@ Path strokePath(
   return path;
 }
 
-class _PageInk {
+class _Strokes {
   final List<Ink> inks = [];
 
   /// A recorded picture of the first [baseCount] strokes; strokes added since
@@ -75,13 +74,12 @@ class _PageInk {
   }
 }
 
-/// The committed ink of the open document: strokes by page (in page space) and
-/// the strokes that belong to no page (in canvas space).
+/// The committed ink of the open board, all in world space.
 ///
-/// Each page keeps a recorded [Picture] of its ink, so panning and zooming
-/// replay one display list per page instead of rebuilding thousands of paths
-/// (SPEC 5.5). Adding a stroke draws it on top of the picture; only after
-/// [foldAfter] such strokes is the picture rebuilt.
+/// The ink keeps a recorded [Picture], so panning and zooming replay one
+/// display list instead of rebuilding thousands of paths. Adding a stroke draws
+/// it on top of the picture; only after [foldAfter] such strokes is the
+/// picture rebuilt.
 class InkLayer extends ChangeNotifier {
   InkLayer({this.curve = PressureCurve.soft});
 
@@ -100,23 +98,16 @@ class InkLayer extends ChangeNotifier {
 
   /// How many page bitmaps have been drawn; for tests and the HUD.
   int bitmapRenders = 0;
-  static const String _free = '';
-
-  final Map<String, _PageInk> _pages = {};
+  final _Strokes _s = _Strokes();
   final Map<String, Ink> _byId = {};
-  final Map<String, SpatialGrid> _grids = {};
+  final SpatialGrid _grid = SpatialGrid();
 
-  /// Strokes a circle of radius [r] at ([x], [y]) touches, in the page's space
-  /// (or canvas space for a null [pageId]).
-  List<Ink> touching(String? pageId, double x, double y, double r) {
-    final grid = _grids[pageId ?? _free];
-    if (grid == null) return const [];
-    return [
-      for (final id in grid.query(Box(x - r, y - r, x + r, y + r)))
-        if (InkGeometry.touches(_byId[id]!.samples, _byId[id]!.width, x, y, r))
-          _byId[id]!,
-    ];
-  }
+  /// Strokes a circle of radius [r] at ([x], [y]) touches.
+  List<Ink> touching(double x, double y, double r) => [
+    for (final id in _grid.query(Box(x - r, y - r, x + r, y + r)))
+      if (InkGeometry.touches(_byId[id]!.samples, _byId[id]!.width, x, y, r))
+        _byId[id]!,
+  ];
 
   /// How many page pictures have been (re)recorded; for tests and the HUD.
   int rebuilds = 0;
@@ -125,19 +116,15 @@ class InkLayer extends ChangeNotifier {
   Iterable<Ink> get all => _byId.values;
   Ink? byId(String id) => _byId[id];
 
-  List<Ink> forPage(String? pageId) =>
-      _pages[pageId ?? _free]?.inks ?? const [];
-
-  /// Where this page's ink reaches, in page space (it may run past the page).
-  Box? boundsOf(String? pageId) => _pages[pageId ?? _free]?.bounds;
+  /// Where the ink reaches, or null when there is none.
+  Box? get bounds => _s.bounds;
 
   void replaceAll(Iterable<Ink> inks) {
-    for (final p in _pages.values) {
-      p.dropBase();
-    }
-    _pages.clear();
+    _s.dropBase();
+    _s.inks.clear();
+    _s.bounds = null;
     _byId.clear();
-    _grids.clear();
+    _grid.clear();
     for (final i in inks) {
       _insert(i);
     }
@@ -152,31 +139,26 @@ class InkLayer extends ChangeNotifier {
   void remove(String id) {
     final ink = _byId.remove(id);
     if (ink == null) return;
-    _grids[ink.pageId ?? _free]?.remove(id);
-    final page = _pages[ink.pageId ?? _free];
-    if (page != null) {
-      page.inks.removeWhere((i) => i.id == id);
-      page.dropBase();
-      page.bounds = _union(page.inks);
-      if (page.inks.isEmpty) _pages.remove(ink.pageId ?? _free);
-    }
+    _grid.remove(id);
+    _s.inks.removeWhere((i) => i.id == id);
+    _s.dropBase();
+    _s.bounds = _union(_s.inks);
     notifyListeners();
   }
 
   void _insert(Ink ink) {
     final old = _byId[ink.id];
     if (old != null) {
-      final p = _pages[old.pageId ?? _free];
-      p?.inks.removeWhere((i) => i.id == ink.id);
-      p?.dropBase();
-      _grids[old.pageId ?? _free]?.remove(old.id);
+      _s.inks.removeWhere((i) => i.id == ink.id);
+      _s.dropBase();
+      _grid.remove(old.id);
     }
     _byId[ink.id] = ink;
-    (_grids[ink.pageId ?? _free] ??= SpatialGrid()).put(ink.id, ink.bounds);
-    final page = _pages[ink.pageId ?? _free] ??= _PageInk();
-    page.inks.add(ink);
-    final b = ink.bounds;
-    page.bounds = page.bounds == null ? b : page.bounds!.union(b);
+    _grid.put(ink.id, ink.bounds);
+    _s.inks.add(ink);
+    _s.bounds = old == null && _s.bounds != null
+        ? _s.bounds!.union(ink.bounds)
+        : _union(_s.inks);
   }
 
   static Box? _union(List<Ink> inks) {
@@ -196,13 +178,12 @@ class InkLayer extends ChangeNotifier {
 
   final Paint _imagePaint = Paint()..filterQuality = FilterQuality.medium;
 
-  /// Paints a page's ink. [canvas] is in that page's space (origin at the
-  /// page's top-left), or in canvas space for [pageId] null. [scale] is the
-  /// screen pixels per page point (zoom times pixel ratio), which decides how
-  /// sharp a crowded page's bitmap needs to be.
-  void paint(Canvas canvas, String? pageId, {double scale = 1}) {
-    final page = _pages[pageId ?? _free];
-    if (page == null || page.inks.isEmpty) return;
+  /// Paints the ink. [canvas] is in world space. [scale] is the screen pixels
+  /// per world unit (zoom times pixel ratio), which decides how sharp a
+  /// crowded board's bitmap needs to be.
+  void paint(Canvas canvas, {double scale = 1}) {
+    final page = _s;
+    if (page.inks.isEmpty) return;
     final extras = page.inks.length - page.baseCount;
     if (page.base == null || extras > foldAfter) {
       page.dropBase();
@@ -227,7 +208,7 @@ class InkLayer extends ChangeNotifier {
 
   /// Draws the page's bitmap if it is sharp enough for [scale]; otherwise asks
   /// for a better one and returns false (the caller draws the paths).
-  bool _drawBitmap(Canvas canvas, _PageInk page, double scale) {
+  bool _drawBitmap(Canvas canvas, _Strokes page, double scale) {
     final box = page.bounds!;
     final side = math.max(box.width + 4, box.height + 4);
     final cap = maxBitmapSide / side; // the sharpest a bitmap can be
@@ -253,7 +234,7 @@ class InkLayer extends ChangeNotifier {
     return false;
   }
 
-  void _scheduleBitmap(_PageInk page, double want) {
+  void _scheduleBitmap(_Strokes page, double want) {
     if (page.rendering || page.timer != null) return;
     // Wait for a zoom gesture to settle before spending a render on it.
     page.timer = Timer(const Duration(milliseconds: 120), () {
@@ -262,7 +243,7 @@ class InkLayer extends ChangeNotifier {
     });
   }
 
-  Future<void> _renderBitmap(_PageInk page, double want) async {
+  Future<void> _renderBitmap(_Strokes page, double want) async {
     final base = page.base;
     final bounds = page.bounds;
     if (base == null || bounds == null || page.rendering) return;
@@ -307,63 +288,38 @@ class InkLayer extends ChangeNotifier {
 
   @override
   void dispose() {
-    for (final p in _pages.values) {
-      p.dropBase();
-    }
+    _s.dropBase();
     super.dispose();
   }
 }
 
-/// Draws committed ink above the pages.
+/// Draws committed ink.
 class InkPainter extends CustomPainter {
-  InkPainter({
-    required this.view,
-    required this.scene,
-    required this.ink,
-    this.devicePixelRatio = 1,
-  }) : super(repaint: Listenable.merge([view, scene, ink]));
+  InkPainter({required this.view, required this.ink, this.devicePixelRatio = 1})
+    : super(repaint: Listenable.merge([view, ink]));
 
   final ValueListenable<ViewState> view;
-  final ValueListenable<Scene> scene;
   final InkLayer ink;
   final double devicePixelRatio;
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (ink.count == 0) return;
+    final b = ink.bounds;
+    if (b == null) return;
     final v = view.value;
-    final world = v.worldRect(size);
+    if (!Rect.fromLTRB(b.x0, b.y0, b.x1, b.y1).overlaps(v.worldRect(size))) {
+      return;
+    }
     canvas.save();
     canvas.translate(v.x, v.y);
     canvas.scale(v.zoom);
-    for (final card in scene.value.cards) {
-      final b = ink.boundsOf(card.id);
-      if (b == null) continue;
-      // Ink may run past its page, so cull by the ink's own reach.
-      final reach = Rect.fromLTRB(
-        card.rect.left + b.x0,
-        card.rect.top + b.y0,
-        card.rect.left + b.x1,
-        card.rect.top + b.y1,
-      );
-      if (!reach.overlaps(world)) continue;
-      canvas.save();
-      canvas.translate(card.rect.left, card.rect.top);
-      ink.paint(canvas, card.id, scale: v.zoom * devicePixelRatio);
-      canvas.restore();
-    }
-    final free = ink.boundsOf(null);
-    if (free != null &&
-        Rect.fromLTRB(free.x0, free.y0, free.x1, free.y1).overlaps(world)) {
-      ink.paint(canvas, null, scale: v.zoom * devicePixelRatio);
-    }
+    ink.paint(canvas, scale: v.zoom * devicePixelRatio);
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(InkPainter old) =>
       old.view != view ||
-      old.scene != scene ||
       old.ink != ink ||
       old.devicePixelRatio != devicePixelRatio;
 }
@@ -376,7 +332,6 @@ class LiveInk extends ChangeNotifier {
   final List<double> _recent = []; // x, y, ms triplets, last 4
   List<double> predicted = const [];
 
-  String? cardId;
   double width = 2.5;
   int color = 0xFF2B2723;
   bool active = false;
@@ -391,8 +346,7 @@ class LiveInk extends ChangeNotifier {
   /// The samples so far (a view, not a copy: do not keep it).
   Float32List get samples => Float32List.sublistView(_buf, 0, _n * 3);
 
-  void begin(String? card, double w, int argb) {
-    cardId = card;
+  void begin(double w, int argb) {
     width = w;
     color = argb;
     _n = 0;
@@ -456,13 +410,11 @@ class LiveInk extends ChangeNotifier {
 class LiveInkPainter extends CustomPainter {
   LiveInkPainter({
     required this.view,
-    required this.scene,
     required this.live,
     this.curve = PressureCurve.soft,
-  }) : super(repaint: Listenable.merge([view, scene, live]));
+  }) : super(repaint: Listenable.merge([view, live]));
 
   final ValueListenable<ViewState> view;
-  final ValueListenable<Scene> scene;
   final LiveInk live;
   final PressureCurve curve;
 
@@ -476,14 +428,6 @@ class LiveInkPainter extends CustomPainter {
     canvas.save();
     canvas.translate(v.x, v.y);
     canvas.scale(v.zoom);
-    if (live.cardId != null) {
-      final card = scene.value.byId(live.cardId!);
-      if (card == null) {
-        canvas.restore();
-        return;
-      }
-      canvas.translate(card.rect.left, card.rect.top);
-    }
     final s = live.samples;
     _paint.color = Color(live.color);
     canvas.drawPath(strokePath(s, live.width, curve), _paint);
@@ -509,5 +453,5 @@ class LiveInkPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(LiveInkPainter old) =>
-      old.view != view || old.scene != scene || old.live != live;
+      old.view != view || old.live != live;
 }

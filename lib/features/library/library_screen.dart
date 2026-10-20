@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart' show kDebugMode, kProfileMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,7 +9,6 @@ import '../../ui/adaptive/window_class.dart';
 import '../../ui/theme/theme.dart';
 import '../../ui/theme/tokens.dart';
 import '../../ui/widgets/aether_icon.dart';
-import 'import/import_flow.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
@@ -36,10 +33,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final text = AetherText(t.ink);
     final cls = WindowClass.ofContext(context);
     final items = ref.watch(libraryItemsProvider);
-    final progress = ref.watch(importProgressProvider);
 
     final newBoardButton = FilledButton.icon(
-      onPressed: progress.active ? null : _newBoard,
+      onPressed: _newBoard,
       icon: AetherIcon(AetherIcons.note, size: 18, color: t.onIndigo),
       label: const Text('New board'),
     );
@@ -64,7 +60,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       floatingActionButton: cls == WindowClass.expanded
           ? null
           : FloatingActionButton.extended(
-              onPressed: progress.active ? null : _newBoard,
+              onPressed: _newBoard,
               backgroundColor: t.indigo,
               foregroundColor: t.onIndigo,
               elevation: 2,
@@ -78,7 +74,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
       body: Column(
         children: [
-          if (progress.active) _ProgressBanner(progress),
           Expanded(
             child: items.when(
               loading: () => const SizedBox.shrink(),
@@ -102,51 +97,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ProgressBanner extends StatelessWidget {
-  const _ProgressBanner(this.p);
-  final ImportProgress p;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = AetherText(t.inkMuted);
-    return Semantics(
-      liveRegion: true,
-      label: 'Importing ${p.done + 1} of ${p.total}',
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AetherTokens.s4,
-          0,
-          AetherTokens.s4,
-          AetherTokens.s2,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(AetherTokens.rPill),
-              child: LinearProgressIndicator(
-                minHeight: 4,
-                color: t.indigo,
-                backgroundColor: t.canvas,
-              ),
-            ),
-            const SizedBox(height: AetherTokens.s1),
-            Text(
-              p.total > 1
-                  ? 'Importing ${p.done + 1} of ${p.total}: ${p.current ?? ''}'
-                  : 'Importing ${p.current ?? ''}',
-              style: text.caption,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -357,7 +307,6 @@ class _DocumentTile extends ConsumerWidget {
     final t = context.tokens;
     final text = AetherText(t.ink);
     final d = item.doc;
-    final pages = d.pageCount == 1 ? '1 page' : '${d.pageCount} pages';
     final added = DateFormat.yMMMd().format(item.added);
     return Material(
       color: t.panel,
@@ -371,8 +320,6 @@ class _DocumentTile extends ConsumerWidget {
             padding: const EdgeInsets.all(AetherTokens.s3),
             child: Row(
               children: [
-                _Thumbnail(sourceHash: d.sourceHash),
-                const SizedBox(width: AetherTokens.s3),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -385,7 +332,7 @@ class _DocumentTile extends ConsumerWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '$pages · Added $added',
+                        'Added $added',
                         style: text.caption.copyWith(color: t.inkMuted),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -407,39 +354,6 @@ class _DocumentTile extends ConsumerWidget {
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Thumbnail extends ConsumerWidget {
-  const _Thumbnail({required this.sourceHash});
-  final String sourceHash;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = context.tokens;
-    final path = ref.watch(pdfStorageProvider).thumbnailPath(sourceHash);
-    final fallback = Container(
-      color: t.canvas,
-      alignment: Alignment.center,
-      child: AetherIcon(AetherIcons.doc, color: t.inkMuted),
-    );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AetherTokens.rPaper),
-      child: SizedBox(
-        width: 56,
-        height: 72,
-        child: ExcludeSemantics(
-          child: Image.file(
-            File(path),
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
-            cacheWidth: 168,
-            gaplessPlayback: true,
-            errorBuilder: (_, _, _) => fallback,
           ),
         ),
       ),

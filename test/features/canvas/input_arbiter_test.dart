@@ -11,7 +11,6 @@ class Rec implements GestureSink {
   Offset pan = Offset.zero;
   double zoom = 1;
   Offset? fling;
-  final List<Offset> cardDrags = [];
 
   @override
   void gestureStart() => log.add('start');
@@ -37,17 +36,6 @@ class Rec implements GestureSink {
     fling = velocity;
     log.add('panEnd');
   }
-
-  @override
-  void cardDragStart(String id) => log.add('cardStart:$id');
-  @override
-  void cardDragBy(Offset d) {
-    cardDrags.add(d);
-    log.add('cardBy');
-  }
-
-  @override
-  void cardDragEnd() => log.add('cardEnd');
 
   final List<Offset> marks = [];
   final List<ToolPoint> points = [];
@@ -92,10 +80,6 @@ class Ctx implements ArbiterContext {
   bool spaceHeld = false;
   @override
   bool fingerDraws = false;
-  Rect? handle;
-  @override
-  String? handleAt(Offset s) =>
-      handle != null && handle!.contains(s) ? 'card1' : null;
 }
 
 PointerSample s(
@@ -251,34 +235,6 @@ void main() {
       a.panZoomUpdate(const Offset(100, 100), const Offset(25, 5), 1.21);
       expect(rec.pan, const Offset(25, 5));
       expect(rec.zoom, closeTo(1.21, 1e-9));
-    });
-  });
-
-  group('card handles', () {
-    setUp(() => ctx.handle = const Rect.fromLTWH(50, 50, 120, 36));
-
-    test('any pointer on a handle drags its card', () {
-      for (final k in [touch, mouse, pen]) {
-        rec.log.clear();
-        rec.cardDrags.clear();
-        a.down(s(1, k, 60, 60, 0, buttons: 1));
-        a.move(s(1, k, 90, 70, 10, buttons: 1));
-        a.up(s(1, k, 90, 70, 20));
-        expect(rec.log.first, 'start');
-        expect(rec.log, contains('cardStart:card1'));
-        expect(rec.cardDrags.single, const Offset(30, 10));
-        expect(rec.log.last, 'cardEnd');
-        expect(rec.pan, Offset.zero);
-      }
-    });
-
-    test('a second finger during a card drag is ignored', () {
-      a.down(s(1, touch, 60, 60, 0));
-      a.down(s(2, touch, 400, 400, 5));
-      a.move(s(2, touch, 500, 400, 10));
-      a.move(s(1, touch, 80, 60, 15));
-      expect(rec.zoom, 1);
-      expect(rec.cardDrags.single, const Offset(20, 0));
     });
   });
 
@@ -630,13 +586,6 @@ void main() {
       a.cancel(s(9, pen, 100, 100, 10));
       expect(rec.count('markCancel'), 1);
       expect(rec.count('markEnd'), 0);
-    });
-
-    test('a card handle still drags its card under the Mark tool', () {
-      ctx.handle = const Rect.fromLTWH(0, 0, 100, 50);
-      a.down(s(9, pen, 10, 10, 0, buttons: 1));
-      expect(rec.count('markStart'), 0);
-      expect(rec.log, contains('cardStart:card1'));
     });
   });
 

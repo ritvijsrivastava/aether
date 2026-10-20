@@ -27,7 +27,7 @@ void main() {
             await pumpApp(
               tester,
               size: entry.value,
-              location: '/doc/synthetic-30',
+              location: '/doc/board',
               brightness: b,
               textScale: scale,
             );
@@ -60,8 +60,6 @@ void main() {
                 id: 'd1',
                 title:
                     'MapReduce: Simplified Data Processing on Large Clusters',
-                sourceHash: 'h',
-                pageCount: 13,
               ),
             ],
           );
@@ -74,11 +72,7 @@ void main() {
 
   group('layout follows the window class', () {
     testWidgets('phone: bottom toolbar, no side rail', (tester) async {
-      await pumpApp(
-        tester,
-        size: const Size(360, 800),
-        location: '/doc/synthetic-30',
-      );
+      await pumpApp(tester, size: const Size(360, 800), location: '/doc/board');
       expect(find.text('More'), findsOneWidget);
       expect(find.text('Ink'), findsOneWidget);
       expect(find.text('Erase'), findsOneWidget);
@@ -88,11 +82,7 @@ void main() {
     });
 
     testWidgets('tablet and desktop: all tools on a rail', (tester) async {
-      await pumpApp(
-        tester,
-        size: const Size(840, 600),
-        location: '/doc/synthetic-30',
-      );
+      await pumpApp(tester, size: const Size(840, 600), location: '/doc/board');
       for (final tool in CanvasTool.values) {
         expect(
           find.descendant(
@@ -107,26 +97,14 @@ void main() {
     });
 
     testWidgets('crossing 600 dp switches layout', (tester) async {
-      await pumpApp(
-        tester,
-        size: const Size(599, 800),
-        location: '/doc/synthetic-30',
-      );
+      await pumpApp(tester, size: const Size(599, 800), location: '/doc/board');
       expect(find.text('More'), findsOneWidget);
-      await pumpApp(
-        tester,
-        size: const Size(600, 800),
-        location: '/doc/synthetic-30',
-      );
+      await pumpApp(tester, size: const Size(600, 800), location: '/doc/board');
       expect(find.text('More'), findsNothing);
     });
 
     testWidgets('More tray offers the remaining tools', (tester) async {
-      await pumpApp(
-        tester,
-        size: const Size(360, 800),
-        location: '/doc/synthetic-30',
-      );
+      await pumpApp(tester, size: const Size(360, 800), location: '/doc/board');
       await tester.tap(find.text('More'));
       await tester.pumpAndSettle();
       expect(find.text('Pan'), findsOneWidget);
@@ -137,7 +115,7 @@ void main() {
       await pumpApp(
         tester,
         size: const Size(1280, 720),
-        location: '/doc/synthetic-30',
+        location: '/doc/board',
       );
       await tester.tap(find.text('Ink'));
       await tester.pump();
@@ -151,13 +129,13 @@ void main() {
       await pumpApp(
         tester,
         size: const Size(1280, 720),
-        location: '/doc/synthetic-30',
+        location: '/doc/board',
       );
       final rightHandedX = tester.getCenter(find.text('Ink')).dx;
       await pumpApp(
         tester,
         size: const Size(1280, 720),
-        location: '/doc/synthetic-30',
+        location: '/doc/board',
         settings: const AppSettings(leftHanded: true),
       );
       expect(
@@ -174,7 +152,7 @@ void main() {
       const Size(1280, 720),
     ]) {
       testWidgets('${size.width.toInt()} wide', (tester) async {
-        await pumpApp(tester, size: size, location: '/doc/synthetic-30');
+        await pumpApp(tester, size: size, location: '/doc/board');
         final handle = tester.ensureSemantics();
         final small = <String>[];
         for (final e in tester.allElements) {

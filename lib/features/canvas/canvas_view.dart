@@ -5,8 +5,7 @@ import 'package:flutter/services.dart';
 import '../../ui/theme/tokens.dart';
 import 'canvas_ui_state.dart';
 import 'engine/canvas_controller.dart';
-import 'engine/page_surface.dart';
-import 'engine/painters.dart';
+import 'engine/grid_painter.dart';
 import 'erase/erase_tool.dart';
 import 'ink/ink_layer.dart';
 import 'input/input_arbiter.dart';
@@ -24,7 +23,6 @@ class CanvasView extends StatefulWidget {
   const CanvasView({
     super.key,
     required this.controller,
-    required this.surface,
     required this.tool,
     required this.ink,
     this.liveInk,
@@ -43,7 +41,6 @@ class CanvasView extends StatefulWidget {
   });
 
   final CanvasController controller;
-  final PageSurface surface;
   final CanvasTool tool;
 
   /// Committed ink and the stroke being drawn.
@@ -104,20 +101,6 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
   @override
   bool get fingerDraws => widget.fingerDraws;
 
-  @override
-  String? handleAt(Offset screen) {
-    final v = widget.controller.view.value;
-    final size = widget.controller.viewport;
-    final cards = widget.controller.scene.value
-        .visible(v.worldRect(size))
-        .toList();
-    // Topmost (last drawn) first.
-    for (final c in cards.reversed) {
-      if (HandleLayout.hitRect(c, v)?.contains(screen) ?? false) return c.id;
-    }
-    return null;
-  }
-
   // --- events ---------------------------------------------------------------
 
   PointerSample _sample(PointerEvent e) => PointerSample(
@@ -144,8 +127,6 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
 
   void _updateCursor(Offset p) {
     final MouseCursor c = _space || _panTool
-        ? SystemMouseCursors.grab
-        : handleAt(p) != null
         ? SystemMouseCursors.grab
         : switch (widget.tool) {
             CanvasTool.ink ||
@@ -210,7 +191,7 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
       return KeyEventResult.handled;
     }
     if (ctrl && k == LogicalKeyboardKey.digit0) {
-      c.fitPage();
+      c.fit();
       return KeyEventResult.handled;
     }
     if (ctrl && k == LogicalKeyboardKey.digit1) {
@@ -233,16 +214,7 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
     return LayoutBuilder(
       builder: (context, box) {
         final size = box.biggest;
-        if (c.viewport != size) {
-          c.viewport = size;
-          // Re-clamp for the new size (window resize, rotation) next frame.
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            // An untouched first fit follows the screen size (see
-            // CanvasController.refitOnResize); anything else is just re-clamped.
-            c.refitOnResize ? c.fitFirst() : c.setView(c.view.value);
-          });
-        }
+        c.viewport = size;
         if (!_ready && !size.isEmpty) {
           _ready = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -292,25 +264,11 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
                         painter: GridPainter(view: c.view, color: t.gridDot),
                       ),
                     ),
-                    RepaintBoundary(
-                      child: CustomPaint(
-                        painter: CardsPainter(
-                          view: c.view,
-                          scene: c.scene,
-                          surface: widget.surface,
-                          tokens: t,
-                          devicePixelRatio: MediaQuery.devicePixelRatioOf(
-                            context,
-                          ),
-                        ),
-                      ),
-                    ),
                     if (widget.ink != null)
                       RepaintBoundary(
                         child: CustomPaint(
                           painter: InkPainter(
                             view: c.view,
-                            scene: c.scene,
                             ink: widget.ink!,
                             devicePixelRatio: MediaQuery.devicePixelRatioOf(
                               context,
@@ -323,7 +281,6 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
                         child: CustomPaint(
                           painter: LiveInkPainter(
                             view: c.view,
-                            scene: c.scene,
                             live: widget.liveInk!,
                           ),
                         ),
@@ -335,7 +292,6 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
                         child: CustomPaint(
                           painter: SelectionPainter(
                             view: c.view,
-                            scene: c.scene,
                             selection: widget.selection!,
                             lasso: widget.lasso!,
                             ink: widget.ink!,
@@ -352,15 +308,6 @@ class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
                           ),
                         ),
                       ),
-                    RepaintBoundary(
-                      child: CustomPaint(
-                        painter: HandlesPainter(
-                          view: c.view,
-                          scene: c.scene,
-                          tokens: t,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),

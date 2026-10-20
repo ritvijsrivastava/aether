@@ -12,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// of handwriting is a few thousand) and time the work that happens per frame
 /// and per stroke. They run in a debug-mode VM, so the limits are loose; the
 /// numbers printed are what to compare against on the tablet.
-List<Ink> strokes(int n, {String page = 'p0'}) {
+List<Ink> strokes(int n) {
   final r = math.Random(5);
   return [
     for (var i = 0; i < n; i++)
@@ -27,7 +27,6 @@ List<Ink> strokes(int n, {String page = 'p0'}) {
         return Ink(
           id: 's$i',
           docId: 'd',
-          pageId: page,
           samples: InkGeometry.simplify(samples, 0.15),
           width: 2.5,
           color: 0xFF2B2723,
@@ -55,14 +54,14 @@ void main() {
       final layer = InkLayer()..replaceAll(strokes(10000));
       final sw = Stopwatch()..start();
       var rec = PictureRecorder();
-      layer.paint(Canvas(rec), 'p0');
+      layer.paint(Canvas(rec));
       final first = sw.elapsedMilliseconds;
       final pic = rec.endRecording();
       sw.reset();
       // Panning replays the same recorded picture: no strokes are rebuilt.
       for (var i = 0; i < 60; i++) {
         rec = PictureRecorder();
-        layer.paint(Canvas(rec), 'p0');
+        layer.paint(Canvas(rec));
         rec.endRecording().dispose();
       }
       final replay = sw.elapsedMicroseconds / 60 / 1000;
@@ -81,7 +80,7 @@ void main() {
   test('drawing a new stroke on a full page does not rebuild the page', () {
     final layer = InkLayer()..replaceAll(strokes(10000));
     final c = Canvas(PictureRecorder());
-    layer.paint(c, 'p0');
+    layer.paint(c);
     final sw = Stopwatch()..start();
     final fresh = strokes(20);
     for (var i = 0; i < 20; i++) {
@@ -89,13 +88,12 @@ void main() {
         Ink(
           id: 'new$i',
           docId: 'd',
-          pageId: 'p0',
           samples: fresh[i].samples,
           width: 2.5,
           color: 1,
         ),
       );
-      layer.paint(c, 'p0');
+      layer.paint(c);
     }
     final per = sw.elapsedMicroseconds / 20 / 1000;
     // ignore: avoid_print
@@ -112,14 +110,14 @@ void main() {
     final r = math.Random(1);
     // Warm up.
     for (var i = 0; i < 100; i++) {
-      layer.touching('p0', r.nextDouble() * 560, r.nextDouble() * 760, 14);
+      layer.touching(r.nextDouble() * 560, r.nextDouble() * 760, 14);
     }
     final sw = Stopwatch()..start();
     var found = 0;
     const n = 2000;
     for (var i = 0; i < n; i++) {
       found += layer
-          .touching('p0', r.nextDouble() * 560, r.nextDouble() * 760, 14)
+          .touching(r.nextDouble() * 560, r.nextDouble() * 760, 14)
           .length;
     }
     final per = sw.elapsedMicroseconds / n / 1000;
@@ -170,7 +168,7 @@ void main() {
           final layer = InkLayer()..replaceAll(strokes(1000));
           void paint(double scale) {
             final rec = PictureRecorder();
-            layer.paint(Canvas(rec), 'p0', scale: scale);
+            layer.paint(Canvas(rec), scale: scale);
             rec.endRecording().dispose();
           }
 
@@ -192,7 +190,7 @@ void main() {
       await tester.runAsync(() async {
         final layer = InkLayer()..replaceAll(strokes(InkLayer.bitmapThreshold));
         final rec = PictureRecorder();
-        layer.paint(Canvas(rec), 'p0', scale: 1);
+        layer.paint(Canvas(rec), scale: 1);
         rec.endRecording().dispose();
         await Future<void>.delayed(const Duration(milliseconds: 300));
         expect(layer.bitmapRenders, 0);
@@ -206,7 +204,7 @@ void main() {
           final rec = PictureRecorder();
           final c = Canvas(rec)
             ..drawColor(const Color(0xFFFFFFFF), BlendMode.src);
-          layer.paint(c, 'p0', scale: 1);
+          layer.paint(c, scale: 1);
           final img = await rec.endRecording().toImage(620, 820);
           return (await img.toByteData())!;
         }
@@ -236,7 +234,7 @@ void main() {
           final layer = InkLayer()..replaceAll(strokes(800));
           void paint(double scale) {
             final rec = PictureRecorder();
-            layer.paint(Canvas(rec), 'p0', scale: scale);
+            layer.paint(Canvas(rec), scale: scale);
             rec.endRecording().dispose();
           }
 
@@ -260,7 +258,7 @@ void main() {
           final layer = InkLayer()..replaceAll(strokes(800));
           void paint() {
             final rec = PictureRecorder();
-            layer.paint(Canvas(rec), 'p0', scale: 1);
+            layer.paint(Canvas(rec), scale: 1);
             rec.endRecording().dispose();
           }
 
@@ -271,7 +269,6 @@ void main() {
             Ink(
               id: 'extra',
               docId: 'd',
-              pageId: 'p0',
               samples: Float32List.fromList([1, 1, 1, 50, 50, 1]),
               width: 2,
               color: 1,
@@ -296,7 +293,7 @@ void main() {
         final layer = InkLayer()..replaceAll(strokes(800));
         void paint() {
           final rec = PictureRecorder();
-          layer.paint(Canvas(rec), 'p0', scale: 1);
+          layer.paint(Canvas(rec), scale: 1);
           rec.endRecording().dispose();
         }
 
