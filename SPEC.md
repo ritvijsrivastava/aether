@@ -1,12 +1,13 @@
 # Aether: Technical Specification (v1)
 
-Status: DRAFT for review. Nothing here is implemented. Companion documents: `PRODUCT.md` (who and why), `DESIGN.md` (look and components). Decisions marked **[DECIDED]** came from the project owner; **[PROPOSED]** are my recommendations awaiting approval; **[OPEN]** need an answer or a spike.
+Status: **v2 pivot proposed (2026-10-20), section 21; awaiting owner answers (21.7).** Sections 1 to 20 describe v1 as built through M4 (PDF-first); where section 21 conflicts, section 21 wins once approved. Companion documents: `PRODUCT.md` (who and why), `DESIGN.md` (look and components). Decisions marked **[DECIDED]** came from the project owner; **[PROPOSED]** are my recommendations awaiting approval; **[OPEN]** need an answer or a spike.
 
 ---
 
 ## 1. Goals and non-goals
 
 ### 1.1 Goals
+0. **[PROPOSED, pivot, see section 21]** Aether is a **general-purpose canvas**: a plain empty board on which you can place PDFs, images, text files, notes, ink and simple shapes, and think freely. PDF annotation is one thing the board does well, not the product.
 1. Faithfully reproduce the interaction model of `Aether.dc.html` (infinite canvas, movable document cards, Mark/Ink/Erase/Note/Link/Select/Pan tools, Extract panel, Markdown export) in Flutter. **[DECIDED: port plus UX fixes]**
 2. Import and annotate **real PDFs**. **[DECIDED]**
 3. Run well on **Android phones and tablets** and **Linux desktop**, with pen, touch, and mouse. **[DECIDED]**
@@ -16,7 +17,8 @@ Status: DRAFT for review. Nothing here is implemented. Companion documents: `PRO
 
 ### 1.2 Non-goals for v1
 - Handwriting-to-text conversion **[DECIDED: deferred]**. A recognizer interface is reserved (section 9.6) but unimplemented.
-- OCR for scanned PDFs, non-PDF sources (web articles, slide decks, images).
+- OCR for scanned PDFs, web articles, slide decks. (Images, Markdown and plain text become supported by the pivot, section 21; Word documents are an open question, 21.7 Q4.)
+- A full drawing program: layers, brushes with textures, filters, vector path editing. The drawing set is deliberately small (21.4).
 - **Right-to-left and bidirectional text** **[DECIDED: not in v1, 2026-10-19]**. Selection and highlights are built and tested for left-to-right text only. On RTL pages, selection may jump or split words; this goes in the release notes. Revisit after v1.
 - Cloud sync, accounts, collaboration (data model is ready; transport is not built).
 - Web, iOS, Windows, macOS builds.
@@ -490,10 +492,14 @@ Each milestone ends with a **review stop** where you try it on the Tab S9 and/or
 | **M3** Text and marks | Text layer extraction, word/line snapping, multi-line highlights, Extract list with filters, jump, Markdown copy | Drag-select matches expected text on fixture PDFs; Extract matches marks exactly; export golden tests |
 | **M3.1** Follow-ups (small, no review stop; **done**, see `docs/m3.1.md`) | Register items R1 to R4: rotated-page correctness, missing fixtures (scanned, rotated), text no longer queues behind tiles, selection perf check | Rotated PDF highlights land on the right words (test); scanned and rotated fixtures exist; text for visible pages is ready before first touch on the S9 |
 | **M4** Ink, notes, links, select, undo | Pressure ink, prediction, erase (whole + partial), notes (move/resize), links (multi, snap), lasso + actions, full command stack; **plus register items R5 to R13 and R33** | Undo/redo property tests; ink budgets met; palm rejection verified on S9 |
+| **M4.1** Fix pass (**proposed**) | Owner fixes F1, F2, F6 to F10 on the existing canvas; no data model change (R38, R39, R43 to R47) | Each fix has a test; palm test on S9 passes; owner re-checks the ten items |
+| **M4.2** Boards (**proposed**) | Data model pivot (21.2): Board, Source, Card; migration of existing documents; Library lists boards; New board; Add menu; paste (text and image); free text blocks; z-order, resize, duplicate for every card (R40, R42, R47) | Existing documents open unchanged as boards; blank board works; kill -9 safe; **review stop** |
+| **M4.3** More import types (**proposed**) | Image, Markdown, plain text cards; text cards share the text-layer and highlight pipeline; drag-and-drop on Linux, share-to on Android (R41) | Highlight and Extract work on a Markdown card; image cards take ink and notes |
+| **M4.4** Drawing basics (**proposed**) | Shapes (line, arrow, rectangle, ellipse), hold-to-straighten, fill and stroke colour, marker (translucent) stroke, shape text label (21.4) | Draw a diagram without leaving the app; shapes obey undo, select, move, recolor; **review stop** |
 | **M5** Persistence and library | Autosave, crash recovery, reopen, library (thumbnails, search, rename, recently deleted), JSON backup, share/save; **plus register items R14 to R19** | Kill -9 mid-stroke loses at most the tail of one stroke; round-trip export/import identical |
 | **M6** Polish, accessibility, release | Screen-reader pass, keyboard pass, motion, empty/error states, settings, perf profiling, release builds (APK split + Linux bundle); **plus register items R20 to R32 and R34 to R37 (R22 closed)** | All budgets in section 13; a11y checklist; no analyzer warnings; release artifacts install and run on both |
 
-**Stop rules:** after M2 (is the canvas feel right?) and after M4 (is the pen feel right?) I stop for your hands-on review before building on top.
+**Stop rules (updated by the pivot):** after M2 (canvas feel), after M4 (pen feel; **done, plus the ten fixes F1 to F10**), after M4.2 (do boards feel right?) and after M4.4 (is the drawing set enough?) I stop for your hands-on review before building on top.
 
 
 ### 18.1 Carry-forward register (added after M3)
@@ -530,6 +536,16 @@ Everything an earlier milestone report or this spec marked "later", "unverified"
 | R35 | A page with 10,000 strokes records its picture once on first paint: a one-time pause of about 0.4 s on the S9 (the bitmap cache fixed steady-state frames: raster 47 ms to 1.5 ms) | M4 | M6 | Recording is chunked or moved off the first frame; or accepted in writing |
 | R36 | Soft-keyboard behaviour of notes (the canvas pans to keep the note visible) was only tested with a hardware keyboard | M4 | M6 | Checked with the on-screen keyboard on the S9 and on a phone |
 | R37 | Pen pressure curve has no setting yet (`PenConfig` is code only) | M4 | M6 | A "pen pressure" choice in Settings (soft, medium, firm) |
+| R38 | **F1** Erase all: one action to clear ink (and optionally everything) | owner 2026-10-20 | M4.1 | Erase panel has "Clear all ink" with a scope choice (21.7 Q5); one undo step; confirm only if it cannot be undone |
+| R39 | **F2** Any ink colour; the last 5 used are kept | owner | M4.1 | Colour picker (hue/lightness plus hex) in the pen panel; 5 recents persist across launches |
+| R40 | **F3** Create a board with no PDF | owner | M4.2 | "New board" in Library opens an empty canvas; "Add" menu places content |
+| R41 | **F4** Import images, Markdown, plain text (Word: 21.7 Q4) | owner | M4.3 | Each lands as a movable card; text cards support highlights and Extract |
+| R42 | **F5** Select text anywhere, copy, paste onto canvas as a text block | owner | M4.2 (paste) and M4.3 (copy from text cards) | Ctrl+V / long-press Paste creates a text card at the pointer; clipboard image creates an image card |
+| R43 | **F6** Re-highlighting the same text with the same meaning is not allowed | owner | M4.1 | Same range and meaning: no new mark, the existing one flashes. Overlap rules in 21.5 |
+| R44 | **F7** Pen-friendly highlight menu (after highlighting, and on tapping a highlight): Add note, Change meaning, Copy, Delete; no long-press needed | owner | M4.1 | Vertical action strip beside the highlight; works with pen, finger and mouse |
+| R45 | **F8** Ink and Erase option panels horizontal and collapsible | owner | M4.1 | Horizontal strip; double-tap the tool to hide or reopen; state remembered per tool |
+| R46 | **F9** Resting palm must not block finger gestures | owner | M4.1 | Palm contact is classified and ignored on its own; pan and pinch with other fingers keep working (measured on the S9; test with synthetic contact sizes) |
+| R47 | **F10** A pen tap on a note must not close or edit it; pen can select, move, reorder (bring forward/back) | owner | M4.1 (pen select/move) and M4.2 (z-order for all items) | Pen never types; edit with finger tap or keyboard (21.7 Q6) |
 | R23 | Multiply blend cost on the S9 measured only with 8 highlights; flat-fill fallback undecided | M3 | M6 | Measured on a page with many highlights; keep multiply or switch by setting, written down |
 | R24 | Predictive back enabled but never exercised on a device | M1 | M6 | Back from Canvas, sheets and menus checked on the S9 |
 | R25 | Linux minimum window size (800x520) never resized by hand; HiDPI and Wayland checks | M1, §17 | M6 | Done and noted in the M6 report |
@@ -593,3 +609,65 @@ Deferred past v1 on purpose (unchanged): handwriting conversion, OCR, flattened 
 - **Extract order is reading order** (page, then text position; rectangles after the text on their page). Markdown copy is grouped by meaning (Claim, Method, Question), the reading-order layout exists in the exporter and is pinned by golden files; a setting for it is M6.
 - **Escape** drops a mark in progress. **Ctrl+C** with nothing selected copies the Extract list as Markdown.
 - Highlight painting: see DESIGN.md "Highlights" (multiply in the page pass).
+
+---
+
+## 21. Pivot: Aether is a general canvas (proposed 2026-10-20)
+
+Owner direction: *"a plain empty blackboard; we can do whatever we want here."* PDFs, images and text are things you put on it. Nothing below is built until the owner answers 21.7.
+
+### 21.1 Principles
+1. **The board is the unit.** The Library lists boards. A board starts empty; a PDF is imported into a board (new or existing), never required.
+2. **Everything on a board is an item with a position.** Items are movable, resizable (cards: proportionally), orderable (z-order), duplicable, deletable, selectable with the same Select tool.
+3. **Annotation is generic.** Ink, notes and links work over any item, or over empty canvas. Highlights need text, so they work on items that have a text layer (PDF pages, Markdown and text cards, text blocks).
+4. **Small drawing set, done well.** Enough to sketch a diagram. No layers, no brushes with textures.
+5. **Keep what is built.** The PDF pipeline, text layer, Extract, ink, notes, links, select and the command stack stay; the pivot changes ownership and adds item kinds.
+
+### 21.2 Data model changes
+```
+Board  { id, title, createdAt, updatedAt, hlc }                  // was Document
+Source { id, boardId, kind: pdf | image | markdown | text, fileHash, title, hlc }   // was PdfFile reference
+Card   { id, boardId, sourceId?, kind, pageIndex?, x, y, width, height, z, hlc }    // was PageRef; also text blocks and shapes
+```
+- Existing **Document → Board** with one **Source** and its **PageRef → Card**; migration is one-way and tested on the real database from the S9.
+- **Marks** gain `boardId` (replacing `docId`) and an optional `cardId` (replacing `pageId`). Anchored marks keep **card space** coordinates (so they move with the card); free marks stay in canvas space.
+- **Highlights** keep their text anchors but anchor to a card with a text layer.
+- **Z-order** is a per-board fractional index (CRDT-friendly), so reordering is one field change.
+- **Shapes and text blocks** are cards (kind `shape`, `textBlock`) with their style in a JSON field; they need no source file.
+- The op log is unchanged; `docId` columns keep their names in storage for one release to avoid a destructive migration, with a mapping layer.
+
+### 21.3 Add menu (the single entry for content)
+"Add" (pill beside the tool rail; also right-click, long-press on empty canvas, Ctrl+V, drag-and-drop, and Android share-to): **File** (PDF, image, Markdown, text), **Paste**, **Text**, **Note**, **Shape**. Dropping or pasting places the item at the pointer, or at the view centre when there is none.
+
+### 21.4 Drawing set (M4.4)
+- Ink with any colour (full picker; **last 5 used** shown first), width 1 to 24, and a **marker** variant (wide, translucent, flat ends).
+- Shapes: line, arrow, rectangle, ellipse, with stroke colour, optional fill, width; optional label text. Drawn by drag, edited by Select (move, resize handles, recolor).
+- Hold still at the end of a stroke: straighten to a line or snap to a shape **[PROPOSED, can cut]**.
+- Text block: free text on the canvas, no note chrome; font size choice (3 steps).
+- Not included: layers, gradients, brushes, blend modes, path editing, image editing.
+
+### 21.5 Behaviour fixes (M4.1)
+- **F1 Erase all.** The Erase panel has "Clear all ink". Scope per Q5. One undo step. Not a confirm dialog when undo is available (a snackbar with Undo).
+- **F2 Colours.** Picker with hue strip, lightness/saturation square and hex field; recents row holds the last 5 distinct colours used by any ink stroke; stored in settings; shared across boards.
+- **F6 Duplicate highlights.** Creating a highlight whose range equals an existing live highlight of the **same meaning** does nothing visible except flash the existing one. A **different meaning** over the same range changes the meaning of the existing one (one undo step). A partly overlapping range of the same meaning **merges** into one highlight covering the union (Q7). Different meanings may overlap partially and are shown stacked.
+- **F7 Highlight action strip.** A vertical strip of icon buttons (48 dp): Add note, Change meaning, Copy, Delete. It appears beside the highlight right after creating it (dismissed by tapping elsewhere or after a pen stroke), and when a highlight is tapped with Mark, Select or Pan tools. Long-press and right-click keep working as shortcuts. Pen, finger and mouse behave the same.
+- **F8 Tool option panels.** Ink and Erase options open as a **horizontal strip** anchored to the toolbar edge (top of the canvas on wide screens; above the bottom bar on phones). **Double-tap the tool** (or press its key twice) collapses or reopens it; collapsed state is remembered per tool, and the strip collapses itself after the first stroke when "auto-hide" is on (Q8).
+- **F9 Palm.** A touch is a **palm** if its contact is large (`radiusMajor` above a threshold measured on the S9), or it lands within 300 ms and 60 mm of a pen down or hover, and it has not moved. A palm is ignored **individually**: it must never cancel, block or capture other fingers. Pan and pinch work with two other fingers while a palm rests. Measured on the S9 with a real palm before acceptance.
+- **F10 Notes with the pen.** The pen never edits text (no handwriting-to-text in v1). With the pen, on a note: **tap selects** (does not close or open it), **drag moves**, and the selection pill offers Bring forward, Send back, Delete. Finger tap, a mouse click, or Enter on a selected note opens it for typing. A note being edited closes only when focus is lost by a deliberate tap elsewhere with a finger or mouse, not by a pen tap.
+
+### 21.6 Library and screens
+- Library: "New board" is the primary action; "Import PDF" becomes "Add file" and creates a board per file, or adds to an open one. Cards show a **board preview** (rendered thumbnail of the board), item count, last opened.
+- Canvas screen: Extract panel remains, listing highlights and notes of the board; for boards with no highlights it is hidden by default.
+- Export: whole board or selection as **PNG**; Markdown export unchanged; PDF flatten stays v1.1.
+
+### 21.7 Open questions for the owner
+1. **Product name and tone.** Keep "Aether" and the current look, or does a general canvas change the Library wording ("Boards")?
+2. **Existing documents:** convert each into a board automatically (proposed), or keep a separate "Documents" area?
+3. **Several PDFs on one board** share one Extract panel with a source label per quote (proposed). OK?
+4. **Word documents (.doc/.docx).** Options: (a) no, v1.1; (b) import text only, as a Markdown card (loses layout and images); (c) convert to PDF through LibreOffice on Linux only. Proposed: (b) later, not in M4.3.
+5. **"Erase all" scope:** (a) all ink on the board, (b) all ink on the current page or card, (c) everything including notes and highlights. Proposed: a menu with (a) and (b) for ink, and "Clear board" for (c) behind a confirm.
+6. **Editing a note with a pen:** pen cannot type, so a finger tap, mouse click, or Enter opens it (proposed). Or a pen double-tap opens it?
+7. **Same-colour partial overlaps** merge into one highlight (proposed), or stay separate?
+8. **Panels:** auto-collapse after the first stroke (proposed), or only by double-tap?
+9. **"Marker":** a translucent wide highlighter-like ink stroke, separate from the pen (proposed). Is that what you meant, or only colour choice?
+10. **Order of work:** M4.1 fixes first, then boards (proposed), or boards first?
