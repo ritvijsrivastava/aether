@@ -24,6 +24,22 @@ void main() {
     expect(rail(tester).direction, Axis.vertical, reason: 'fits standing');
   });
 
+  testWidgets('dragging to the bottom parks the rail on the bottom edge', (
+    tester,
+  ) async {
+    await pumpApp(tester, size: const Size(900, 600), location: '/doc/board');
+    await tester.drag(grip, const Offset(0, 600));
+    await tester.pump();
+    expect(rail(tester).direction, Axis.horizontal, reason: 'moved at all');
+    final railSurface = find.ancestor(
+      of: find.byType(ToolRail),
+      matching: find.byType(PanelSurface),
+    );
+    final at = tester.getTopLeft(railSurface);
+    // Lying height: pad 4 + button 48 + pad 4 = 56; the bottom edge is 8 away.
+    expect(at.dy, 600 - 8 - 56, reason: 'pinned at the bottom edge');
+  });
+
   testWidgets('the rail never leaves the screen', (tester) async {
     await pumpApp(tester, size: const Size(900, 600), location: '/doc/board');
     await tester.drag(grip, const Offset(-800, -400));
