@@ -130,6 +130,7 @@ class AppSettings {
     this.leftHanded = false,
     this.perfHud = false,
     this.autoHideToolPanel = true,
+    this.touchLog = false,
   });
 
   final ThemeMode themeMode;
@@ -147,18 +148,24 @@ class AppSettings {
   /// cover the page. Double-tap the tool to bring them back.
   final bool autoHideToolPanel;
 
+  /// Writes the last 20 s of touch and pen events to a file, for diagnosing
+  /// palm problems on a device.
+  final bool touchLog;
+
   AppSettings copyWith({
     ThemeMode? themeMode,
     bool? fingerDraws,
     bool? leftHanded,
     bool? perfHud,
     bool? autoHideToolPanel,
+    bool? touchLog,
   }) => AppSettings(
     themeMode: themeMode ?? this.themeMode,
     fingerDraws: fingerDraws ?? this.fingerDraws,
     leftHanded: leftHanded ?? this.leftHanded,
     perfHud: perfHud ?? this.perfHud,
     autoHideToolPanel: autoHideToolPanel ?? this.autoHideToolPanel,
+    touchLog: touchLog ?? this.touchLog,
   );
 }
 
@@ -168,6 +175,7 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
   static const _left = 'leftHanded';
   static const _hud = 'perfHud';
   static const _autoHide = 'autoHideToolPanel';
+  static const _touchLog = 'touchLog';
 
   @override
   Future<AppSettings> build() async {
@@ -182,6 +190,7 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
       leftHanded: await db.setting(_left) == '1',
       perfHud: await db.setting(_hud) == '1',
       autoHideToolPanel: await db.setting(_autoHide) != '0',
+      touchLog: await db.setting(_touchLog) == '1',
     );
   }
 
@@ -205,6 +214,11 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
   Future<void> setAutoHideToolPanel(bool v) async {
     state = AsyncData(_cur.copyWith(autoHideToolPanel: v));
     await ref.read(databaseProvider).putSetting(_autoHide, v ? '1' : '0');
+  }
+
+  Future<void> setTouchLog(bool v) async {
+    state = AsyncData(_cur.copyWith(touchLog: v));
+    await ref.read(databaseProvider).putSetting(_touchLog, v ? '1' : '0');
   }
 
   Future<void> setLeftHanded(bool v) async {

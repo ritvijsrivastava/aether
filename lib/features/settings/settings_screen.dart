@@ -105,6 +105,17 @@ class SettingsScreen extends ConsumerWidget {
                   style: text.caption.copyWith(color: t.inkMuted),
                 ),
               ),
+              SwitchListTile(
+                value: s.touchLog,
+                onChanged: n.setTouchLog,
+                title: Text('Record touch log', style: text.title),
+                subtitle: Text(
+                  'Keeps the last 20 seconds of touches and pen events in a file '
+                  'on this device, to find out why a palm or finger misbehaves. '
+                  'Turn off when done.',
+                  style: text.caption.copyWith(color: t.inkMuted),
+                ),
+              ),
               section('About'),
               ListTile(
                 title: Text('Licenses', style: text.title),

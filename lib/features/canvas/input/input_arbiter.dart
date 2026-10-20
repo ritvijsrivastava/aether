@@ -56,6 +56,34 @@ class TouchStats extends ChangeNotifier {
 
   void changed() => notifyListeners();
 
+  // --- touch log: the last [logWindow] of raw events, for finding out why a
+  // palm does what it does (Settings, Diagnostics, Record touch log). ---
+
+  bool recording = false;
+  static const Duration logWindow = Duration(seconds: 20);
+  final List<(Duration, String)> _log = [];
+  bool logDirty = false;
+
+  void record(String phase, PointerSample p) {
+    if (!recording) return;
+    _log.add((
+      p.time,
+      '${p.time.inMilliseconds} #${p.id} ${p.kind.name} $phase '
+          '${p.position.dx.toStringAsFixed(0)},${p.position.dy.toStringAsFixed(0)} '
+          'r=${p.radiusMajor.toStringAsFixed(1)}'
+          '${p.pressure == null ? '' : ' p=${p.pressure!.toStringAsFixed(2)}'}',
+    ));
+    while (_log.isNotEmpty && p.time - _log.first.$1 > logWindow) {
+      _log.removeAt(0);
+    }
+    logDirty = true;
+  }
+
+  /// The recorded events, oldest first, one per line, with a header.
+  String dumpLog() =>
+      '# ms #pointer kind phase x,y radius [pressure]\n'
+      '${_log.map((e) => e.$2).join('\n')}\n';
+
   String? get line => fingers + palms == 0
       ? null
       : 'touch: last ${lastRadius.toStringAsFixed(0)} px, $lastVerdict'
@@ -130,10 +158,20 @@ class InputArbiter {
   static const Duration penLockout = Duration(milliseconds: 250);
   static const double palmZone = 300;
 
-  /// A contact that has stayed put this long (and under [restingSlop] px) when
-  /// a second finger lands is a resting hand, not half of a pinch.
+  /// A contact drives a pan or pinch only once it has moved this far within
+  /// this time. A resting palm jitters; a finger pan does not.
+  static const double moveSlop = 10;
+  static const Duration moveWindow = Duration(milliseconds: 150);
+
+  /// Two fingers that land this close together are a deliberate pair (one may
+  /// stay still while the other moves: a pinch). A contact that was already
+  /// there for longer is a resting hand and never pairs.
+  static const Duration pairWindow = Duration(milliseconds: 300);
+
+  /// A lone contact (not part of a pair) that has stayed put this long while
+  /// another finger was down is a resting hand; if it then slides, it is
+  /// still set aside rather than allowed to pan.
   static const Duration restingTime = Duration(milliseconds: 600);
-  static const double restingSlop = 8;
 
   /// Touch contacts larger than this (logical px) are palms.
   static const double palmRadius = 24;
@@ -151,8 +189,12 @@ class InputArbiter {
   bool _penDown = false;
   Duration? _penSeen;
   Offset? _penPos;
-  final Map<int, Duration> _downAt = {};
-  final Map<int, double> _travel = {};
+  final Map<int, List<(Duration, Offset)>> _trail = {};
+  final Set<int> _pinchIds = {};
+  final Map<int, Duration> _landed = {};
+  final Map<int, int> _partner = {};
+  final Map<int, Offset> _origin = {};
+  final Map<int, double> _drift = {};
   final _velocity = _Velocity();
 
   // Trackpad pan/zoom (Linux).
@@ -179,6 +221,7 @@ class InputArbiter {
   }
 
   void hover(PointerSample p) {
+    stats?.record('hover', p);
     if (p.kind == PointerDeviceKind.stylus ||
         p.kind == PointerDeviceKind.invertedStylus) {
       _penSeen = p.time;
@@ -187,6 +230,7 @@ class InputArbiter {
   }
 
   void down(PointerSample p) {
+    stats?.record('down', p);
     if (p.kind == PointerDeviceKind.stylus ||
         p.kind == PointerDeviceKind.invertedStylus) {
       _penDown = true;
@@ -226,8 +270,6 @@ class InputArbiter {
         }
         stats?.finger(p.radiusMajor);
         stats?.changed();
-        _downAt[p.id] = p.time;
-        _travel[p.id] = 0;
         if (_mode == _Mode.cardDrag) {
           _ignored.add(p.id);
           return;
@@ -244,23 +286,26 @@ class InputArbiter {
           }
           return;
         }
-        if (_touches.length == 1 &&
-            _mode == _Mode.pan &&
-            _restingLead(p.time)) {
-          // The first contact has been resting: a hand, not half a pinch.
-          // Set it aside and let this finger pan.
-          final resting = _touches.keys.single;
-          _ignored.add(resting);
-          _touches.clear();
-          stats?.palm(0, 'resting');
-          stats?.changed();
-          _finish(Offset.zero);
+        // A finger that has only landed does nothing yet: pan and pinch are
+        // driven by contacts that MOVE, so a hand resting beside the fingers
+        // (whatever its size) can never block or join them.
+        // Landing within [pairWindow] of another finger makes a pair.
+        for (final e in _landed.entries) {
+          if (_touches.containsKey(e.key) &&
+              !_partner.containsKey(e.key) &&
+              p.time - e.value <= pairWindow) {
+            _partner[e.key] = p.id;
+            _partner[p.id] = e.key;
+            break;
+          }
         }
+        _landed[p.id] = p.time;
+        _origin[p.id] = p.position;
+        _drift[p.id] = 0;
         _touches[p.id] = p.position;
-        if (_touches.length == 1) {
-          _beginPan(p);
-        } else if (_touches.length == 2) {
-          _beginPinch();
+        _trail[p.id] = [(p.time, p.position)];
+        if (_touches.length == 1 && _mode == _Mode.idle) {
+          sink.gestureStart(); // stops a fling
         }
       case PointerDeviceKind.mouse:
       case PointerDeviceKind.stylus:
@@ -287,29 +332,131 @@ class InputArbiter {
     }
   }
 
-  bool _restingLead(Duration now) {
-    if (_touches.length != 1) return false;
-    final id = _touches.keys.single;
-    final since = _downAt[id];
-    return since != null &&
-        now - since >= restingTime &&
-        (_travel[id] ?? 0) <= restingSlop;
+  /// Contacts that have moved at least [moveSlop] px over the last
+  /// [moveWindow] (or since their previous sample, if that was longer ago).
+  bool _isMoving(int id) => _movement(id) >= moveSlop;
+
+  double _movement(int id) {
+    final pos = _touches[id];
+    if (pos == null || (_trail[id]?.length ?? 0) < 2) return 0;
+    return (pos - _trailStart(id)).distance;
+  }
+
+  /// Where [id] was about [moveWindow] ago (or at its previous sample): the
+  /// place a pan that starts now counts from, so the first 10 px are not lost.
+  Offset _trailStart(int id) {
+    final t = _trail[id]!;
+    final now = t.last.$1;
+    var ref = t.length >= 2 ? t[t.length - 2].$2 : t.last.$2;
+    for (var i = 0; i < t.length - 1; i++) {
+      if (now - t[i].$1 <= moveWindow) {
+        ref = t[i].$2;
+        break;
+      }
+    }
+    return ref;
+  }
+
+  void _noteTrail(PointerSample p) {
+    final t = _trail[p.id];
+    if (t == null) return;
+    t.add((p.time, p.position));
+    while (t.length > 2 && p.time - t[1].$1 > moveWindow * 3) {
+      t.removeAt(0);
+    }
+  }
+
+  /// A contact that has sat still for [restingTime] with another finger down,
+  /// and has just begun to move: a hand sliding, not a finger.
+  bool _isRestingHand(PointerSample p) {
+    final land = _landed[p.id];
+    final o = _origin[p.id];
+    if (land == null || o == null || !_touches.containsKey(p.id)) return false;
+    if (_touches.length < 2 || _pairOf(p.id) != null) return false;
+    if (p.time - land < restingTime) return false;
+    if ((_drift[p.id] ?? 0) >= moveSlop) return false;
+    return (p.position - o).distance >= moveSlop;
+  }
+
+  /// The finger [id] landed together with, if it is still down.
+  int? _pairOf(int id) {
+    final other = _partner[id];
+    return other != null && _touches.containsKey(other) ? other : null;
+  }
+
+  void _forget(int id) {
+    _trail.remove(id);
+    _landed.remove(id);
+    _origin.remove(id);
+    _drift.remove(id);
+    final other = _partner.remove(id);
+    if (other != null) _partner.remove(other);
+  }
+
+  /// With nothing in progress, starts a pan or pinch if contacts are moving.
+  void _maybeBegin(Duration now) {
+    final moving = [
+      for (final id in _touches.keys)
+        if (_isMoving(id)) id,
+    ]..sort((a, b) => _movement(b).compareTo(_movement(a)));
+    if (moving.isEmpty) return;
+    if (moving.length == 1 && _pairOf(moving.single) != null) {
+      _beginPinch([moving.single, _pairOf(moving.single)!], {moving.single});
+    } else if (moving.length == 1) {
+      final id = moving.single;
+      final from = _trailStart(id);
+      _mode = _Mode.pan;
+      _lead = id;
+      _velocity
+        ..reset()
+        ..add(now, from);
+      sink.gestureStart();
+      final d = _touches[id]! - from;
+      _last = _touches[id]!;
+      _velocity.add(now, _last);
+      if (d != Offset.zero) sink.panBy(d);
+    } else {
+      final two = moving.take(2).toList();
+      _beginPinch(two, {...two});
+    }
   }
 
   void move(PointerSample p) {
+    stats?.record('move', p);
     if (p.kind == PointerDeviceKind.stylus ||
         p.kind == PointerDeviceKind.invertedStylus) {
       _penSeen = p.time;
       _penPos = p.position;
     }
-    final before = _touches[p.id];
-    if (before != null) {
-      _travel[p.id] = (_travel[p.id] ?? 0) + (p.position - before).distance;
-    }
     if (_ignored.contains(p.id)) return;
+    if (_touchPans && _isRestingHand(p)) {
+      _ignored.add(p.id);
+      _touches.remove(p.id);
+      _forget(p.id);
+      stats?.palm(p.radiusMajor, 'resting hand slid');
+      stats?.changed();
+      return;
+    }
+    if (_touches.containsKey(p.id)) {
+      final o = _origin[p.id];
+      if (o != null) {
+        final d = (p.position - o).distance;
+        if (d > (_drift[p.id] ?? 0)) _drift[p.id] = d;
+      }
+    }
     switch (_mode) {
       case _Mode.pan:
-        if (p.id != _lead) return;
+        if (_touches.containsKey(p.id)) {
+          _touches[p.id] = p.position;
+          _noteTrail(p);
+        }
+        if (p.id != _lead) {
+          // Another contact: it joins only if it is really moving.
+          if (_touches.containsKey(p.id) && _isMoving(p.id)) {
+            _beginPinch([_lead!, p.id], {p.id});
+          }
+          return;
+        }
         final d = p.position - _last;
         _last = p.position;
         _velocity.add(p.time, p.position);
@@ -327,21 +474,21 @@ class InputArbiter {
       case _Mode.pinch:
         if (!_touches.containsKey(p.id)) return;
         _touches[p.id] = p.position;
-        if (_touches.length < 2) return;
-        final (c, d) = _pinchMetrics();
-        final factor = _pinchDistance == 0 ? 1.0 : d / _pinchDistance;
-        sink.zoomPan(anchor: c, factor: factor, pan: c - _pinchCentroid);
-        _pinchCentroid = c;
-        _pinchDistance = d == 0 ? 1 : d;
+        if (!_pinchIds.contains(p.id) || _pinchIds.length < 2) return;
+        _applyPinch();
       case _Mode.idle:
-        if (_touches.containsKey(p.id)) _touches[p.id] = p.position;
+        if (_touches.containsKey(p.id)) {
+          _touches[p.id] = p.position;
+          _noteTrail(p);
+          if (_touchPans) _maybeBegin(p.time);
+        }
     }
   }
 
   void up(PointerSample p) {
+    stats?.record('up', p);
     final wasIgnored = _ignored.remove(p.id);
-    _downAt.remove(p.id);
-    _travel.remove(p.id);
+    _forget(p.id);
     if (p.kind == PointerDeviceKind.stylus ||
         p.kind == PointerDeviceKind.invertedStylus) {
       _penDown = false;
@@ -349,6 +496,7 @@ class InputArbiter {
     }
     if (wasIgnored) return;
     _touches.remove(p.id);
+    final wasPinch = _pinchIds.remove(p.id);
     switch (_mode) {
       case _Mode.pan:
         if (p.id != _lead) return;
@@ -364,14 +512,17 @@ class InputArbiter {
         if (p.id != _lead) return;
         _endTool(at: p);
       case _Mode.pinch:
-        if (_touches.length == 1) {
-          // One finger left: carry on panning with it, no fling.
-          final id = _touches.keys.single;
+        if (!wasPinch) break; // a bystander lifted: nothing changes
+        if (_pinchIds.length == 1 && _touches.containsKey(_pinchIds.single)) {
+          // One of the pair left: carry on panning with the other, no fling.
+          final id = _pinchIds.single;
+          _pinchIds.clear();
           _mode = _Mode.pan;
           _lead = id;
           _last = _touches[id]!;
           _velocity.reset();
-        } else if (_touches.isEmpty) {
+        } else {
+          _pinchIds.clear();
           _finish(Offset.zero);
         }
       case _Mode.idle:
@@ -380,21 +531,30 @@ class InputArbiter {
   }
 
   void cancel(PointerSample p) {
+    stats?.record('cancel', p);
     _ignored.remove(p.id);
-    _downAt.remove(p.id);
-    _travel.remove(p.id);
+    _forget(p.id);
     if (p.kind == PointerDeviceKind.stylus) _penDown = false;
     _touches.remove(p.id);
-    if (_mode == _Mode.pinch && _touches.length == 1) {
-      up(p);
+    if (_mode == _Mode.pinch && _pinchIds.contains(p.id)) {
+      _pinchIds.remove(p.id);
+      if (_pinchIds.length == 1 && _touches.containsKey(_pinchIds.single)) {
+        final id = _pinchIds.single;
+        _pinchIds.clear();
+        _mode = _Mode.pan;
+        _lead = id;
+        _last = _touches[id]!;
+        _velocity.reset();
+      } else {
+        _pinchIds.clear();
+        _finish(Offset.zero);
+      }
       return;
     }
     if (_mode == _Mode.tool && p.id == _lead) {
       _endTool(cancel: true);
     } else if ((_mode == _Mode.pan || _mode == _Mode.cardDrag) &&
         p.id == _lead) {
-      _finish(Offset.zero);
-    } else if (_touches.isEmpty && _mode == _Mode.pinch) {
       _finish(Offset.zero);
     }
   }
@@ -485,16 +645,37 @@ class InputArbiter {
     }
   }
 
-  void _beginPinch() {
+  /// Starts a pinch with [ids] (default: the first two touches). The ids in
+  /// [fromTrail] count from where they were a moment ago, so the movement
+  /// that started the gesture is not lost.
+  void _beginPinch([List<int>? ids, Set<int> fromTrail = const {}]) {
     _mode = _Mode.pinch;
-    final (c, d) = _pinchMetrics();
-    _pinchCentroid = c;
+    _pinchIds
+      ..clear()
+      ..addAll(ids ?? _touches.keys.take(2));
+    final pts = [
+      for (final id in _pinchIds)
+        fromTrail.contains(id) && (_trail[id]?.length ?? 0) >= 2
+            ? _trailStart(id)
+            : _touches[id]!,
+    ];
+    _pinchCentroid = (pts[0] + pts[1]) / 2;
+    final d = (pts[0] - pts[1]).distance;
     _pinchDistance = d == 0 ? 1 : d;
     sink.gestureStart();
+    if (fromTrail.isNotEmpty) _applyPinch();
+  }
+
+  void _applyPinch() {
+    final (c, d) = _pinchMetrics();
+    final factor = _pinchDistance == 0 ? 1.0 : d / _pinchDistance;
+    sink.zoomPan(anchor: c, factor: factor, pan: c - _pinchCentroid);
+    _pinchCentroid = c;
+    _pinchDistance = d == 0 ? 1 : d;
   }
 
   (Offset, double) _pinchMetrics() {
-    final pts = _touches.values.take(2).toList();
+    final pts = [for (final id in _pinchIds) _touches[id]!];
     final c = (pts[0] + pts[1]) / 2;
     return (c, (pts[0] - pts[1]).distance);
   }

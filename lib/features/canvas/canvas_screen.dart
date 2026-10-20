@@ -2,11 +2,12 @@ import 'dart:async';
 import 'dart:io' show File, Platform;
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform;
+import 'package:flutter/foundation.dart' show debugPrint, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show Clipboard, ClipboardData, HardwareKeyboard;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../app/providers.dart';
 import '../../core/geometry/box.dart';
@@ -104,6 +105,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   final SelectionState _selection = SelectionState();
   final HighlightFocus _hlFocus = HighlightFocus();
   final TouchStats _touchStats = TouchStats();
+  Timer? _touchLogTimer;
   late final HighlightActions _hlActions = _HighlightStripActions(this);
   late final EraseClearActions _eraseClear = _EraseClear(this);
   final LiveLasso _lasso = LiveLasso();
@@ -550,6 +552,27 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     }
   }
 
+  /// Turns the touch log on or off to match the setting: while on, the last
+  /// 20 s are written to `touchlog.txt` in the app's support folder about once
+  /// a second whenever something changed.
+  void _syncTouchLog(bool on) {
+    if (_touchStats.recording == on) return;
+    _touchStats.recording = on;
+    _touchLogTimer?.cancel();
+    if (!on) return;
+    _touchLogTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      if (!_touchStats.logDirty) return;
+      _touchStats.logDirty = false;
+      try {
+        final dir = await getApplicationSupportDirectory();
+        await File('${dir.path}/touchlog.txt')
+            .writeAsString(_touchStats.dumpLog());
+      } catch (e) {
+        debugPrint('Writing the touch log failed: $e');
+      }
+    });
+  }
+
   /// A tool key: picks the tool; its own key again folds its options away or
   /// brings them back.
   void _pickToolByKey(CanvasTool t) {
@@ -757,6 +780,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _layerChanges?.removeListener(_pruneSelection);
     _selection.dispose();
     _hlFocus.dispose();
+    _touchLogTimer?.cancel();
     _touchStats.dispose();
     _lasso.dispose();
     _live.dispose();
@@ -795,6 +819,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       if (tool == CanvasTool.mark) _warmText();
     });
     final settings = ref.watch(settingsProvider).value ?? const AppSettings();
+    _syncTouchLog(settings.touchLog);
     final landscape = size.width > size.height;
     final extractOpen =
         ui.extractOpen ?? (cls == WindowClass.expanded || landscape);

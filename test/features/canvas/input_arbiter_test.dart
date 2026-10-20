@@ -374,15 +374,11 @@ void main() {
         a.move(s(1, touch, 501, 700, 300, radius: 12)); // barely moves
         a.down(s(2, touch, 100, 100, 900, radius: 12)); // 900 ms later
         a.move(s(2, touch, 170, 100, 910, radius: 12));
-        expect(
-          rec.pan.dx,
-          71,
-          reason: 'a pan (1 px was the contact\'s own twitch)',
-        );
+        expect(rec.pan.dx, 70, reason: 'a pan, not a pinch about the palm');
         expect(rec.zoom, 1);
         a.move(s(1, touch, 502, 701, 920, radius: 12));
         a.move(s(2, touch, 230, 100, 930, radius: 12));
-        expect(rec.pan.dx, 131);
+        expect(rec.pan.dx, 130);
         expect(rec.zoom, 1);
       },
     );
@@ -409,8 +405,8 @@ void main() {
 
     test('a finger held still but not long enough joins the pinch', () {
       a.down(s(1, touch, 400, 400, 0));
-      a.down(s(2, touch, 500, 400, 400));
-      a.move(s(2, touch, 600, 400, 410));
+      a.down(s(2, touch, 500, 400, 250));
+      a.move(s(2, touch, 600, 400, 260));
       expect(rec.zoom, closeTo(2, 1e-6));
     });
 
@@ -423,6 +419,78 @@ void main() {
       a.up(s(1, touch, 900, 700, 1020));
       a.move(s(2, touch, 130, 100, 1030));
       expect(rec.pan.dx, 30);
+    });
+
+    test(
+      'a palm that drifts slowly (30 px over 2 s) never pans or pinches',
+      () {
+        a.down(s(1, touch, 500, 700, 0, radius: 12));
+        a.down(s(2, touch, 100, 100, 1000, radius: 10));
+        for (var i = 1; i <= 20; i++) {
+          // The palm creeps 1.5 px per 100 ms; the finger moves 12 px.
+          a.move(s(1, touch, 500 + i * 1.5, 700, 1000 + i * 100, radius: 12));
+          a.move(s(2, touch, 100 + i * 12, 100, 1000 + i * 100, radius: 10));
+        }
+        expect(
+          rec.pan.dx,
+          closeTo(240, 1e-6),
+          reason: 'only the finger panned',
+        );
+        expect(rec.zoom, 1);
+      },
+    );
+
+    test('a hand of several contacts beside one finger does not block it', () {
+      for (var i = 0; i < 4; i++) {
+        a.down(s(10 + i, touch, 600.0 + i * 30, 700, 0, radius: 11));
+      }
+      a.down(s(2, touch, 100, 100, 1500, radius: 9));
+      a.move(s(2, touch, 160, 100, 1510, radius: 9));
+      for (var i = 0; i < 4; i++) {
+        a.move(s(10 + i, touch, 601.0 + i * 30, 701, 1520, radius: 11));
+      }
+      a.move(s(2, touch, 220, 100, 1530, radius: 9));
+      expect(rec.pan.dx, 120);
+      expect(rec.zoom, 1);
+    });
+
+    test('a still anchor finger and a moving one are a pinch', () {
+      a.down(s(1, touch, 400, 400, 0));
+      a.down(s(2, touch, 500, 400, 120));
+      a.move(s(1, touch, 400, 401, 200)); // the anchor barely twitches
+      a.move(s(2, touch, 600, 400, 210));
+      expect(rec.zoom, closeTo(2, 1e-2));
+    });
+
+    test('a pinch ends in a pan when one finger of the pair lifts', () {
+      a.down(s(1, touch, 400, 400, 0));
+      a.down(s(2, touch, 500, 400, 50));
+      a.move(s(2, touch, 560, 400, 60));
+      a.up(s(1, touch, 400, 400, 70));
+      final before = rec.pan;
+      a.move(s(2, touch, 600, 400, 80));
+      expect(rec.pan.dx, greaterThan(before.dx), reason: 'the other pans on');
+    });
+
+    test('the touch log records the last 20 seconds, oldest first', () {
+      final stats = TouchStats()..recording = true;
+      final b = InputArbiter(rec, ctx, stats: stats);
+      b.down(s(1, touch, 10, 20, 0, radius: 9));
+      b.move(s(1, touch, 30, 20, 100, radius: 9.5));
+      b.up(s(1, touch, 30, 20, 200));
+      b.hover(s(9, pen, 5, 5, 30000, pressure: 0.25));
+      final log = stats.dumpLog().trim().split('\n');
+      expect(log.first, startsWith('#'));
+      expect(log, hasLength(2), reason: 'the first three are over 20 s old');
+      expect(log.last, '30000 #9 stylus hover 5,5 r=0.0 p=0.25');
+    });
+
+    test('the log stays empty unless recording is on', () {
+      final stats = TouchStats();
+      final b = InputArbiter(rec, ctx, stats: stats);
+      b.down(s(1, touch, 10, 20, 0));
+      expect(stats.dumpLog().trim().split('\n'), hasLength(1));
+      expect(stats.logDirty, isFalse);
     });
 
     test('statistics say what fingers and palms looked like', () {
@@ -447,8 +515,8 @@ void main() {
       expect(rec.count('panEnd'), 1);
       // The arbiter is idle again and accepts a new gesture.
       a.down(s(2, touch, 0, 0, 500));
-      a.move(s(2, touch, 7, 0, 510));
-      expect(rec.pan.dx, 37);
+      a.move(s(2, touch, 12, 0, 510));
+      expect(rec.pan.dx, 42);
     });
   });
 
