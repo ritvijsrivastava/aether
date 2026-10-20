@@ -169,26 +169,37 @@ void main() {
       expect(find.byType(Switch), findsNothing);
     });
 
-    testWidgets('Ink, Mark and Erase each show their own, one horizontal row', (
+    testWidgets('each option panel is a vertical column, its rows stacked', (
       tester,
     ) async {
       final c = await pump(tester, onClear: Clears());
       final n = c.read(canvasUiProvider.notifier);
       n.setTool(CanvasTool.ink);
       await tester.pump();
-      expect(find.byType(Slider), findsOneWidget);
       final a = tester.getRect(find.byTooltip('Coral'));
       final b = tester.getRect(find.byTooltip('Blue'));
-      expect(a.center.dy, b.center.dy, reason: 'colours side by side');
-      expect(tester.getRect(find.byType(Slider)).center.dy, a.center.dy);
+      expect(a.center.dx, b.center.dx, reason: 'colours in one column');
+      expect(b.top, greaterThan(a.bottom - 1), reason: 'stacked downwards');
+      final slider = tester.getRect(find.byType(Slider));
+      expect(
+        slider.top,
+        greaterThan(b.bottom - 1),
+        reason: 'size below colours',
+      );
       n.setTool(CanvasTool.mark);
       await tester.pump();
       expect(find.byType(Slider), findsNothing);
       expect(find.byTooltip('Coral'), findsOneWidget);
+      final m1 = tester.getRect(find.byTooltip('Coral'));
+      final m2 = tester.getRect(find.byTooltip('Blue'));
+      expect(m2.center.dx, m1.center.dx, reason: 'the marker column too');
       n.setTool(CanvasTool.erase);
       await tester.pump();
       expect(find.text('Erase part of a stroke'), findsOneWidget);
       expect(find.byTooltip('Coral'), findsNothing);
+      final sw = tester.getRect(find.byType(Switch));
+      final clear = tester.getRect(find.text('Clear all ink'));
+      expect(clear.top, greaterThan(sw.bottom - 1), reason: 'buttons under it');
     });
 
     testWidgets(

@@ -18,12 +18,12 @@ abstract interface class EraseClearActions {
   void clearBoard();
 }
 
-/// The Erase tool's options: whole strokes (default) or just the part under
-/// the eraser, and the buttons that clear ink in one go.
+/// The Erase tool's options as a column: the partial-erase switch, then the
+/// clear buttons under it.
 class EraseOptions extends ConsumerWidget {
   const EraseOptions({super.key, this.compact = false, this.actions});
 
-  /// Two rows, so it fits a phone's width.
+  /// True on a phone (the column floats above the bottom bar).
   final bool compact;
   final EraseClearActions? actions;
 
@@ -32,46 +32,43 @@ class EraseOptions extends ConsumerWidget {
     final partial = ref.watch(canvasUiProvider.select((u) => u.erasePartial));
     final t = context.tokens;
     final text = AetherText(t.ink);
-    final toggle = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text('Erase part of a stroke', style: text.label),
-        const SizedBox(width: AetherTokens.s2),
-        Semantics(
-          label: 'Erase part of a stroke',
-          toggled: partial,
-          child: Switch(
-            value: partial,
-            onChanged: (v) =>
-                ref.read(canvasUiProvider.notifier).setErasePartial(v),
-          ),
-        ),
-      ],
-    );
     final a = actions;
-    final clear = a == null
-        ? const <Widget>[]
-        : [
+    return PanelSurface(
+      radius: AetherTokens.rCard,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AetherTokens.s2,
+        vertical: AetherTokens.s1,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text('Erase part of a stroke', style: text.label),
+              ),
+              const SizedBox(width: AetherTokens.s2),
+              Semantics(
+                label: 'Erase part of a stroke',
+                toggled: partial,
+                child: Switch(
+                  value: partial,
+                  onChanged: (v) =>
+                      ref.read(canvasUiProvider.notifier).setErasePartial(v),
+                ),
+              ),
+            ],
+          ),
+          if (a != null) ...[
+            Container(height: 1, color: t.hairline),
             _Clear('Clear page ink', a.clearPageInk, t.ink),
             _Clear('Clear all ink', a.clearAllInk, t.ink),
             _Clear('Clear board', a.clearBoard, t.danger),
-          ];
-    return PanelSurface(
-      radius: compact ? AetherTokens.rCard : AetherTokens.rPill,
-      padding: const EdgeInsets.only(
-        left: AetherTokens.s4,
-        right: AetherTokens.s2,
+          ],
+        ],
       ),
-      child: compact
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                toggle,
-                if (clear.isNotEmpty)
-                  Row(mainAxisSize: MainAxisSize.min, children: clear),
-              ],
-            )
-          : Row(mainAxisSize: MainAxisSize.min, children: [toggle, ...clear]),
     );
   }
 }
@@ -88,7 +85,8 @@ class _Clear extends StatelessWidget {
     return TextButton(
       style: TextButton.styleFrom(
         minimumSize: const Size(0, AetherTokens.minTarget),
-        padding: const EdgeInsets.symmetric(horizontal: AetherTokens.s3),
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: AetherTokens.s2),
       ),
       onPressed: onTap,
       child: Text(label, style: text.button.copyWith(color: color)),

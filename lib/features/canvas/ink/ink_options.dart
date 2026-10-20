@@ -7,15 +7,16 @@ import '../../../ui/widgets/panel_surface.dart';
 import '../canvas_ui_state.dart';
 import '../colour_strip.dart';
 
-/// The Ink tool's options: the pen's last five colours, any other colour,
-/// and the pen size.
+/// The Ink tool's options as a column hanging from its rail button: the pen's
+/// last five colours (and any other colour), then the pen size below.
 class InkOptions extends ConsumerWidget {
   const InkOptions({super.key, this.sliderWidth = 140, this.compact = false});
 
-  /// Width of the size slider; smaller on a phone.
+  /// Width of the size slider.
   final double sliderWidth;
 
-  /// Two rows (colours, then size) so it fits a phone's width.
+  /// True on a phone: the column floats above the bottom bar, so it is not
+  /// anchored to a rail (no effect on content).
   final bool compact;
 
   @override
@@ -24,77 +25,68 @@ class InkOptions extends ConsumerWidget {
     final notifier = ref.read(canvasUiProvider.notifier);
     final t = context.tokens;
     final text = AetherText(t.ink);
-    final strip = ColourStrip(
-      colours: ui.inkColors,
-      prefix: 'Pen',
-      onPick: notifier.setInkColor,
-    );
-    final size = [
-      SizedBox(
-        width: sliderWidth,
-        height: AetherTokens.minTarget,
-        child: Slider(
-          value: ui.inkWidth,
-          min: InkPalette.minWidth,
-          max: InkPalette.maxWidth,
-          divisions: 14,
-          label: ui.inkWidth.toStringAsFixed(1),
-          semanticFormatterCallback: (v) => 'Pen size ${v.toStringAsFixed(1)}',
-          onChanged: notifier.setInkWidth,
-        ),
-      ),
-      // A dot as wide as the pen, so the size can be seen.
-      SizedBox(
-        width: 28,
-        child: Center(
-          child: Container(
-            width: ui.inkWidth + 2,
-            height: ui.inkWidth + 2,
-            decoration: BoxDecoration(
-              color: Color(ui.inkColor),
-              shape: BoxShape.circle,
-            ),
-          ),
-        ),
-      ),
-      Semantics(
-        label: 'Pen size ${ui.inkWidth.toStringAsFixed(1)}',
-        excludeSemantics: true,
-        child: SizedBox(
-          width: 28,
-          child: Text(
-            ui.inkWidth.toStringAsFixed(1),
-            style: text.caption.copyWith(color: t.inkMuted),
-          ),
-        ),
-      ),
-    ];
     return PanelSurface(
-      radius: compact ? AetherTokens.rCard : AetherTokens.rPill,
-      padding: const EdgeInsets.symmetric(horizontal: AetherTokens.s2),
-      child: compact
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                strip,
-                Row(mainAxisSize: MainAxisSize.min, children: size),
-              ],
-            )
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                strip,
-                Container(
-                  width: 1,
-                  height: 28,
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: AetherTokens.s1,
-                  ),
-                  color: t.hairline,
+      radius: AetherTokens.rCard,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AetherTokens.s1,
+        vertical: AetherTokens.s1,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ColourStrip(
+            colours: ui.inkColors,
+            prefix: 'Pen',
+            axis: Axis.vertical,
+            onPick: notifier.setInkColor,
+          ),
+          Container(height: 1, width: 40, color: t.hairline),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: sliderWidth,
+                height: AetherTokens.minTarget,
+                child: Slider(
+                  value: ui.inkWidth,
+                  min: InkPalette.minWidth,
+                  max: InkPalette.maxWidth,
+                  divisions: 14,
+                  label: ui.inkWidth.toStringAsFixed(1),
+                  semanticFormatterCallback: (v) =>
+                      'Pen size ${v.toStringAsFixed(1)}',
+                  onChanged: notifier.setInkWidth,
                 ),
-                ...size,
-              ],
-            ),
+              ),
+              // A dot as wide as the pen, so the size can be seen.
+              SizedBox(
+                width: 32,
+                child: Center(
+                  child: Container(
+                    width: (ui.inkWidth + 2).clamp(4, 24),
+                    height: (ui.inkWidth + 2).clamp(4, 24),
+                    decoration: BoxDecoration(
+                      color: Color(ui.inkColor),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+              Semantics(
+                label: 'Pen size ${ui.inkWidth.toStringAsFixed(1)}',
+                excludeSemantics: true,
+                child: SizedBox(
+                  width: 30,
+                  child: Text(
+                    ui.inkWidth.toStringAsFixed(1),
+                    style: text.caption.copyWith(color: t.inkMuted),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

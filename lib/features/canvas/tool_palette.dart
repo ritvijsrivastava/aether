@@ -126,8 +126,8 @@ Future<void> showMoreTools(BuildContext context) {
   );
 }
 
-/// The marker's options: its last five colours and any other colour. Shown
-/// beside the rail (or above the toolbar) while Mark is active.
+/// The marker's options: a column of its last five colours and any other
+/// colour. Shown beside the rail (or above the toolbar) while Mark is active.
 class MarkOptions extends ConsumerWidget {
   const MarkOptions({super.key});
 
@@ -135,11 +135,15 @@ class MarkOptions extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colours = ref.watch(canvasUiProvider.select((u) => u.markColors));
     return PanelSurface(
-      radius: AetherTokens.rPill,
-      padding: const EdgeInsets.symmetric(horizontal: AetherTokens.s2),
+      radius: AetherTokens.rCard,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AetherTokens.s1,
+        vertical: AetherTokens.s1,
+      ),
       child: ColourStrip(
         colours: colours,
         prefix: 'Marker',
+        axis: Axis.vertical,
         onPick: ref.read(canvasUiProvider.notifier).setMarkColor,
       ),
     );

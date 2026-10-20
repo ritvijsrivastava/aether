@@ -1086,10 +1086,11 @@ class _WideBody extends ConsumerWidget {
           ),
           if (ui.tool.hasPanel)
             Positioned(
-              // Next to the rail, along the top: one place for every tool.
+              // A column hanging from the rail, level with its tool button
+              // (Pan, then Mark, Ink, Erase: 56 dp buttons, 4 dp apart).
               left: leftHanded ? null : 96,
               right: leftHanded ? 96 : null,
-              top: AetherTokens.s4,
+              top: AetherTokens.s4 + 2 + ui.tool.panelIndex * 60,
               child: ToolPanel(onClear: onClear),
             ),
           Positioned(

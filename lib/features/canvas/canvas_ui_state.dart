@@ -31,6 +31,14 @@ enum CanvasTool {
   /// Mark, Ink and Erase have an options panel (colours, size, ...).
   bool get hasPanel => this == mark || this == ink || this == erase;
 
+  /// Its place among the rail's buttons, for hanging the panel beside it.
+  int get panelIndex => switch (this) {
+    mark => 1,
+    ink => 2,
+    erase => 3,
+    _ => 0,
+  };
+
   /// The four tools kept on a phone's bottom bar; the rest live under "More".
   bool get isPrimary =>
       this == mark || this == ink || this == erase || this == note;
