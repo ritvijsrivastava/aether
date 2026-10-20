@@ -18,17 +18,8 @@ class Clears implements EraseClearActions {
   void clearBoard() => log.add('board');
 }
 
-/// A clock the tests move by hand.
-class Clock {
-  DateTime now = DateTime(2030);
-  void advance(int ms) => now = now.add(Duration(milliseconds: ms));
-  DateTime call() => now;
-}
-
-ProviderContainer container(Clock clock) {
-  final c = ProviderContainer(
-    overrides: [clockProvider.overrideWithValue(clock.call)],
-  );
+ProviderContainer container() {
+  final c = ProviderContainer();
   addTearDown(c.dispose);
   return c;
 }
@@ -36,101 +27,77 @@ ProviderContainer container(Clock clock) {
 void main() {
   group('pressTool', () {
     test(
-      'a second press on the tool in use folds its panel, then opens it',
+      'a press on the tool in use hides its options, another press shows them',
       () {
-        final clock = Clock();
-        final c = container(clock);
+        final c = container();
         final n = c.read(canvasUiProvider.notifier);
         n.pressTool(CanvasTool.ink);
         expect(c.read(canvasUiProvider).tool, CanvasTool.ink);
         expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
-        clock.advance(150);
         n.pressTool(CanvasTool.ink);
         expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.ink});
-        clock.advance(500); // too slow: a fresh first press
-        n.pressTool(CanvasTool.ink);
-        expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.ink});
-        clock.advance(150); // quick again: opens
         n.pressTool(CanvasTool.ink);
         expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
       },
     );
 
-    test('three quick presses are one double tap, not two', () {
-      final clock = Clock();
-      final c = container(clock);
-      final n = c.read(canvasUiProvider.notifier);
-      n.pressTool(CanvasTool.ink);
-      clock.advance(100);
-      n.pressTool(CanvasTool.ink);
-      clock.advance(100);
-      n.pressTool(CanvasTool.ink);
-      expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.ink});
-    });
-
-    test('two slow presses do nothing but select', () {
-      final clock = Clock();
-      final c = container(clock);
-      final n = c.read(canvasUiProvider.notifier);
-      n.pressTool(CanvasTool.erase);
-      clock.advance(600);
-      n.pressTool(CanvasTool.erase);
-      expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
-    });
-
-    test('quick presses on different tools never fold anything', () {
-      final clock = Clock();
-      final c = container(clock);
-      final n = c.read(canvasUiProvider.notifier);
-      n.pressTool(CanvasTool.ink);
-      clock.advance(50);
-      n.pressTool(CanvasTool.erase);
-      clock.advance(50);
-      n.pressTool(CanvasTool.ink);
-      expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
-      expect(c.read(canvasUiProvider).tool, CanvasTool.ink);
-    });
-
     test('tools without options are never folded', () {
-      final clock = Clock();
-      final c = container(clock);
+      final c = container();
       final n = c.read(canvasUiProvider.notifier);
       n.pressTool(CanvasTool.pan);
-      clock.advance(50);
       n.pressTool(CanvasTool.pan);
       expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
       n.togglePanel(CanvasTool.note);
       expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
     });
 
-    test('each tool remembers its own fold', () {
-      final c = container(Clock());
+    test('choosing another tool shows its options and hides nothing else', () {
+      final c = container();
       final n = c.read(canvasUiProvider.notifier);
-      n.setPanelCollapsed(CanvasTool.ink, true);
-      n.setTool(CanvasTool.erase);
-      expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.ink});
-      n.setPanelCollapsed(CanvasTool.erase, true);
-      n.setPanelCollapsed(CanvasTool.ink, false);
+      n.pressTool(CanvasTool.ink);
+      n.pressTool(CanvasTool.erase);
+      expect(c.read(canvasUiProvider).tool, CanvasTool.erase);
+      expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
+      // Fold erase, choose ink: erase stays folded, ink is open.
+      n.pressTool(CanvasTool.erase);
+      n.pressTool(CanvasTool.ink);
       expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.erase});
+      n.pressTool(CanvasTool.erase);
+      expect(
+        c.read(canvasUiProvider).collapsedPanels,
+        isEmpty,
+        reason: 'choosing erase again shows its options',
+      );
     });
   });
 
-  group('gestureDone', () {
-    test('folds the tool in use when auto-hide is on', () {
-      final c = ProviderContainer();
-      addTearDown(c.dispose);
+  group('focus moves', () {
+    test('a press on the canvas folds the panel of the tool in use', () {
+      final c = container();
       final n = c.read(canvasUiProvider.notifier)..setTool(CanvasTool.ink);
-      n.gestureDone(CanvasTool.ink, autoHide: true);
+      n.canvasPressed(autoHide: true);
       expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.ink});
+      // With the setting off, nothing folds (the panel returns only through
+      // the tool button or its tab, never by pressing the canvas).
+      final other = container();
+      other.read(canvasUiProvider.notifier)
+        ..setTool(CanvasTool.ink)
+        ..canvasPressed(autoHide: false);
+      expect(other.read(canvasUiProvider).collapsedPanels, isEmpty);
     });
 
-    test('does nothing when auto-hide is off, or for another tool', () {
-      final c = ProviderContainer();
-      addTearDown(c.dispose);
-      final n = c.read(canvasUiProvider.notifier)..setTool(CanvasTool.ink);
-      n.gestureDone(CanvasTool.ink, autoHide: false);
-      n.gestureDone(CanvasTool.erase, autoHide: true);
+    test('a tool without options is left alone', () {
+      final c = container();
+      final n = c.read(canvasUiProvider.notifier)..setTool(CanvasTool.pan);
+      n.canvasPressed(autoHide: true);
       expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
+    });
+
+    test('a stroke or wipe folds it, too', () {
+      final c = container();
+      final n = c.read(canvasUiProvider.notifier)..setTool(CanvasTool.erase);
+      n.gestureDone(CanvasTool.erase, autoHide: true);
+      expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.erase});
     });
   });
 
@@ -271,39 +238,36 @@ void main() {
   });
 
   group('the tool rail', () {
-    testWidgets('double-tapping the Ink button folds and reopens its panel', (
-      tester,
-    ) async {
-      final clock = Clock();
-      final c = container(clock);
-      tester.view.physicalSize = const Size(400, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: c,
-          child: MaterialApp(
-            theme: buildTheme(AetherTokens.light),
-            home: const Scaffold(body: ToolRail()),
+    testWidgets(
+      'tapping the tool in use hides its options; tapping again shows',
+      (tester) async {
+        final c = container();
+        tester.view.physicalSize = const Size(400, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: c,
+            child: MaterialApp(
+              theme: buildTheme(AetherTokens.light),
+              home: const Scaffold(body: ToolRail()),
+            ),
           ),
-        ),
-      );
-      await tester.tap(find.text('Ink'));
-      clock.advance(100);
-      await tester.tap(find.text('Ink'));
-      await tester.pump();
-      expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.ink});
-      clock.advance(600);
-      await tester.tap(find.text('Ink'));
-      clock.advance(100);
-      await tester.tap(find.text('Ink'));
-      await tester.pump();
-      expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
-    });
+        );
+        await tester.tap(find.text('Ink'));
+        await tester.pump();
+        expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
+        await tester.tap(find.text('Ink'));
+        await tester.pump();
+        expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.ink});
+        await tester.tap(find.text('Ink'));
+        await tester.pump();
+        expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
+      },
+    );
 
-    testWidgets('single taps just choose the tool', (tester) async {
-      final clock = Clock();
-      final c = container(clock);
+    testWidgets('taps choose the tool', (tester) async {
+      final c = container();
       tester.view.physicalSize = const Size(400, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -317,7 +281,7 @@ void main() {
         ),
       );
       await tester.tap(find.text('Erase'));
-      clock.advance(1000);
+      await tester.pump();
       await tester.tap(find.text('Ink'));
       await tester.pump();
       expect(c.read(canvasUiProvider).tool, CanvasTool.ink);

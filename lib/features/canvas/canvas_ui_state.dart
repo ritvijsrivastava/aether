@@ -66,7 +66,7 @@ class CanvasUiState {
     this.inkWidth = InkPalette.defaultWidth,
     this.inkColors = ToolColours.inkDefault,
     this.erasePartial = false,
-    this.collapsedPanels = const {},
+    this.collapsedPanels = const <CanvasTool>{},
     this.extractOpen,
     this.extractWidth = 340,
     this.filter = ExtractFilter.all,
@@ -117,9 +117,6 @@ class CanvasUiState {
   );
 }
 
-/// The time source for double-tap detection; tests replace it.
-final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
-
 class CanvasUiNotifier extends Notifier<CanvasUiState> {
   static const double minExtract = 280, maxExtract = 480;
 
@@ -146,24 +143,20 @@ class CanvasUiNotifier extends Notifier<CanvasUiState> {
 
   static const _inkKey = 'palette.ink', _markKey = 'palette.mark';
 
-  void setTool(CanvasTool t) => state = state.copyWith(tool: t);
+  /// Picks a tool and shows its options (a tool's panel is open whenever the
+  /// tool is chosen).
+  void setTool(CanvasTool t) => state = state.copyWith(
+    tool: t,
+    collapsedPanels: {
+      for (final c in state.collapsedPanels)
+        if (c != t) c,
+    },
+  );
 
-  CanvasTool? _lastPressed;
-  DateTime _lastPressAt = DateTime.fromMillisecondsSinceEpoch(0);
-
-  /// Two presses this close together on one tool are a double tap.
-  static const Duration doubleTap = Duration(milliseconds: 400);
-
-  /// A press on a tool button: picks the tool; a second press within 400 ms
-  /// on the tool already in use folds its options panel away, or brings it
-  /// back (SPEC 21.5 F8).
+  /// A press on a tool button: picks the tool; pressing the tool already in
+  /// use shows or hides its options (SPEC 22.1).
   void pressTool(CanvasTool t) {
-    final now = ref.read(clockProvider)();
-    final quick = now.difference(_lastPressAt) <= doubleTap;
-    final again = quick && _lastPressed == t && state.tool == t;
-    _lastPressed = again ? null : t;
-    _lastPressAt = now;
-    if (again && t.hasPanel) {
+    if (state.tool == t && t.hasPanel) {
       togglePanel(t);
     } else {
       setTool(t);
@@ -175,18 +168,22 @@ class CanvasUiNotifier extends Notifier<CanvasUiState> {
       setPanelCollapsed(t, !state.collapsedPanels.contains(t));
 
   void setPanelCollapsed(CanvasTool t, bool collapsed) {
-    if (!t.hasPanel || state.collapsedPanels.contains(t) == collapsed) return;
-    state = state.copyWith(
-      collapsedPanels: {
-        for (final c in state.collapsedPanels)
-          if (c != t) c,
-        if (collapsed) t,
-      },
-    );
+    if (collapsed) {
+      if (!t.hasPanel || !state.collapsedPanels.add(t)) return;
+    } else if (!state.collapsedPanels.remove(t)) {
+      return;
+    }
+    // The set was changed in place; copyWith alone would not notify.
+    state = state.copyWith(collapsedPanels: {...state.collapsedPanels});
   }
 
-  /// A stroke, wipe or highlight of [t] is finished: with auto-hide on, the
-  /// options get out of the way of the page.
+  /// A press landed on the canvas: with auto-hide on, the options of the tool
+  /// in use get out of the way ("focus moved elsewhere").
+  void canvasPressed({required bool autoHide}) {
+    if (autoHide) setPanelCollapsed(state.tool, true);
+  }
+
+  /// A stroke, wipe or highlight of [t] finished: the same fold.
   void gestureDone(CanvasTool t, {required bool autoHide}) {
     if (autoHide && state.tool == t) setPanelCollapsed(t, true);
   }
