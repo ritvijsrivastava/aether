@@ -99,7 +99,10 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       view: _controller.view,
       live: _liveInk,
       widthDp: () => ref.read(canvasUiProvider).inkWidth,
-      color: () => ref.read(canvasUiProvider).inkColor,
+      color: () => InkPalette.resolve(
+        ref.read(canvasUiProvider).inkColor,
+        Theme.of(context).brightness,
+      ),
       sink: session,
       predict: defaultTargetPlatform == TargetPlatform.android,
     );
@@ -472,7 +475,12 @@ class _SelectionActions implements SelectionActions {
   @override
   void recolorInk(int argb) {
     final s = state._session;
-    if (s != null) s.recolorMarks(state._selection.refs, inkColor: argb);
+    if (s != null) {
+      s.recolorMarks(
+        state._selection.refs,
+        inkColor: InkPalette.resolve(argb, Theme.of(state.context).brightness),
+      );
+    }
   }
 
   @override

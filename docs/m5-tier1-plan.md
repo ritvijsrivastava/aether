@@ -104,3 +104,22 @@ with simple pan and zoom by fingers and ink by stylus. Findings this builds on:
   after the notes go), so no inset handling should remain.
 - Old PDF documents open as "boards with ink translated out of their pages";
   their pages are not drawn in Tier 1. Accepted per "forget PDFs".
+## As built (2026-10-20)
+
+All six slices are done and committed (`M5-T1 (S1)` to `(S5)`, plus this close-out).
+
+- **S1 strip:** notes, links, Extract, Markdown, text highlights, text layer, radial and context menus removed. Library creates boards (**New board**).
+- **S2 full-bleed:** no top bar, no bottom bar frame; immersive status bar; a small pill (back, name, undo, redo, settings) rests at 60% and rises on hover or touch. Tools, options and zoom float over the canvas.
+- **S3 infinite:** `ViewState.clamped` deleted; one world space for ink; pages, cards, handles and the whole PDF code (renderer, importer, picker, drop zone, share-to, storage) deleted. Fit frames the ink, or goes home (origin centred, 100%) on an empty board.
+- **S4 input:** stylus applies the tool (eraser end and barrel button erase); one finger pans (with fling); two fingers pinch and pan; a third is ignored; fingers are ignored while the stylus is down. Mouse and trackpad unchanged. Palm logic, touch log, "Finger draws" and per-stroke panel auto-hide removed.
+- **S5 ink colour:** the default ink is "auto": white on the dark board, near-black (`0xFF2B2723`) on the light one, resolved when a stroke starts. Picking a colour sticks; picking the first swatch returns to auto. Strokes store the resolved colour. The saved palette key moved to `palette.ink.v2` so old saved dark ink does not stick.
+- **S6:** tests cut to what exists (426), goldens rebuilt, new pill tests. Analyzer clean.
+
+### Not measured (needs the Tab S9)
+Pan and zoom frame times on an empty board and on 10,000 strokes; stylus latency (`ink sample age`); immersive status bar behaviour; two-finger feel. Owner will test.
+
+### Known limits carried to Tier 2
+- Undo still reloads all ink from the store.
+- A crowded board's bitmap cache is one image capped at 4096 px; zoomed far in it falls back to paths.
+- `DocumentSession` still has hand-written optimistic-update copies.
+- A board's PDF pages are gone; PDFs return as cards later (SPEC 21).

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../features/canvas/palette.dart' show InkPalette;
 import '../theme/tokens.dart';
 
 /// A colour swatch: a disc of [color] with a hairline edge (so pale colours
@@ -26,7 +27,13 @@ class ColorDisc extends StatelessWidget {
       child: ExcludeSemantics(
         child: CustomPaint(
           size: Size.square(size + 8),
-          painter: _DiscPainter(color, size, selected, t.ink, t.hairline),
+          painter: _DiscPainter(
+            InkPalette.resolve(color, Theme.of(context).brightness),
+            size,
+            selected,
+            t.ink,
+            t.hairline,
+          ),
         ),
       ),
     );

@@ -66,7 +66,12 @@ class InkOptions extends ConsumerWidget {
                     width: (ui.inkWidth + 2).clamp(4, 24),
                     height: (ui.inkWidth + 2).clamp(4, 24),
                     decoration: BoxDecoration(
-                      color: Color(ui.inkColor),
+                      color: Color(
+                        InkPalette.resolve(
+                          ui.inkColor,
+                          Theme.of(context).brightness,
+                        ),
+                      ),
                       shape: BoxShape.circle,
                     ),
                   ),

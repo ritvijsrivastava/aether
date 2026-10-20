@@ -1,3 +1,5 @@
+import 'dart:ui' show Brightness;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/model/models.dart';
@@ -67,9 +69,10 @@ class ToolColours {
   @override
   int get hashCode => Object.hash(current, Object.hashAll(recent));
 
-  /// Ink starts on Warm Ink with the three marker colours beside it.
-  static const ToolColours inkDefault = ToolColours(InkPalette.warmInk, [
-    InkPalette.warmInk,
+  /// Ink starts on "auto" (white on the dark board, near-black on the light
+  /// one) with three colours beside it.
+  static const ToolColours inkDefault = ToolColours(InkPalette.auto, [
+    InkPalette.auto,
     Swatch.coral,
     Swatch.amber,
     Swatch.blue,
@@ -83,8 +86,21 @@ class ToolColours {
   ]);
 }
 
-/// Warm Ink, the default pen colour.
 abstract final class InkPalette {
+  /// Near-black, the pen on a light board.
   static const int warmInk = 0xFF2B2723;
+
+  /// White, the pen on a dark board.
+  static const int paperWhite = 0xFFFFFFFF;
+
+  /// "Follow the board": a stand-in (never a real colour, it is fully
+  /// transparent) that [resolve] turns into black or white by theme. Stored in
+  /// the palette so a theme change flips an unpicked pen; strokes always store
+  /// the resolved colour.
+  static const int auto = 0;
+
+  static int resolve(int argb, Brightness b) =>
+      argb != auto ? argb : (b == Brightness.dark ? paperWhite : warmInk);
+
   static const double minWidth = 1, maxWidth = 8, defaultWidth = 2.5;
 }

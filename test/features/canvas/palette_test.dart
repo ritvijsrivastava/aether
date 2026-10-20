@@ -43,11 +43,30 @@ void main() {
   });
 
   group('the notifier', () {
-    test('ink starts on its default', () {
+    test('ink starts on auto, which follows the board', () {
       final u = make().read(canvasUiProvider);
-      expect(u.inkColor, InkPalette.warmInk);
+      expect(u.inkColor, InkPalette.auto);
       expect(u.inkColors.recent, hasLength(4));
+      expect(InkPalette.resolve(u.inkColor, Brightness.dark), 0xFFFFFFFF);
+      expect(InkPalette.resolve(u.inkColor, Brightness.light), 0xFF2B2723);
     });
+
+    test('a picked colour is never flipped by the theme', () {
+      for (final b in Brightness.values) {
+        expect(InkPalette.resolve(0xFFF4877E, b), 0xFFF4877E);
+      }
+    });
+
+    test(
+      'picking auto again after a colour goes back to following the board',
+      () {
+        final c = make();
+        final n = c.read(canvasUiProvider.notifier)
+          ..setInkColor(0xFF112233)
+          ..setInkColor(InkPalette.auto);
+        expect(n.state.inkColor, InkPalette.auto);
+      },
+    );
 
     test('choosing an ink colour keeps the tool and updates recents', () {
       final c = make();

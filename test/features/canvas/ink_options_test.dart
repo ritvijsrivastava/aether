@@ -31,9 +31,9 @@ Future<ProviderContainer> pump(
 }
 
 void main() {
-  testWidgets('starts on Warm Ink at 2.5', (tester) async {
+  testWidgets('starts on auto ink at 2.5', (tester) async {
     final c = await pump(tester);
-    expect(c.read(canvasUiProvider).inkColor, InkPalette.warmInk);
+    expect(c.read(canvasUiProvider).inkColor, InkPalette.auto);
     expect(c.read(canvasUiProvider).inkWidth, 2.5);
     expect(find.text('2.5'), findsOneWidget);
   });

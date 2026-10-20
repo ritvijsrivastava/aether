@@ -88,7 +88,7 @@ class CanvasUiNotifier extends Notifier<CanvasUiState> {
     state = state.copyWith(inkColors: _touchedInk ? null : ink);
   }
 
-  static const _inkKey = 'palette.ink';
+  static const _inkKey = 'palette.ink.v2';
 
   /// Picks a tool and shows its options (a tool's panel is open whenever the
   /// tool is chosen).
