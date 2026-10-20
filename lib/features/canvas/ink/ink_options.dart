@@ -209,9 +209,12 @@ class SizeWavePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // A very thick tip cannot fit the row, so the wave flattens as it
+    // saturates instead of being clipped flat.
+    final stroke = math.min(width, 26.0);
+    final amp = math.max(1.5, 8.0 - (stroke - 8.0) * 0.22);
     final path = Path();
     final mid = size.height / 2;
-    const amp = 8.0;
     for (var x = 0.0; x <= size.width; x += 1) {
       final y = mid + amp * math.sin(x / size.width * 2 * math.pi);
       x == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
@@ -221,7 +224,7 @@ class SizeWavePainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
-        ..strokeWidth = width
+        ..strokeWidth = stroke
         ..color = color,
     );
   }
