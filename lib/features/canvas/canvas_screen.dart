@@ -9,7 +9,7 @@ import '../../app/providers.dart';
 import '../../ui/theme/tokens.dart';
 import '../../ui/widgets/panel_surface.dart';
 import '../../ui/adaptive/window_class.dart';
-import 'canvas_top_bar.dart';
+import 'canvas_pill.dart';
 import 'canvas_ui_state.dart';
 import 'canvas_view.dart';
 import 'document_session.dart';
@@ -278,12 +278,12 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
 
     // Fit and zoom aim at the area the floating controls leave free.
     _controller.insets = cls == WindowClass.compact
-        ? const EdgeInsets.only(top: 8, bottom: 84)
+        ? const EdgeInsets.only(top: 64, bottom: 96)
         : EdgeInsets.fromLTRB(
-            settings.leftHanded ? 0 : 88,
-            8,
-            settings.leftHanded ? 88 : 0,
-            56, // room for the zoom pill
+            settings.leftHanded ? 0 : 104,
+            64, // room for the name pill
+            settings.leftHanded ? 104 : 0,
+            72, // room for the zoom pill
           );
 
     final title = _title ?? 'Board';
@@ -352,33 +352,28 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       ],
     );
 
+    final pill = CanvasPill(
+      title: title,
+      canUndo: session?.bus.canUndo ?? false,
+      canRedo: session?.bus.canRedo ?? false,
+      onUndo: session?.undo,
+      onRedo: session?.redo,
+    );
     return Scaffold(
-      body: Column(
-        children: [
-          CanvasTopBar(
-            windowClass: cls,
-            title: title,
-            canUndo: session?.bus.canUndo ?? false,
-            canRedo: session?.bus.canRedo ?? false,
-            onUndo: session?.undo,
-            onRedo: session?.redo,
-          ),
-          Expanded(
-            child: cls == WindowClass.compact
-                ? _CompactBody(
-                    controller: _controller,
-                    canvas: canvas,
-                    onClear: _eraseClear,
-                  )
-                : _WideBody(
-                    controller: _controller,
-                    canvas: canvas,
-                    leftHanded: settings.leftHanded,
-                    onClear: _eraseClear,
-                  ),
-          ),
-        ],
-      ),
+      body: cls == WindowClass.compact
+          ? _CompactBody(
+              controller: _controller,
+              canvas: canvas,
+              pill: pill,
+              onClear: _eraseClear,
+            )
+          : _WideBody(
+              controller: _controller,
+              canvas: canvas,
+              pill: pill,
+              leftHanded: settings.leftHanded,
+              onClear: _eraseClear,
+            ),
     );
   }
 }
@@ -433,55 +428,50 @@ class _WideBody extends ConsumerWidget {
   const _WideBody({
     required this.controller,
     required this.canvas,
+    required this.pill,
     required this.leftHanded,
     this.onClear,
   });
 
   final CanvasController controller;
-  final Widget canvas;
+  final Widget canvas, pill;
   final bool leftHanded;
   final EraseClearActions? onClear;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ui = ref.watch(canvasUiProvider);
-
-    final stage = ClipRRect(
-      borderRadius: BorderRadius.circular(AetherTokens.rPanel),
-      child: Stack(
-        children: [
-          Positioned.fill(child: canvas),
+    return Stack(
+      children: [
+        Positioned.fill(child: canvas),
+        Positioned(
+          top: AetherTokens.s3,
+          left: 0,
+          right: 0,
+          child: Center(child: pill),
+        ),
+        Positioned(
+          left: leftHanded ? null : AetherTokens.s4,
+          right: leftHanded ? AetherTokens.s4 : null,
+          top: AetherTokens.s4,
+          bottom: AetherTokens.s4,
+          child: const Align(alignment: Alignment.topCenter, child: ToolRail()),
+        ),
+        if (ui.tool.hasPanel)
           Positioned(
-            left: leftHanded ? null : AetherTokens.s4,
-            right: leftHanded ? AetherTokens.s4 : null,
-            top: AetherTokens.s4,
-            bottom: AetherTokens.s4,
-            child: const Align(
-              alignment: Alignment.topCenter,
-              child: ToolRail(),
-            ),
+            // A column hanging from the rail, level with its tool button.
+            left: leftHanded ? null : 96,
+            right: leftHanded ? 96 : null,
+            top: AetherTokens.s4 + 2 + ui.tool.panelIndex * 60,
+            child: ToolPanel(onClear: onClear),
           ),
-          if (ui.tool.hasPanel)
-            Positioned(
-              // A column hanging from the rail, level with its tool button.
-              left: leftHanded ? null : 96,
-              right: leftHanded ? 96 : null,
-              top: AetherTokens.s4 + 2 + ui.tool.panelIndex * 60,
-              child: ToolPanel(onClear: onClear),
-            ),
-          Positioned(
-            right: leftHanded ? null : AetherTokens.s4,
-            left: leftHanded ? AetherTokens.s4 : null,
-            bottom: AetherTokens.s4,
-            child: _Zoom(controller),
-          ),
-        ],
-      ),
-    );
-
-    return Padding(
-      padding: const EdgeInsets.all(AetherTokens.s3),
-      child: Row(children: [Expanded(child: stage)]),
+        Positioned(
+          right: leftHanded ? null : AetherTokens.s4,
+          left: leftHanded ? AetherTokens.s4 : null,
+          bottom: AetherTokens.s4,
+          child: _Zoom(controller),
+        ),
+      ],
     );
   }
 }
@@ -490,39 +480,38 @@ class _CompactBody extends ConsumerWidget {
   const _CompactBody({
     required this.controller,
     required this.canvas,
+    required this.pill,
     this.onClear,
   });
   final CanvasController controller;
-  final Widget canvas;
+  final Widget canvas, pill;
   final EraseClearActions? onClear;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ui = ref.watch(canvasUiProvider);
-    return Column(
+    return Stack(
       children: [
-        Expanded(
-          child: Stack(
-            children: [
-              Positioned.fill(child: canvas),
-              Positioned(
-                top: AetherTokens.s3,
-                right: AetherTokens.s3,
-                child: _Zoom(controller),
-              ),
-              if (ui.tool.hasPanel)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 88,
-                  child: Center(
-                    child: ToolPanel(compact: true, onClear: onClear),
-                  ),
-                ),
-            ],
-          ),
+        Positioned.fill(child: canvas),
+        Positioned(
+          top: AetherTokens.s3,
+          left: AetherTokens.s3,
+          right: AetherTokens.s3,
+          child: Align(alignment: Alignment.topLeft, child: pill),
         ),
-        const BottomToolbar(),
+        Positioned(
+          right: AetherTokens.s3,
+          bottom: 96,
+          child: _Zoom(controller),
+        ),
+        if (ui.tool.hasPanel)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 160,
+            child: Center(child: ToolPanel(compact: true, onClear: onClear)),
+          ),
+        const Positioned(left: 0, right: 0, bottom: 0, child: BottomToolbar()),
       ],
     );
   }

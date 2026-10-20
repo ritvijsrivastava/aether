@@ -17,7 +17,7 @@ import 'data/pdf/pdf_storage.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   _registerFontLicenses();
   // Debug and profile builds: let the app create its external files folder so
   // `adb push` test PDFs there are readable by it (a folder created by the
