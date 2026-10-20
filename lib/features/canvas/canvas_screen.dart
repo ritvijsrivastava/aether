@@ -31,6 +31,7 @@ import 'erase/erase_tool.dart';
 import 'ink/ink_layer.dart';
 import 'ink/ink_stress.dart';
 import 'ink/ink_tool.dart';
+import 'input/input_arbiter.dart' show TouchStats;
 import 'input/pen_config.dart';
 import 'input/tool_gestures.dart';
 import 'links/link_remove_overlay.dart';
@@ -102,6 +103,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   final LiveLink _liveLink = LiveLink();
   final SelectionState _selection = SelectionState();
   final HighlightFocus _hlFocus = HighlightFocus();
+  final TouchStats _touchStats = TouchStats();
   late final HighlightActions _hlActions = _HighlightStripActions(this);
   late final EraseClearActions _eraseClear = _EraseClear(this);
   final LiveLasso _lasso = LiveLasso();
@@ -755,6 +757,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _layerChanges?.removeListener(_pruneSelection);
     _selection.dispose();
     _hlFocus.dispose();
+    _touchStats.dispose();
     _lasso.dispose();
     _live.dispose();
     _flash.dispose();
@@ -829,6 +832,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       onContextMenu: session == null ? null : _showContextMenu,
       onTap: session == null ? null : _onCanvasTap,
       onPointerDownOnCanvas: _hlFocus.clear,
+      touchStats: _touchStats,
       onTool: _pickToolByKey,
       onEscape: () {
         _hlFocus.clear();
@@ -901,6 +905,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
                   _textService?.stats,
                   _markTool?.stats,
                   _liveInk.stats,
+                  _touchStats.line,
                 ].whereType<String>().join('\n'),
               ),
             ),

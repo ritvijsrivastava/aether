@@ -48,6 +48,7 @@ class CanvasView extends StatefulWidget {
     this.onContextMenu,
     this.onTap,
     this.onPointerDownOnCanvas,
+    this.touchStats,
     this.onEscape,
     this.onTool,
     this.pen = const PenConfig(),
@@ -101,6 +102,9 @@ class CanvasView extends StatefulWidget {
   /// position.
   final ValueChanged<Offset>? onTap;
 
+  /// What touch contacts have looked like (shown in the performance overlay).
+  final TouchStats? touchStats;
+
   /// Any pointer going down on the canvas (not on a widget above it).
   final VoidCallback? onPointerDownOnCanvas;
 
@@ -128,7 +132,11 @@ class CanvasView extends StatefulWidget {
 }
 
 class _CanvasViewState extends State<CanvasView> implements ArbiterContext {
-  late final InputArbiter _arbiter = InputArbiter(widget.controller, this);
+  late final InputArbiter _arbiter = InputArbiter(
+    widget.controller,
+    this,
+    stats: widget.touchStats,
+  );
   final FocusNode _focus = FocusNode(debugLabel: 'canvas');
   bool _space = false;
   bool _ready = false;

@@ -279,16 +279,61 @@ void main() {
   });
 
   group('palm and pen safety net', () {
-    test('touches are ignored while the pen hovers and for 250 ms after', () {
+    test(
+      'touches by the pen are ignored while it hovers and for 250 ms after',
+      () {
+        a.hover(s(9, pen, 300, 300, 1000));
+        a.down(s(1, touch, 200, 300, 1100));
+        a.move(s(1, touch, 260, 300, 1110));
+        expect(rec.pan, Offset.zero, reason: 'pen still near, so a palm');
+        a.up(s(1, touch, 260, 300, 1120));
+        // 300 ms after the last pen sample: touches work again.
+        a.down(s(2, touch, 200, 300, 1300));
+        a.move(s(2, touch, 250, 300, 1310));
+        expect(rec.pan.dx, 50);
+      },
+    );
+
+    test('a finger far from the hovering pen is the other hand and works', () {
       a.hover(s(9, pen, 300, 300, 1000));
-      a.down(s(1, touch, 10, 10, 1100));
-      a.move(s(1, touch, 60, 10, 1110));
-      expect(rec.pan, Offset.zero, reason: 'pen still near');
-      a.up(s(1, touch, 60, 10, 1120));
-      // 300 ms after the last pen sample: touches work again.
-      a.down(s(2, touch, 10, 10, 1300));
-      a.move(s(2, touch, 60, 10, 1310));
+      a.down(s(1, touch, 1100, 300, 1050));
+      a.move(s(1, touch, 1160, 300, 1060));
+      expect(rec.pan.dx, 60);
+    });
+
+    test('a palm by the pen is set aside without stopping the other hand', () {
+      a.hover(s(9, pen, 300, 300, 1000));
+      a.down(s(1, touch, 200, 400, 1010)); // palm, by the pen
+      a.down(s(2, touch, 1100, 300, 1020)); // finger, far away
+      a.move(s(2, touch, 1180, 300, 1030));
+      a.move(s(1, touch, 205, 402, 1040));
+      expect(
+        rec.pan.dx,
+        80,
+        reason: 'the finger pans; the palm changed nothing',
+      );
+      expect(rec.zoom, 1, reason: 'and the palm is not half a pinch');
+    });
+
+    test('while the pen is down every touch is ignored', () {
+      a.down(s(9, pen, 300, 300, 1000, buttons: 1));
+      a.down(s(1, touch, 1100, 300, 1010));
+      a.move(s(1, touch, 1160, 300, 1020));
+      expect(rec.pan, Offset.zero);
+      a.up(s(9, pen, 300, 300, 1030));
+      a.up(s(1, touch, 1160, 300, 1040));
+      // A moment later a finger works again.
+      a.down(s(2, touch, 1100, 300, 1500));
+      a.move(s(2, touch, 1150, 300, 1510));
       expect(rec.pan.dx, 50);
+    });
+
+    test('a pen that moves takes its palm zone with it', () {
+      a.hover(s(9, pen, 100, 100, 1000));
+      a.hover(s(9, pen, 900, 600, 1100));
+      a.down(s(1, touch, 150, 150, 1120)); // far from the pen now
+      a.move(s(1, touch, 210, 150, 1130));
+      expect(rec.pan.dx, 60);
     });
 
     test('a pen landing mid-pan cancels the finger gesture', () {
@@ -305,6 +350,94 @@ void main() {
       a.down(s(1, touch, 10, 10, 0, radius: 40));
       a.move(s(1, touch, 90, 10, 10, radius: 40));
       expect(rec.pan, Offset.zero);
+    });
+
+    test('a big palm lands first and a finger still pans normally', () {
+      a.down(s(1, touch, 500, 700, 0, radius: 60));
+      a.down(s(2, touch, 100, 100, 100, radius: 10));
+      a.move(s(2, touch, 160, 100, 110, radius: 10));
+      a.move(s(1, touch, 502, 703, 120, radius: 60));
+      a.move(s(2, touch, 220, 100, 130, radius: 10));
+      expect(rec.pan.dx, 120);
+      expect(rec.zoom, 1);
+      a.up(s(2, touch, 220, 100, 140));
+      a.up(s(1, touch, 502, 703, 150));
+      a.down(s(3, touch, 100, 100, 200));
+      a.move(s(3, touch, 130, 100, 210));
+      expect(rec.pan.dx, 150, reason: 'and afterwards too');
+    });
+
+    test(
+      'a contact that has rested for a while is a hand: the next finger pans',
+      () {
+        a.down(s(1, touch, 500, 700, 0, radius: 12)); // palm too small to tell
+        a.move(s(1, touch, 501, 700, 300, radius: 12)); // barely moves
+        a.down(s(2, touch, 100, 100, 900, radius: 12)); // 900 ms later
+        a.move(s(2, touch, 170, 100, 910, radius: 12));
+        expect(
+          rec.pan.dx,
+          71,
+          reason: 'a pan (1 px was the contact\'s own twitch)',
+        );
+        expect(rec.zoom, 1);
+        a.move(s(1, touch, 502, 701, 920, radius: 12));
+        a.move(s(2, touch, 230, 100, 930, radius: 12));
+        expect(rec.pan.dx, 131);
+        expect(rec.zoom, 1);
+      },
+    );
+
+    test('two fingers landing together still pinch', () {
+      a.down(s(1, touch, 400, 400, 0));
+      a.down(s(2, touch, 500, 400, 80));
+      a.move(s(2, touch, 600, 400, 90));
+      expect(rec.zoom, closeTo(2, 1e-6));
+    });
+
+    test('a finger that has been moving is not a resting hand', () {
+      a.down(s(1, touch, 400, 400, 0));
+      a.move(s(1, touch, 440, 400, 400));
+      a.move(s(1, touch, 480, 400, 800));
+      a.down(s(2, touch, 600, 400, 1000));
+      a.move(s(2, touch, 700, 400, 1010));
+      expect(
+        rec.zoom,
+        greaterThan(1),
+        reason: 'the second finger joins a pinch',
+      );
+    });
+
+    test('a finger held still but not long enough joins the pinch', () {
+      a.down(s(1, touch, 400, 400, 0));
+      a.down(s(2, touch, 500, 400, 400));
+      a.move(s(2, touch, 600, 400, 410));
+      expect(rec.zoom, closeTo(2, 1e-6));
+    });
+
+    test('the resting contact never pans or zooms later when it moves', () {
+      a.down(s(1, touch, 500, 700, 0));
+      a.down(s(2, touch, 100, 100, 1000));
+      a.move(s(1, touch, 900, 700, 1010));
+      expect(rec.pan, Offset.zero);
+      expect(rec.zoom, 1);
+      a.up(s(1, touch, 900, 700, 1020));
+      a.move(s(2, touch, 130, 100, 1030));
+      expect(rec.pan.dx, 30);
+    });
+
+    test('statistics say what fingers and palms looked like', () {
+      final stats = TouchStats();
+      final b = InputArbiter(rec, ctx, stats: stats);
+      expect(stats.line, isNull);
+      b.down(s(1, touch, 10, 10, 0, radius: 9));
+      b.down(s(2, touch, 300, 300, 5, radius: 41));
+      expect(stats.fingers, 1);
+      expect(stats.palms, 1);
+      expect(stats.maxFingerRadius, 9);
+      expect(stats.maxPalmRadius, 41);
+      expect(stats.line, contains('fingers 1 (max 9)'));
+      expect(stats.line, contains('palms 1 (max 41)'));
+      expect(stats.lastVerdict, contains('palm'));
     });
 
     test('cancel ends a pan cleanly', () {
