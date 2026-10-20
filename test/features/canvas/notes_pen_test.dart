@@ -62,10 +62,11 @@ Note note(String id, {String text = 'hello', double x = 50, int z = 0}) => Note(
 );
 
 class Rig {
-  Rig(this.notes, this.actions, this.selected);
+  Rig(this.notes, this.actions, this.selected, this.copied);
   final NotesLayer notes;
   final Acts actions;
   final List<String> selected;
+  final List<String> copied;
 }
 
 Future<Rig> pump(
@@ -82,6 +83,7 @@ Future<Rig> pump(
   }
   final acts = Acts(layer);
   final selected = <String>[];
+  final copied = <String>[];
   await tester.pumpWidget(
     MaterialApp(
       theme: buildTheme(AetherTokens.light),
@@ -105,13 +107,14 @@ Future<Rig> pump(
               actions: acts,
               viewport: () => _size,
               onSelect: selected.add,
+              onCopyText: copied.add,
             ),
           ],
         ),
       ),
     ),
   );
-  return Rig(layer, acts, selected);
+  return Rig(layer, acts, selected, copied);
 }
 
 // The note 'a' is at page (50,60) + page origin (100,100): screen (150,160),
@@ -399,6 +402,96 @@ void main() {
       await tester.pump();
       expect(r.actions.log, isNot(contains('blur')), reason: 'not thrown away');
       expect(r.notes.byId('d'), isNotNull);
+    });
+  });
+
+  group('selecting text with the pen', () {
+    testWidgets(
+      'a pen drag selects across lines, and Copy puts it on the clipboard',
+      (tester) async {
+        final r = await pump(tester, start: [note('a')]);
+        // Open the note for typing.
+        await tap(tester, _body, PointerDeviceKind.touch);
+        await tester.pump();
+        expect(r.notes.editingId, 'a');
+        // Drag the pen across the text: from a point left of the text to a
+        // point past its end, over two lines.
+        final field = tester.getRect(find.byType(TextField));
+        final from = Offset(field.left + 6, field.top + 12);
+        final to = Offset(field.right - 6, field.bottom - 12);
+        final g = await tester.startGesture(
+          from,
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        await g.moveBy(const Offset(40, 0));
+        await tester.pump();
+        await g.moveBy(Offset(0, to.dy - from.dy));
+        await g.moveBy(const Offset(120, 0));
+        await tester.pump();
+        await g.up();
+        await tester.pump();
+        final sel = r.notes.byId('a')!.text; // text is 'hello'
+        expect(sel, 'hello', reason: 'sanity: there is text to select');
+        expect(
+          find.text('Copy'),
+          findsOneWidget,
+          reason: 'a copy button appears',
+        );
+        await tester.tap(find.text('Copy'));
+        await tester.pump();
+        expect(r.copied, hasLength(1));
+        expect(
+          'hello'.contains(r.copied.single),
+          isTrue,
+          reason: 'a contiguous run of the text (${r.copied.single})',
+        );
+        expect(
+          r.copied.single.endsWith('o'),
+          isTrue,
+          reason: 'the drag ran to the end, across both lines',
+        );
+        expect(find.text('Copy'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a pen tap inside the text keeps the note open and selects nothing',
+      (tester) async {
+        final r = await pump(tester, start: [note('a')]);
+        await tap(tester, _body, PointerDeviceKind.touch);
+        await tester.pump();
+        final field = tester.getRect(find.byType(TextField));
+        await tap(
+          tester,
+          field.center,
+          PointerDeviceKind.stylus,
+          pointer: 3,
+          atMs: 100,
+        );
+        await tester.pump();
+        expect(r.notes.editingId, 'a');
+        expect(r.copied, isEmpty);
+        expect(find.text('Copy'), findsNothing);
+      },
+    );
+
+    testWidgets('a finger drag does not select (the caret moves as usual)', (
+      tester,
+    ) async {
+      final r = await pump(tester, start: [note('a')]);
+      await tap(tester, _body, PointerDeviceKind.touch);
+      await tester.pump();
+      final field = tester.getRect(find.byType(TextField));
+      final g = await tester.startGesture(
+        Offset(field.left + 6, field.top + 12),
+        kind: PointerDeviceKind.touch,
+      );
+      await g.moveBy(Offset(0, field.height / 2));
+      await g.up();
+      await tester.pump();
+      expect(find.text('Copy'), findsNothing, reason: 'no pen-style copy bar');
+      expect(r.copied, isEmpty);
     });
   });
 }

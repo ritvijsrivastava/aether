@@ -1,8 +1,9 @@
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
-
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderEditable, RenderObject;
 import 'package:flutter/services.dart';
 
 import '../../../domain/model/models.dart';
@@ -34,6 +35,7 @@ class NotesOverlay extends StatelessWidget {
     this.interactive = true,
     this.onSelect,
     this.onMenu,
+    this.onCopyText,
   });
 
   final ValueNotifier<ViewState> view;
@@ -53,6 +55,9 @@ class NotesOverlay extends StatelessWidget {
 
   /// A long press on a note (header or body): its own menu.
   final void Function(String id)? onMenu;
+
+  /// Text selected inside a note with the pen, copied for the owner.
+  final void Function(String text)? onCopyText;
 
   /// Where a note's top-left is in world space, or null if its page is gone.
   static Offset? worldOrigin(Note n, Scene s) {
@@ -99,6 +104,7 @@ class NotesOverlay extends StatelessWidget {
                           actions: actions,
                           onSelect: onSelect,
                           onMenu: onMenu,
+                          onCopyText: onCopyText,
                         ),
                 ),
               ),
@@ -159,6 +165,7 @@ class NoteCard extends StatefulWidget {
     required this.actions,
     this.onSelect,
     this.onMenu,
+    this.onCopyText,
   });
 
   final Note note;
@@ -167,6 +174,7 @@ class NoteCard extends StatefulWidget {
   final NoteActions actions;
   final void Function(String id)? onSelect;
   final void Function(String id)? onMenu;
+  final void Function(String text)? onCopyText;
 
   @override
   State<NoteCard> createState() => _NoteCardState();
@@ -179,6 +187,9 @@ class _NoteCardState extends State<NoteCard> {
   final FocusNode _focus = FocusNode(debugLabel: 'note');
   bool _hadFocus = false;
   final Object _tapGroup = Object();
+  final GlobalKey _fieldKey = GlobalKey(debugLabel: 'note-text');
+  bool _copyBar = false;
+  TextSelection? _picked;
 
   @override
   void initState() {
@@ -233,6 +244,81 @@ class _NoteCardState extends State<NoteCard> {
     super.dispose();
   }
 
+  // --- selecting text with the pen -------------------------------------------
+
+  RenderEditable? get _editable {
+    final ro = _fieldKey.currentContext?.findRenderObject();
+    if (ro == null) return null;
+    RenderEditable? found;
+    void visit(RenderObject r) {
+      if (found != null) return;
+      if (r is RenderEditable) {
+        found = r;
+        return;
+      }
+      r.visitChildren(visit);
+    }
+
+    visit(ro);
+    return found;
+  }
+
+  bool _penDown = false;
+  int? _dragStart;
+
+  void _penSelect(PointerEvent e) {
+    if (e.kind != PointerDeviceKind.stylus &&
+        e.kind != PointerDeviceKind.invertedStylus) {
+      return;
+    }
+    final editable = _editable;
+    if (editable == null) return;
+    if (!_focus.hasFocus) _focus.requestFocus();
+    final pos = editable.getPositionForPoint(e.position).offset;
+    if (!_penDown) {
+      _penDown = true;
+      _dragStart = pos;
+      _copyBar = false;
+      _picked = null;
+      return;
+    }
+    final start = _dragStart;
+    if (start == null) return;
+    final sel = TextSelection(
+      baseOffset: math.min(start, pos),
+      extentOffset: math.max(start, pos),
+    );
+    setState(() {
+      _text.selection = sel;
+      _picked = sel;
+    });
+  }
+
+  void _penSelectEnd(PointerEvent e) {
+    if (e.kind != PointerDeviceKind.stylus &&
+        e.kind != PointerDeviceKind.invertedStylus) {
+      return;
+    }
+    if (!_penDown) return;
+    _penDown = false;
+    _dragStart = null;
+    if (_picked != null && _picked!.isValid && !_picked!.isCollapsed) {
+      setState(() => _copyBar = true);
+      HapticFeedback.selectionClick();
+    }
+  }
+
+  void _copyPicked() {
+    final sel = _picked;
+    if (sel != null && _text.text.isNotEmpty) {
+      widget.onCopyText?.call(_text.text.substring(sel.start, sel.end));
+    }
+    setState(() {
+      _copyBar = false;
+      _picked = null;
+    });
+  }
+
   /// Moves the note by ([dx], [dy]) page points from where it is now (several
   /// moves can arrive before the next frame rebuilds this widget).
   void _moveBy(double dx, double dy) {
@@ -277,44 +363,86 @@ class _NoteCardState extends State<NoteCard> {
                       }
                       return KeyEventResult.ignored;
                     },
-                    child: Semantics(
-                      label: 'Note text',
-                      textField: true,
-                      child: TextField(
-                        controller: _text,
-                        focusNode: _focus,
-                        groupId: _tapGroup,
-                        // The pen never types here (no handwriting to text), and
-                        // a pen tap elsewhere never closes the note.
-                        stylusHandwritingEnabled: false,
-                        onTapOutside: (e) {
-                          if (e.kind == PointerDeviceKind.stylus ||
-                              e.kind == PointerDeviceKind.invertedStylus) {
-                            return;
-                          }
-                          _focus.unfocus();
-                        },
-                        maxLines: null,
-                        expands: true,
-                        textAlignVertical: TextAlignVertical.top,
-                        keyboardType: TextInputType.multiline,
-                        cursorColor: AetherTokens.onMark,
-                        onChanged: (v) => actions.editNoteText(n.id, v),
-                        style: const TextStyle(
-                          fontFamily: kUiFont,
-                          fontSize: 15,
-                          height: 1.4,
-                          color: AetherTokens.onMark,
+                    child: Stack(
+                      children: [
+                        Listener(
+                          behavior: HitTestBehavior.translucent,
+                          onPointerDown: _penSelect,
+                          onPointerMove: _penSelect,
+                          onPointerUp: _penSelectEnd,
+                          child: Semantics(
+                            label: 'Note text',
+                            textField: true,
+                            child: TextField(
+                              key: _fieldKey,
+                              controller: _text,
+                              focusNode: _focus,
+                              groupId: _tapGroup,
+                              // The pen never types here (no handwriting to text), and
+                              // a pen tap elsewhere never closes the note.
+                              stylusHandwritingEnabled: false,
+                              onTapOutside: (e) {
+                                if (e.kind == PointerDeviceKind.stylus ||
+                                    e.kind ==
+                                        PointerDeviceKind.invertedStylus) {
+                                  return;
+                                }
+                                _focus.unfocus();
+                              },
+                              maxLines: null,
+                              expands: true,
+                              textAlignVertical: TextAlignVertical.top,
+                              keyboardType: TextInputType.multiline,
+                              cursorColor: AetherTokens.onMark,
+                              onChanged: (v) => actions.editNoteText(n.id, v),
+                              style: const TextStyle(
+                                fontFamily: kUiFont,
+                                fontSize: 15,
+                                height: 1.4,
+                                color: AetherTokens.onMark,
+                              ),
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                isCollapsed: true,
+                                contentPadding: EdgeInsets.zero,
+                                filled: false,
+                              ),
+                            ),
+                          ),
                         ),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          isCollapsed: true,
-                          contentPadding: EdgeInsets.zero,
-                          filled: false,
-                        ),
-                      ),
+                        if (_copyBar)
+                          Positioned(
+                            top: 0,
+                            right: 0,
+                            child: Material(
+                              color: t.panel,
+                              elevation: 4,
+                              shadowColor: t.shadowColor,
+                              borderRadius: BorderRadius.circular(
+                                AetherTokens.rPill,
+                              ),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(
+                                  AetherTokens.rPill,
+                                ),
+                                onTap: _copyPicked,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  child: Text(
+                                    'Copy',
+                                    style: AetherText(t.indigoText).button
+                                        .copyWith(color: t.indigoText),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),

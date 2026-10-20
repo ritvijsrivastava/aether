@@ -1033,6 +1033,10 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
                     _hlFocus.clear();
                     _noteMenu.open(id, _noteCentre(id));
                   },
+                  onCopyText: (text) {
+                    Clipboard.setData(ClipboardData(text: text));
+                    _say('Copied.');
+                  },
                   interactive:
                       ui.tool == CanvasTool.pan ||
                       ui.tool == CanvasTool.mark ||
