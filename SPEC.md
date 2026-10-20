@@ -660,14 +660,21 @@ Card   { id, boardId, sourceId?, kind, pageIndex?, x, y, width, height, z, hlc }
 - Canvas screen: Extract panel remains, listing highlights and notes of the board; for boards with no highlights it is hidden by default.
 - Export: whole board or selection as **PNG**; Markdown export unchanged; PDF flatten stays v1.1.
 
-### 21.7 Open questions for the owner
-1. **Product name and tone.** Keep "Aether" and the current look, or does a general canvas change the Library wording ("Boards")?
-2. **Existing documents:** convert each into a board automatically (proposed), or keep a separate "Documents" area?
-3. **Several PDFs on one board** share one Extract panel with a source label per quote (proposed). OK?
-4. **Word documents (.doc/.docx).** Options: (a) no, v1.1; (b) import text only, as a Markdown card (loses layout and images); (c) convert to PDF through LibreOffice on Linux only. Proposed: (b) later, not in M4.3.
-5. **"Erase all" scope:** (a) all ink on the board, (b) all ink on the current page or card, (c) everything including notes and highlights. Proposed: a menu with (a) and (b) for ink, and "Clear board" for (c) behind a confirm.
-6. **Editing a note with a pen:** pen cannot type, so a finger tap, mouse click, or Enter opens it (proposed). Or a pen double-tap opens it?
-7. **Same-colour partial overlaps** merge into one highlight (proposed), or stay separate?
-8. **Panels:** auto-collapse after the first stroke (proposed), or only by double-tap?
-9. **"Marker":** a translucent wide highlighter-like ink stroke, separate from the pen (proposed). Is that what you meant, or only colour choice?
-10. **Order of work:** M4.1 fixes first, then boards (proposed), or boards first?
+### 21.7 Owner decisions (2026-10-20) and open questions
+
+**Decided:**
+- **Pen on notes:** pen **double-tap** opens a note for typing (keyboard), in addition to finger tap, mouse click and Enter. A pen single tap only selects. An empty note must **not vanish** on a pen tap: an empty note is discarded only when it loses focus after having been opened for typing and left empty, never on selection.
+- **Overlapping highlights of the same colour merge into one.**
+- **Colour is free and replaces fixed meanings.** Ink and marker (highlighter) take **any colour**. Highlights on text use the same marker colours. The **Extract panel collects by colour**: a row of colour chips (one per colour in use, with counts) filters the list; items are grouped by colour. The last used colour is remembered separately for Ink and Marker, and choosing either tool restores its last colour. The last 5 colours are shared across both.
+- Everything else in 21.5 stands as proposed (auto-collapse panels after first stroke, board wording, auto-convert existing documents, one shared Extract panel across PDFs, M4.1 first).
+
+**Consequences of free colour (to confirm, Q-A to Q-C):**
+- The built-in Claim / Method / Question meanings (R12) become **default named swatches**, not a fixed set. A colour may carry an optional name ("Claim"); Markdown export groups by colour, using the name if there is one, else a colour label (e.g. "Coral").
+- Existing highlights keep their colour and name; the data model stores a colour value, with the meaning id kept as an optional label. No data loss.
+
+**Still open:**
+- **Q1 Word documents (.docx):** (a) not in v1; (b) import text only as a Markdown card; (c) convert via LibreOffice on Linux only. Proposed: (a) for now.
+- **Q2 Erase all:** proposed: Erase panel offers "Clear ink on this page/card" and "Clear all ink on board", both undoable with a snackbar; "Clear board" (everything) is separate, behind a confirm.
+- **Q-A Colour names:** may a colour chip be renamed by the owner (proposed: yes, long-press the chip in Extract)?
+- **Q-B Do shapes and text blocks also show in Extract?** Proposed: only highlights and notes; shapes no.
+- **Q-C Markdown export** groups by colour in order of first use (proposed), or by the palette order?
