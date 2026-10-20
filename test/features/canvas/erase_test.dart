@@ -58,6 +58,27 @@ void main() {
     );
   });
 
+  group('thickness', () {
+    test('the ring follows the set radius, and a big tip reaches farther', () {
+      tool = EraseToolController(
+        view: view,
+        ink: ink,
+        eraser: eraser,
+        partial: () => partial,
+        radiusFn: () => 30,
+        sink: sink,
+      );
+      ink.add(line('a', 0, 100, 300));
+      tool.start(pt(0, 100));
+      expect(eraser.radiusPx, 30);
+      // Default radius is 14: 50 below would miss. 30 reaches it.
+      tool.move(pt(300, 148));
+      expect(ink.byId('a'), isNull, reason: 'a 30 tip reaches 48 away');
+      tool.end(pt(300, 148));
+      expect(sink.commits.single.deleted, {'a'});
+    });
+  });
+
   group('whole strokes', () {
     test('wiping across a stroke removes it at once, and saves one erase', () {
       ink.add(line('a', 0, 50, 300));
