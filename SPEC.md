@@ -493,6 +493,7 @@ Each milestone ends with a **review stop** where you try it on the Tab S9 and/or
 | **M3.1** Follow-ups (small, no review stop; **done**, see `docs/m3.1.md`) | Register items R1 to R4: rotated-page correctness, missing fixtures (scanned, rotated), text no longer queues behind tiles, selection perf check | Rotated PDF highlights land on the right words (test); scanned and rotated fixtures exist; text for visible pages is ready before first touch on the S9 |
 | **M4** Ink, notes, links, select, undo | Pressure ink, prediction, erase (whole + partial), notes (move/resize), links (multi, snap), lasso + actions, full command stack; **plus register items R5 to R13 and R33** | Undo/redo property tests; ink budgets met; palm rejection verified on S9 |
 | **M4.1** Fix pass (**proposed**) | Owner fixes F1, F2, F6 to F10 on the existing canvas; no data model change (R38, R39, R43 to R47) | Each fix has a test; palm test on S9 passes; owner re-checks the ten items |
+| **M4.1b** Follow-ups from the first device test (**proposed**) | Six items F11 to F16 (section 22): vertical tool menus, pen long-press radial menu, free selection inside notes with the pen, long-press menu on a note, clearer note order, palm rework driven by a touch log (R48 to R53) | Each has a test; palm case verified on the S9 with the touch log; owner re-checks the six |
 | **M4.2** Boards (**proposed**) | Data model pivot (21.2): Board, Source, Card; migration of existing documents; Library lists boards; New board; Add menu; paste (text and image); free text blocks; z-order, resize, duplicate for every card (R40, R42, R47) | Existing documents open unchanged as boards; blank board works; kill -9 safe; **review stop** |
 | **M4.3** More import types (**proposed**) | Image, Markdown, plain text cards; text cards share the text-layer and highlight pipeline; drag-and-drop on Linux, share-to on Android (R41) | Highlight and Extract work on a Markdown card; image cards take ink and notes |
 | **M4.4** Drawing basics (**proposed**) | Shapes (line, arrow, rectangle, ellipse), hold-to-straighten, fill and stroke colour, marker (translucent) stroke, shape text label (21.4) | Draw a diagram without leaving the app; shapes obey undo, select, move, recolor; **review stop** |
@@ -546,6 +547,12 @@ Everything an earlier milestone report or this spec marked "later", "unverified"
 | R45 | **F8** Ink and Erase option panels horizontal and collapsible | owner | M4.1 **(closed)** | Horizontal strip; double-tap the tool to hide or reopen; state remembered per tool |
 | R46 | **F9** Resting palm must not block finger gestures | owner | M4.1 **(code done; owner checks with a real palm on the S9)** | Palm contact is classified and ignored on its own; pan and pinch with other fingers keep working (measured on the S9; test with synthetic contact sizes) |
 | R47 | **F10** A pen tap on a note must not close or edit it; pen can select, move, reorder (bring forward/back) | owner | M4.1 **(code done; owner checks pen select, move, double-tap on the S9)** | Pen never types; edit with finger tap or keyboard (21.7) |
+| R48 | **F11** Tool option menus (Ink, Marker, Erase) are vertical, not a horizontal bar | owner 2026-10-20 | M4.1b | A column beside the rail, level with its tool; fold and reopen as now (22.1) |
+| R49 | **F12** Long-press (pen or finger) on empty canvas opens a radial menu: hold, swipe to an item, release | owner | M4.1b | Paste, Note here (more items arrive with M4.2); replaces the finger long-press text menu (22.2) |
+| R50 | **F13** Inside a note, the pen selects text freely (drag across words and lines) and the selection menu works | owner | M4.1b | Pen drag selects while editing; copy works across lines (22.3) |
+| R51 | **F14** Long-press on a note's header or body opens a horizontal menu: Link, Unlink, Copy all, Delete | owner | M4.1b | Works for pen and finger, anywhere on the tile (22.4) |
+| R52 | **F15** "Forward / Back" on notes is unclear | owner | M4.1b | Renamed and explained, or removed until boards exist (22.5) |
+| R53 | **F16** With a palm resting, finger gestures still do not work (after M4.1) | owner | M4.1b | A touch log from the S9 decides the cause; palm handling reworked so only moving contacts drive pan and pinch (22.6) |
 | R23 | Multiply blend cost on the S9 measured only with 8 highlights; flat-fill fallback undecided | M3 | M6 | Measured on a page with many highlights; keep multiply or switch by setting, written down |
 | R24 | Predictive back enabled but never exercised on a device | M1 | M6 | Back from Canvas, sheets and menus checked on the S9 |
 | R25 | Linux minimum window size (800x520) never resized by hand; HiDPI and Wayland checks | M1, §17 | M6 | Done and noted in the M6 report |
@@ -687,3 +694,43 @@ Card   { id, boardId, sourceId?, kind, pageIndex?, x, y, width, height, z, hlc }
 - **Slice 3 (tool panels, erase all) built:** one horizontal options panel for Mark, Ink and Erase, in the same place for every tool (beside the rail along the top; above the toolbar on a phone). Double-tap the tool button (or press its key again) folds it to a small tab showing the tool's colour; tapping the tab opens it; each tool remembers its fold. A setting (on by default) folds the panel after the tool's first stroke, wipe or highlight. Erase has Clear page ink, Clear all ink (both undoable, no dialog) and Clear board (confirm, undoable).
 - **Slice 4 (palm) built:** a touch is a palm if its contact is large (over 24 px), the pen is on the screen, or the pen is hovering and the touch is within 300 px of it. Palms are set aside one by one: they never cancel, block or join a pinch with other fingers. A finger far from a hovering pen (the other hand) works. A single contact that has not moved (under 8 px) for 600 ms when a second finger lands is a resting hand: it is set aside and the new finger pans. The Performance overlay gains a line, `touch: last N px, finger|palm (why) · fingers n (max) · palms n (max)`, so the real contact sizes of the S9 can be read and the 24 px threshold tuned (R46: owner checks with a real palm).
 - **Slice 5 (pen on notes) built:** while a note is not being typed in, a pen tap selects it, a pen double-tap (within 350 ms and 24 px) opens the keyboard, and a pen drag moves it. A finger or mouse press opens it. A pen tap elsewhere never closes a note being typed in (a finger or mouse tap elsewhere does, and saves it); a note's own header and body count as inside. The pen never writes into the field (`stylusHandwritingEnabled: false`). A new empty note is no longer thrown away by pen taps. Notes have an order (`z`): the selection pill offers Forward and Back for notes; one undo step each; moves and resizes now start from the note's current place, so quick pen strokes no longer drop movement.
+
+---
+
+## 22. M4.1b: follow-ups from the first device test (proposed 2026-10-20)
+
+Order: F15 (30 min), F11 (3 h), F14 (4 h), F13 (4 h), F12 (1 day), F16 (diagnose 1 h, rework 4 h). F16 first if the owner prefers: it blocks daily use.
+
+### 22.1 F11 Vertical tool menus
+Ink, Marker and Erase options become a **column** that hangs from the rail beside its tool button (colours stacked, then the size slider laid vertically, then the toggles and clear buttons). Folding keeps the double-tap and the small tab. On a phone the column opens above the bottom bar and scrolls if short. *This reverses the horizontal bar of 21.5 F8; the owner confirms (Q1).*
+
+### 22.2 F12 Radial menu on long-press
+- **Trigger:** hold still for 500 ms on empty canvas with the pen or a finger (mouse: right-click). The ring appears centred on the press point.
+- **Use:** keep holding, swipe toward an item, release to choose; release in the centre or tap outside to cancel. Haptic tick on entering an item. Items are 56 dp discs on a 96 dp radius, opening away from screen edges.
+- **Items now:** Paste (text becomes a note until M4.2 adds text blocks), Note here. M4.2 adds Add file, Image, Text block, Shape.
+- **Pen safety:** with the Ink, Erase or Mark tool the pen is mid-stroke at that moment; a hold of 500 ms with under 6 px of travel cancels the dot it made (no stroke, no undo step) and opens the ring. Marking and writing are unchanged otherwise.
+- A long-press on a highlight, ink or note keeps opening that mark's own menu (22.4 for notes).
+
+### 22.3 F13 Free text selection with the pen inside a note
+Flutter treats a pen like a finger in text fields (long-press, then handles). Fix: while a note is being edited, a pen drag over its text **selects from where it started to where it ends**, across words and lines, like the mouse; a pen double-tap selects a word; the cut/copy/select-all toolbar appears at release. Handles stay for finger use. The pen still never types.
+
+### 22.4 F14 Long-press menu on a note
+Hold 500 ms on a note's **header or body** (not only inside the text): a horizontal pill appears above it with **Link**, **Unlink**, **Copy all**, **Delete**.
+- Link: the same as the Link tool started from this note (drag from the pill, or tap a highlight next).
+- Unlink: removes this note's links; with more than one, a small list of the quotes to choose from (Q3).
+- Copy all: the note's full text to the clipboard.
+- Delete: as now, with Undo.
+
+### 22.5 F15 "Forward / Back"
+They change which note is on top where two notes overlap (like moving a sheet of paper over or under another). Proposal: rename to **Bring to front** and **Send to back**, with the stacking icons, shown only when the selected note overlaps another; or remove them until boards (M4.2) give every item an order (Q4).
+
+### 22.6 F16 Palm, round two
+After M4.1 a resting palm still stops finger gestures. Likely causes, in order: (1) a palm makes several contacts, and the third or later contact makes the pinch maths use the wrong two; (2) a resting palm drifts more than 8 px, so the "resting" rule never fires; (3) Samsung's own palm rejection cancels all touches while a palm is detected (nothing the app can fix, but it can be detected and reported).
+Plan: (a) **touch log**: the performance overlay gains a switch that records every touch event of the last 20 s (id, size, position, time) and a Share button, so one real palm test settles the cause; (b) **rework**: only contacts that **move** (over 10 px in 150 ms) drive pan or pinch; a stationary contact is held aside whatever its size; a pinch needs two *moving* contacts; a third contact never joins. A resting palm then cannot block, whatever its size or drift.
+
+### 22.7 Questions for the owner
+1. **F11:** vertical column beside the rail (proposed), replacing the horizontal bar of the last round. Right?
+2. **F12:** should the radial menu replace the finger long-press text menu too (one menu for all), and may the pen open it with any tool (proposed: yes, with the dot cancelled)?
+3. **F14:** Unlink with several links: remove all, or choose (proposed: choose when more than one)?
+4. **F15:** rename to Bring to front / Send to back and show only on overlap (proposed), or remove until M4.2?
+5. **F16:** are you willing to do one palm test with the touch log (2 minutes) so I fix the right cause? (proposed: yes, I build the log first)
