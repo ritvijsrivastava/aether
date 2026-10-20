@@ -496,6 +496,29 @@ class DocumentSession
     });
   }
 
+  /// Removes every link of [noteId] as one undo step.
+  void unlinkNote(String noteId) {
+    final gone = links.forNote(noteId);
+    if (gone.isEmpty) return;
+    for (final l in gone) {
+      links.remove(l.id);
+    }
+    _enqueue(() async {
+      try {
+        await bus.run(
+          Command.group('Unlink', [
+            for (final l in gone) await _factory.delete(l.id),
+          ]),
+        );
+      } catch (e, st) {
+        debugPrint('Unlinking $noteId failed: $e\n$st');
+        for (final l in gone) {
+          links.add(l);
+        }
+      }
+    });
+  }
+
   // --- notes ------------------------------------------------------------------
 
   final Map<String, Timer> _noteTimers = {};

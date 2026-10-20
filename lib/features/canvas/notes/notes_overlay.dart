@@ -1,4 +1,7 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
+
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -30,6 +33,7 @@ class NotesOverlay extends StatelessWidget {
     required this.viewport,
     this.interactive = true,
     this.onSelect,
+    this.onMenu,
   });
 
   final ValueNotifier<ViewState> view;
@@ -46,6 +50,9 @@ class NotesOverlay extends StatelessWidget {
 
   /// A pen tap on a note: select it (it is never edited by the pen).
   final void Function(String id)? onSelect;
+
+  /// A long press on a note (header or body): its own menu.
+  final void Function(String id)? onMenu;
 
   /// Where a note's top-left is in world space, or null if its page is gone.
   static Offset? worldOrigin(Note n, Scene s) {
@@ -91,6 +98,7 @@ class NotesOverlay extends StatelessWidget {
                           notes: notes,
                           actions: actions,
                           onSelect: onSelect,
+                          onMenu: onMenu,
                         ),
                 ),
               ),
@@ -150,6 +158,7 @@ class NoteCard extends StatefulWidget {
     required this.notes,
     required this.actions,
     this.onSelect,
+    this.onMenu,
   });
 
   final Note note;
@@ -157,6 +166,7 @@ class NoteCard extends StatefulWidget {
   final NotesLayer notes;
   final NoteActions actions;
   final void Function(String id)? onSelect;
+  final void Function(String id)? onMenu;
 
   @override
   State<NoteCard> createState() => _NoteCardState();
@@ -320,6 +330,7 @@ class _NoteCardState extends State<NoteCard> {
                     onSelect: () => widget.onSelect?.call(n.id),
                     onMove: (d) => _moveBy(d.dx / z, d.dy / z),
                     onMoveEnd: () => actions.noteGeometryDone(n.id),
+                    onMenu: () => widget.onMenu?.call(n.id),
                   ),
                 ),
               // Header: the label, which is also the handle to drag by.
@@ -336,6 +347,7 @@ class _NoteCardState extends State<NoteCard> {
                     onPanUpdate: (d) => _moveBy(d.delta.dx / z, d.delta.dy / z),
                     onPanEnd: (_) => actions.noteGeometryDone(n.id),
                     onPanCancel: () => actions.noteGeometryDone(n.id),
+                    onLongPressStart: (_) => widget.onMenu?.call(n.id),
                     child: Padding(
                       padding: const EdgeInsets.only(left: 12),
                       child: Align(
@@ -432,13 +444,15 @@ class _BodyCover extends StatefulWidget {
     required this.onSelect,
     required this.onMove,
     required this.onMoveEnd,
+    required this.onMenu,
   });
 
-  final VoidCallback onOpen, onSelect, onMoveEnd;
+  final VoidCallback onOpen, onSelect, onMoveEnd, onMenu;
   final ValueChanged<Offset> onMove;
 
   static const Duration doubleTap = Duration(milliseconds: 350);
   static const double slop = 8, doubleTapSlop = 24;
+  static const Duration holdTime = Duration(milliseconds: 500);
 
   @override
   State<_BodyCover> createState() => _BodyCoverState();
@@ -449,6 +463,7 @@ class _BodyCoverState extends State<_BodyCover> {
   PointerDeviceKind _kind = PointerDeviceKind.touch;
   Offset _start = Offset.zero;
   bool _moved = false;
+  Timer? _hold;
   Duration? _lastTapAt;
   Offset _lastTapPos = Offset.zero;
 
@@ -466,16 +481,24 @@ class _BodyCoverState extends State<_BodyCover> {
         _kind = e.kind;
         _start = e.position;
         _moved = false;
+        _hold?.cancel();
+        _hold = Timer(_BodyCover.holdTime, () {
+          if (_pointer == null || _moved) return;
+          _pointer = null;
+          widget.onMenu();
+        });
       },
       onPointerMove: (e) {
         if (e.pointer != _pointer) return;
         if (!_moved && (e.position - _start).distance > _BodyCover.slop) {
           _moved = true;
+          _hold?.cancel();
         }
         if (_moved && _pen) widget.onMove(e.delta);
       },
       onPointerUp: (e) {
         if (e.pointer != _pointer) return;
+        _hold?.cancel();
         _pointer = null;
         if (_moved) {
           if (_pen) widget.onMoveEnd();
@@ -501,6 +524,7 @@ class _BodyCoverState extends State<_BodyCover> {
       },
       onPointerCancel: (e) {
         if (e.pointer != _pointer) return;
+        _hold?.cancel();
         _pointer = null;
         if (_moved && _pen) widget.onMoveEnd();
       },

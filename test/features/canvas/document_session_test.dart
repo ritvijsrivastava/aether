@@ -1349,6 +1349,38 @@ void main() {
       return (s: s, note: note, hl: hl, page: page);
     }
 
+    test('unlinking a note removes all its links as one step', () async {
+      final x = await setup();
+      final h2 = x.s.addHighlight(
+        pageId: x.page,
+        selection: TextSelector.between(text, 3, 3)!,
+        color: Swatch.method,
+        text: text,
+      );
+      await x.s.settled();
+      x.s.addLink(x.note, x.hl);
+      x.s.addLink(x.note, h2);
+      await x.s.settled();
+      expect(x.s.links.forNote(x.note), hasLength(2));
+      x.s.unlinkNote(x.note);
+      expect(x.s.links.all, isEmpty);
+      await x.s.settled();
+      expect(await storedLinks(), isEmpty);
+      expect(x.s.bus.undoLabel, 'Unlink');
+      await x.s.undo();
+      expect(x.s.links.forNote(x.note), hasLength(2));
+      await x.s.redo();
+      expect(x.s.links.forNote(x.note), isEmpty);
+    });
+
+    test('unlinking a note with no links does nothing', () async {
+      final x = await setup();
+      final depth = x.s.bus.undoDepth;
+      x.s.unlinkNote(x.note);
+      await x.s.settled();
+      expect(x.s.bus.undoDepth, depth);
+    });
+
     test('a link is saved, undoable, and survives a reopen', () async {
       final x = await setup();
       x.s.addLink(x.note, x.hl);

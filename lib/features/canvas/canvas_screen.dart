@@ -46,6 +46,7 @@ import 'select/select_tool.dart';
 import 'select/selection.dart';
 import 'select/selection_view.dart';
 import 'notes/note_tool.dart';
+import 'notes/note_menu.dart';
 import 'notes/notes_overlay.dart';
 import 'marks/highlight_actions.dart';
 import 'radial_menu.dart';
@@ -109,6 +110,8 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   final HighlightFocus _hlFocus = HighlightFocus();
   final TouchStats _touchStats = TouchStats();
   final RadialMenuController _radial = RadialMenuController();
+  final NoteMenuController _noteMenu = NoteMenuController();
+  late final NoteMenuActions _noteMenuActions = _NoteMenuActions(this);
   Timer? _touchLogTimer;
   late final HighlightActions _hlActions = _HighlightStripActions(this);
   late final EraseClearActions _eraseClear = _EraseClear(this);
@@ -712,7 +715,14 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       notes: session.notes,
     ).markAt(world, v.zoom);
     if (hit != null) {
-      _showContextMenu(local, global);
+      if (hit.kind == MarkKind.note) {
+        _selection.clear();
+        _hlFocus.clear();
+        HapticFeedback.selectionClick();
+        _noteMenu.open(hit.id, global);
+      } else {
+        _showContextMenu(local, global);
+      }
       return;
     }
     HapticFeedback.selectionClick();
@@ -767,6 +777,17 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     final at = card == null ? centre : centre - card.rect.topLeft;
     final id = session.beginNote(pageId: card?.id, x: at.dx, y: at.dy);
     session.editNoteText(id, text);
+  }
+
+  /// The menu of a note sits over the note itself (not under the finger).
+  Offset _noteCentre(String id) {
+    final session = _session;
+    final n = session?.notes.byId(id);
+    if (n == null) return Offset.zero;
+    final o = NotesOverlay.worldOrigin(n, _controller.scene.value);
+    if (o == null) return Offset.zero;
+    final v = _controller.view.value;
+    return v.worldToScreen(o + Offset(n.width / 2, 0));
   }
 
   /// The link whose line passes nearest [world] within reach, if any.
@@ -890,6 +911,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _layerChanges?.removeListener(_pruneSelection);
     _selection.dispose();
     _radial.dispose();
+    _noteMenu.dispose();
     _hlFocus.dispose();
     _touchLogTimer?.cancel();
     _touchStats.dispose();
@@ -1006,6 +1028,11 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
                     _hlFocus.clear();
                     _selection.set([MarkRef(MarkKind.note, id)]);
                   },
+                  onMenu: (id) {
+                    _selection.clear();
+                    _hlFocus.clear();
+                    _noteMenu.open(id, _noteCentre(id));
+                  },
                   interactive:
                       ui.tool == CanvasTool.pan ||
                       ui.tool == CanvasTool.mark ||
@@ -1028,6 +1055,10 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
                   focus: _hlFocus,
                   actions: _hlActions,
                   viewport: () => _controller.viewport,
+                ),
+                NoteMenuOverlay(
+                  controller: _noteMenu,
+                  actions: _noteMenuActions,
                 ),
                 LinkRemoveOverlay(
                   view: _controller.view,
@@ -1421,6 +1452,29 @@ class _EraseClear implements EraseClearActions {
 
   @override
   void clearBoard() => state._clearBoard();
+}
+
+class _NoteMenuActions implements NoteMenuActions {
+  _NoteMenuActions(this.state);
+  final _CanvasScreenState state;
+
+  @override
+  void unlinkNote(String id) => state._session?.unlinkNote(id);
+
+  @override
+  void copyAll(String id) async {
+    final text = state._session?.notes.byId(id)?.text ?? '';
+    await Clipboard.setData(ClipboardData(text: text));
+    state._say(text.isEmpty ? 'The note is empty.' : 'Copied the note.');
+  }
+
+  @override
+  void deleteNote(String id) {
+    final session = state._session;
+    if (session == null) return;
+    session.deleteNote(id);
+    state._undoMessage('Note deleted');
+  }
 }
 
 class _HighlightStripActions implements HighlightActions {
