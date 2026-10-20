@@ -26,8 +26,15 @@ ToolPoint pt(double x, double y) => ToolPoint(
 
 class FakeSelectSink implements SelectSink {
   final List<List<Mark>> moves = [];
+  final List<({Set<String> deleted, List<Ink> created})> cuts = [];
+  int _n = 0;
   @override
   void commitMove(List<Mark> finals) => moves.add(finals);
+  @override
+  String newId() => 'piece${++_n}';
+  @override
+  void commitCut({required Set<String> deleted, required List<Ink> created}) =>
+      cuts.add((deleted: deleted, created: created));
 }
 
 void main() {
@@ -86,42 +93,65 @@ void main() {
       ink.add(line('far', 50, 700, 250)); // y 700
     });
 
-    test('encloses the strokes that are at least half inside', () {
-      final marks = hit.inLoop([
-        const Offset(40, 280),
-        const Offset(260, 280),
-        const Offset(260, 320),
-        const Offset(40, 320),
+    test('a stroke wholly inside is picked whole', () {
+      final r = hit.cutLoop(const [
+        Offset(40, 280),
+        Offset(260, 280),
+        Offset(260, 320),
+        Offset(40, 320),
       ]);
-      expect({for (final m in marks) m.id}, {'i'});
+      expect({for (final m in r.whole) m.id}, {'i'});
+      expect(r.cuts, isEmpty);
     });
 
-    test('a loop that only just clips a stroke leaves it out', () {
-      // A stroke with samples every 10 px, of which the loop covers x 50..80.
-      ink.replaceAll(const []);
-      ink.add(
+    test('a stroke the edge runs through is cut there', () {
+      // A loop over the left half of the stroke (x 50..250 at y 300).
+      final r = hit.cutLoop(const [
+        Offset(20, 280),
+        Offset(150, 280),
+        Offset(150, 320),
+        Offset(20, 320),
+      ]);
+      expect(r.whole, isEmpty);
+      final c = r.cuts.single;
+      expect(c.original.id, 'i');
+      final inn = c.inside.single, out = c.outside.single;
+      expect(inn[0], 50);
+      expect(
+        inn[inn.length - 3],
+        closeTo(150, 0.01),
+        reason: 'cut on the edge',
+      );
+      expect(out[0], closeTo(150, 0.01));
+      expect(out[out.length - 3], 250);
+    });
+
+    test('strokes the region misses are left alone', () {
+      final r = hit.cutRect(const Rect.fromLTRB(0, 0, 30, 30));
+      expect(r.isEmpty, isTrue);
+    });
+
+    test('a rectangle cuts the same way', () {
+      final r = hit.cutRect(const Rect.fromLTRB(100, 280, 400, 320));
+      expect(r.cuts.single.inside.single[0], closeTo(100, 0.01));
+    });
+
+    test('a stroke that leaves and comes back gives two inside pieces', () {
+      ink.replaceAll([
         Ink(
-          id: 'q',
+          id: 'u',
           docId: 'd',
           samples: Float32List.fromList([
-            for (var x = 50; x <= 250; x += 10) ...[x.toDouble(), 300.0, 0.5],
+            0, 50, 0.5, 100, 50, 0.5, 100, 150, 0.5, 0, 150, 0.5, //
           ]),
-          width: 4,
-          color: 0xFF000000,
+          width: 2,
+          color: 1,
         ),
-      );
-      final marks = hit.inLoop([
-        const Offset(20, 280),
-        const Offset(80, 280),
-        const Offset(80, 320),
-        const Offset(20, 320),
       ]);
-      expect({for (final m in marks) m.id}, isEmpty);
-    });
-
-    test('a rectangle works the same way', () {
-      final marks = hit.inRect(const Rect.fromLTRB(40, 280, 260, 320));
-      expect(marks.single, const MarkRef(MarkKind.ink, 'i'));
+      final r = hit.cutRect(const Rect.fromLTRB(-10, 0, 50, 200));
+      final c = r.cuts.single;
+      expect(c.inside.length, 2);
+      expect(c.outside.length, 1);
     });
 
     test('the box round a selection covers every stroke in world space', () {
@@ -209,6 +239,53 @@ void main() {
       tool.move(pt(260, 320));
       tool.move(pt(260, 280));
       tool.end(pt(50, 280));
+      expect(selection.refs.single.id, 'i');
+    });
+
+    test('a loop over part of a stroke selects just that part', () {
+      // The loop covers the left half of stroke i (x 50..250 at y 300).
+      tool.start(pt(20, 280));
+      tool.move(pt(20, 320));
+      tool.move(pt(150, 320));
+      tool.move(pt(150, 280));
+      tool.end(pt(22, 280));
+      final cut = sink.cuts.single;
+      expect(cut.deleted, {'i'});
+      expect(ink.byId('i'), isNull, reason: 'the original is replaced');
+      expect(cut.created.length, 2, reason: 'one piece inside, one outside');
+      final sel = selection.refs.single;
+      final inside = ink.byId(sel.id)!;
+      expect(inside.bounds.x1, lessThan(160), reason: 'the picked part');
+      expect(ink.count, 3, reason: 'two pieces and the untouched j');
+    });
+
+    test('the cut-out part moves, the rest stays', () {
+      tool.start(pt(20, 280));
+      tool.move(pt(20, 320));
+      tool.move(pt(150, 320));
+      tool.move(pt(150, 280));
+      tool.end(pt(22, 280));
+      final pickedId = selection.refs.single.id;
+      final outsideId = [
+        for (final s in ink.all)
+          if (s.id != pickedId && s.id != 'j') s.id,
+      ].single;
+      final outsideBefore = ink.byId(outsideId)!.samples.toList();
+      tool.start(pt(100, 300)); // inside the selection's outline
+      tool.move(pt(100, 360));
+      tool.end(pt(100, 360));
+      expect(ink.byId(pickedId)!.bounds.y0, greaterThan(350));
+      expect(ink.byId(outsideId)!.samples.toList(), outsideBefore);
+      expect(sink.moves.single.single.id, pickedId);
+    });
+
+    test('a stroke wholly inside the loop is not cut', () {
+      tool.start(pt(40, 280));
+      tool.move(pt(40, 320));
+      tool.move(pt(260, 320));
+      tool.move(pt(260, 280));
+      tool.end(pt(42, 280));
+      expect(sink.cuts, isEmpty);
       expect(selection.refs.single.id, 'i');
     });
 

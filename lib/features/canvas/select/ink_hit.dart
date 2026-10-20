@@ -1,6 +1,9 @@
+import 'dart:typed_data';
 import 'dart:ui';
 
 import '../../../core/geometry/polygon.dart';
+import '../../../domain/ink/ink_geometry.dart';
+import '../../../domain/model/models.dart';
 import '../ink/ink_layer.dart';
 import 'selection.dart';
 
@@ -37,50 +40,63 @@ class InkHitTester {
     return out;
   }
 
-  /// Strokes a loop round them selects: a stroke counts when half of it or
-  /// more is inside (its samples are the measure, so a long stroke counts by
-  /// how much of it is inside, not by its two ends).
-  List<MarkRef> inLoop(List<Offset> loop) {
-    if (loop.length < 3) return const [];
+  /// What a region picks up. A stroke wholly inside is [whole]; one that
+  /// crosses the edge is cut there: its inside pieces and its outside pieces
+  /// are returned in a [StrokeCut], and the caller swaps the original for them.
+  RegionCut cut(bool Function(double x, double y) inside) {
+    final whole = <Ink>[];
+    final cuts = <StrokeCut>[];
+    for (final s in ink.all) {
+      final runs = InkGeometry.splitByRegion(s.samples, inside);
+      final ins = [
+        for (final r in runs)
+          if (r.inside) r.samples,
+      ];
+      if (ins.isEmpty) continue;
+      if (runs.length == 1) {
+        whole.add(s);
+      } else {
+        cuts.add(
+          StrokeCut(
+            s,
+            inside: ins,
+            outside: [
+              for (final r in runs)
+                if (!r.inside) r.samples,
+            ],
+          ),
+        );
+      }
+    }
+    return RegionCut(whole, cuts);
+  }
+
+  /// [cut] for a loop (the polygon of [loop] points).
+  RegionCut cutLoop(List<Offset> loop) {
+    if (loop.length < 3) return const RegionCut([], []);
     final xy = [
       for (final p in loop) ...[p.dx, p.dy],
     ];
-    final out = <MarkRef>[];
-    for (final s in ink.all) {
-      var inside = 0, total = 0;
-      for (var i = 0; i < s.pointCount; i++) {
-        total++;
-        if (pointInPolygon(s.samples[i * 3], s.samples[i * 3 + 1], xy)) {
-          inside++;
-        }
-      }
-      if (total > 0 && inside * 2 >= total) {
-        out.add(MarkRef(MarkKind.ink, s.id));
-      }
-    }
-    return out;
+    return cut((x, y) => pointInPolygon(x, y, xy));
   }
 
-  /// Strokes a rectangle selects: the same half-or-more rule on the stroke's
-  /// samples.
-  List<MarkRef> inRect(Rect rect) {
-    final out = <MarkRef>[];
-    for (final s in ink.all) {
-      var inside = 0, total = 0;
-      for (var i = 0; i < s.pointCount; i++) {
-        total++;
-        final x = s.samples[i * 3], y = s.samples[i * 3 + 1];
-        if (x >= rect.left &&
-            x <= rect.right &&
-            y >= rect.top &&
-            y <= rect.bottom) {
-          inside++;
-        }
-      }
-      if (total > 0 && inside * 2 >= total) {
-        out.add(MarkRef(MarkKind.ink, s.id));
-      }
-    }
-    return out;
-  }
+  /// [cut] for a rectangle.
+  RegionCut cutRect(Rect r) =>
+      cut((x, y) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom);
+}
+
+/// One stroke the region's edge runs through.
+class StrokeCut {
+  const StrokeCut(this.original, {required this.inside, required this.outside});
+  final Ink original;
+  final List<Float32List> inside, outside;
+}
+
+/// Strokes picked up whole, and strokes cut by the region's edge.
+class RegionCut {
+  const RegionCut(this.whole, this.cuts);
+  final List<Ink> whole;
+  final List<StrokeCut> cuts;
+
+  bool get isEmpty => whole.isEmpty && cuts.isEmpty;
 }

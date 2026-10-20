@@ -194,21 +194,30 @@ class DocumentSession implements InkSink, EraseSink, SelectSink {
     });
   }
 
+  @override
+  void commitCut({required Set<String> deleted, required List<Ink> created}) =>
+      _saveReplacement('Select', deleted, created);
+
   /// Saves one erase as a single undo step. The page already shows the result;
   /// if the save fails the ink is reloaded from what was really stored.
   @override
   void commitErase({required Set<String> deleted, required List<Ink> created}) {
+    _saveReplacement('Erase', deleted, created);
+  }
+
+  /// Deletes [deleted] and creates [created] as one undo step [label].
+  void _saveReplacement(String label, Set<String> deleted, List<Ink> created) {
     _enqueue(() async {
       try {
         await bus.run(
-          Command.group('Erase', [
+          Command.group(label, [
             for (final id in deleted) await _factory.delete(id),
             for (final c in created)
               _factory.create(EntityKind.mark, c.id, c.toFields()),
           ]),
         );
       } catch (e, st) {
-        debugPrint('Saving an erase failed: $e\n$st');
+        debugPrint('Saving a $label failed: $e\n$st');
         await _reloadMarks();
       }
     });

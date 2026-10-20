@@ -127,7 +127,6 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
         sink: session,
       ),
     });
-    _selection.addListener(_deleteSelection);
     // Strokes that go away (deleted, undone) leave the selection.
     _layerChanges = Listenable.merge([session.ink])
       ..addListener(_pruneSelection);
@@ -240,7 +239,6 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _liveInk.dispose();
     _eraser.dispose();
     _layerChanges?.removeListener(_pruneSelection);
-    _selection.removeListener(_deleteSelection);
     _selection.dispose();
     _toastTimer?.cancel();
     _toast.dispose();

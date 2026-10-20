@@ -13,6 +13,13 @@ import 'selection.dart';
 abstract interface class SelectSink {
   /// Saves the new state of marks that were moved, as one undo step.
   void commitMove(List<Mark> finals);
+
+  /// A new id for a piece cut from a stroke.
+  String newId();
+
+  /// Strokes cut by the selection's edge are replaced by their pieces: one
+  /// undo step.
+  void commitCut({required Set<String> deleted, required List<Ink> created});
 }
 
 /// The loop or rectangle being drawn.
@@ -171,10 +178,10 @@ class SelectToolController implements ToolHandler {
       case _Mode.loop:
         if (_moved) {
           final hit = _hit;
-          final marks = live.marquee
-              ? hit.inRect(Rect.fromPoints(_downWorld, world))
-              : hit.inLoop(live.points);
-          selection.set(marks);
+          final picked = live.marquee
+              ? hit.cutRect(Rect.fromPoints(_downWorld, world))
+              : hit.cutLoop(live.points);
+          _pick(picked);
         } else {
           _tap(world);
         }
@@ -182,6 +189,43 @@ class SelectToolController implements ToolHandler {
         break;
     }
     _reset();
+  }
+
+  /// Selects what the region picked up. A stroke it only passes through is
+  /// cut at the edge, so just the part inside is selected and can be moved;
+  /// the rest stays where it was.
+  void _pick(RegionCut picked) {
+    final refs = <MarkRef>[
+      for (final s in picked.whole) MarkRef(MarkKind.ink, s.id),
+    ];
+    if (picked.cuts.isNotEmpty && sink != null) {
+      final deleted = <String>{};
+      final created = <Ink>[];
+      Ink piece(Ink from, Float32List samples) => Ink(
+        id: sink!.newId(),
+        docId: from.docId,
+        samples: samples,
+        width: from.width,
+        color: from.color,
+      );
+      for (final c in picked.cuts) {
+        ink.remove(c.original.id);
+        deleted.add(c.original.id);
+        for (final out in c.outside) {
+          final p = piece(c.original, out);
+          ink.add(p);
+          created.add(p);
+        }
+        for (final inn in c.inside) {
+          final p = piece(c.original, inn);
+          ink.add(p);
+          created.add(p);
+          refs.add(MarkRef(MarkKind.ink, p.id));
+        }
+      }
+      sink!.commitCut(deleted: deleted, created: created);
+    }
+    selection.set(refs);
   }
 
   void _tap(Offset world) {

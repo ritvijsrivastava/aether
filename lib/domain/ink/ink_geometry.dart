@@ -280,6 +280,62 @@ abstract final class InkGeometry {
     return false;
   }
 
+  /// Cuts a stroke where it crosses the edge of a region, so the part inside
+  /// can be picked up on its own. [inside] says whether a point is in the
+  /// region. Returns the runs in order, each with at least two points (or the
+  /// single point of a dot) and its own `inside` flag; the cut points sit on
+  /// the region's edge, with the pressure interpolated. A stroke wholly in or
+  /// wholly out comes back as one run.
+  static List<({Float32List samples, bool inside})> splitByRegion(
+    Float32List s,
+    bool Function(double x, double y) inside,
+  ) {
+    final n = s.length ~/ _s;
+    if (n == 0) return const [];
+    if (n == 1) {
+      return [(samples: s, inside: inside(s[0], s[1]))];
+    }
+    final runs = <({Float32List samples, bool inside})>[];
+    var cur = <double>[s[0], s[1], s[2]];
+    var curIn = inside(s[0], s[1]);
+
+    void close() {
+      if (cur.length >= 2 * _s) {
+        runs.add((samples: Float32List.fromList(cur), inside: curIn));
+      }
+    }
+
+    for (var i = 1; i < n; i++) {
+      final x0 = s[(i - 1) * _s], y0 = s[(i - 1) * _s + 1];
+      final p0 = s[(i - 1) * _s + 2];
+      final x1 = s[i * _s], y1 = s[i * _s + 1], p1 = s[i * _s + 2];
+      final in1 = inside(x1, y1);
+      if (in1 != curIn) {
+        // The edge is somewhere on this segment: find it by halving.
+        var lo = 0.0, hi = 1.0;
+        for (var k = 0; k < 14; k++) {
+          final mid = (lo + hi) / 2;
+          final here = inside(x0 + (x1 - x0) * mid, y0 + (y1 - y0) * mid);
+          if (here == curIn) {
+            lo = mid;
+          } else {
+            hi = mid;
+          }
+        }
+        final t = (lo + hi) / 2;
+        final cx = x0 + (x1 - x0) * t, cy = y0 + (y1 - y0) * t;
+        final cp = p0 + (p1 - p0) * t;
+        cur.addAll([cx, cy, cp]);
+        close();
+        cur = [cx, cy, cp];
+        curIn = in1;
+      }
+      cur.addAll([x1, y1, p1]);
+    }
+    close();
+    return runs;
+  }
+
   /// What is left of a stroke after a circle of radius [r] at ([cx], [cy])
   /// (grown by half the stroke [width]) is wiped across it: zero, one or two
   /// or more pieces, cut exactly at the circle's edge (pressure interpolated),

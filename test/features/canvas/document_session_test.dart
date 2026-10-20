@@ -263,6 +263,56 @@ void main() {
     });
   });
 
+  group('cutting a stroke with the Select tool', () {
+    test('the pieces replace the original in one undo step', () async {
+      final s = open();
+      await s.load();
+      s.addInk(
+        samples: Float32List.fromList([0, 0, 0.5, 100, 0, 0.5]),
+        width: 2,
+        color: 0xFF000000,
+      );
+      await s.settled();
+      final first = s.ink.all.single.id;
+      final a = s.newId(), b = s.newId();
+      Ink piece(String id, double x0, double x1) => Ink(
+        id: id,
+        docId: docId,
+        samples: Float32List.fromList([x0, 0, 0.5, x1, 0, 0.5]),
+        width: 2,
+        color: 0xFF000000,
+      );
+      s.ink.remove(first);
+      s.ink.add(piece(a, 0, 40));
+      s.ink.add(piece(b, 40, 100));
+      s.commitCut(
+        deleted: {first},
+        created: [piece(a, 0, 40), piece(b, 40, 100)],
+      );
+      await s.settled();
+      expect((await storedInk()).length, 2);
+      expect(s.bus.undoLabel, 'Select');
+      await s.undo();
+      expect(s.ink.count, 1);
+      expect(s.ink.all.single.id, first, reason: 'whole again');
+      await s.redo();
+      expect(s.ink.count, 2);
+    });
+
+    test('selecting alone never deletes anything', () async {
+      final s = open();
+      await s.load();
+      s.addInk(
+        samples: Float32List.fromList([0, 0, 0.5, 100, 0, 0.5]),
+        width: 2,
+        color: 0xFF000000,
+      );
+      await s.settled();
+      expect(s.bus.undoDepth, 1);
+      expect((await storedInk()).length, 1);
+    });
+  });
+
   group('remembered view', () {
     test('the view is saved after it settles and restored on open', () async {
       final s = open();
