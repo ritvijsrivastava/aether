@@ -15,6 +15,7 @@ import '../../domain/ops/op.dart';
 import '../../domain/ops/op_store.dart';
 import '../../domain/text/page_text.dart';
 import '../../domain/text/text_selection.dart';
+import 'canvas_ui_state.dart' show CanvasTool;
 import 'engine/canvas_controller.dart';
 import 'engine/scene.dart';
 import 'engine/view_state.dart';
@@ -212,9 +213,14 @@ class DocumentSession
   /// duplicate, a merge, a recolour): the screen shows its action strip.
   void Function(Highlight)? onHighlightTouched;
 
+  /// A stroke, wipe or highlight just finished with this tool: the screen
+  /// may fold the tool's options away.
+  void Function(CanvasTool)? onGestureDone;
+
   void _touched(String id) {
     final h = highlights.byId(id);
     if (h != null) onHighlightTouched?.call(h);
+    onGestureDone?.call(CanvasTool.mark);
   }
 
   /// Marks [selection]. Re-marking the same words in the same colour does
@@ -297,6 +303,7 @@ class DocumentSession
       color: color,
     );
     ink.add(stroke);
+    onGestureDone?.call(CanvasTool.ink);
     _enqueue(() async {
       try {
         await bus.run(
@@ -593,6 +600,9 @@ class DocumentSession
   /// if the save fails the page is reloaded from what was really stored.
   @override
   void commitErase({required Set<String> deleted, required List<Ink> created}) {
+    if (deleted.isNotEmpty || created.isNotEmpty) {
+      onGestureDone?.call(CanvasTool.erase);
+    }
     // Links to highlights that were wiped go with them.
     final gone = [for (final id in deleted) ...links.forHighlight(id)];
     for (final l in gone) {

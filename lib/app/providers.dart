@@ -129,6 +129,7 @@ class AppSettings {
     this.fingerDraws = false,
     this.leftHanded = false,
     this.perfHud = false,
+    this.autoHideToolPanel = true,
   });
 
   final ThemeMode themeMode;
@@ -142,16 +143,22 @@ class AppSettings {
   /// Shows frame times over the canvas (for judging smoothness on a device).
   final bool perfHud;
 
+  /// Fold a tool's options away after its first stroke, so they do not
+  /// cover the page. Double-tap the tool to bring them back.
+  final bool autoHideToolPanel;
+
   AppSettings copyWith({
     ThemeMode? themeMode,
     bool? fingerDraws,
     bool? leftHanded,
     bool? perfHud,
+    bool? autoHideToolPanel,
   }) => AppSettings(
     themeMode: themeMode ?? this.themeMode,
     fingerDraws: fingerDraws ?? this.fingerDraws,
     leftHanded: leftHanded ?? this.leftHanded,
     perfHud: perfHud ?? this.perfHud,
+    autoHideToolPanel: autoHideToolPanel ?? this.autoHideToolPanel,
   );
 }
 
@@ -160,6 +167,7 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
   static const _finger = 'fingerDraws';
   static const _left = 'leftHanded';
   static const _hud = 'perfHud';
+  static const _autoHide = 'autoHideToolPanel';
 
   @override
   Future<AppSettings> build() async {
@@ -173,6 +181,7 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
       fingerDraws: await db.setting(_finger) == '1',
       leftHanded: await db.setting(_left) == '1',
       perfHud: await db.setting(_hud) == '1',
+      autoHideToolPanel: await db.setting(_autoHide) != '0',
     );
   }
 
@@ -191,6 +200,11 @@ class SettingsNotifier extends AsyncNotifier<AppSettings> {
   Future<void> setPerfHud(bool v) async {
     state = AsyncData(_cur.copyWith(perfHud: v));
     await ref.read(databaseProvider).putSetting(_hud, v ? '1' : '0');
+  }
+
+  Future<void> setAutoHideToolPanel(bool v) async {
+    state = AsyncData(_cur.copyWith(autoHideToolPanel: v));
+    await ref.read(databaseProvider).putSetting(_autoHide, v ? '1' : '0');
   }
 
   Future<void> setLeftHanded(bool v) async {

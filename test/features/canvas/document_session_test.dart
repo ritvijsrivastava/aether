@@ -17,6 +17,7 @@ import 'package:aether/features/canvas/select/selection.dart';
 import 'package:aether/domain/ops/op_store.dart';
 import 'package:aether/domain/text/page_text.dart';
 import 'package:aether/domain/text/text_selection.dart';
+import 'package:aether/features/canvas/canvas_ui_state.dart' show CanvasTool;
 import 'package:aether/features/canvas/document_session.dart';
 import 'package:aether/features/canvas/engine/canvas_controller.dart';
 import 'package:aether/features/canvas/engine/scene.dart';
@@ -608,6 +609,34 @@ void main() {
         expect(s.highlights.count, 1);
         expect(s.highlights.byId(a), isNotNull);
       });
+    });
+
+    test('each finished gesture says which tool it was', () async {
+      final s = await opened();
+      final done = <CanvasTool>[];
+      s.onGestureDone = done.add;
+      final page = s.controller.scene.value.cards.first;
+      s.addHighlight(
+        pageId: page.id,
+        selection: pick(0, 0),
+        color: Swatch.claim,
+        text: text,
+      );
+      s.addInk(
+        pageId: page.id,
+        samples: Float32List.fromList([1, 1, 1, 9, 9, 1]),
+        width: 2,
+        color: 1,
+      );
+      expect(done, [CanvasTool.mark, CanvasTool.ink]);
+      s.commitErase(deleted: {s.ink.all.first.id}, created: const []);
+      expect(done.last, CanvasTool.erase);
+      s.commitErase(deleted: const {}, created: const []);
+      expect(
+        done,
+        hasLength(3),
+        reason: 'an erase that touched nothing is not one',
+      );
     });
 
     test('deleting is undoable and survives a reopen', () async {

@@ -27,7 +27,7 @@ class ToolRail extends ConsumerWidget {
                 tooltip: '${tool.tip} (${tool.key})',
                 selected: ui.tool == tool,
                 onPressed: () =>
-                    ref.read(canvasUiProvider.notifier).setTool(tool),
+                    ref.read(canvasUiProvider.notifier).pressTool(tool),
               ),
               const SizedBox(height: AetherTokens.s1),
             ],
@@ -71,7 +71,7 @@ class BottomToolbar extends ConsumerWidget {
                     tooltip: tool.tip,
                     selected: ui.tool == tool,
                     onPressed: () =>
-                        ref.read(canvasUiProvider.notifier).setTool(tool),
+                        ref.read(canvasUiProvider.notifier).pressTool(tool),
                   ),
                 ToolButton(
                   icon: ui.tool.isPrimary

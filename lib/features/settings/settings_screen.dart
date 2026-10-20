@@ -81,6 +81,19 @@ class SettingsScreen extends ConsumerWidget {
                   style: text.caption.copyWith(color: t.inkMuted),
                 ),
               ),
+              SwitchListTile(
+                value: s.autoHideToolPanel,
+                onChanged: n.setAutoHideToolPanel,
+                title: Text(
+                  'Hide tool options after a stroke',
+                  style: text.title,
+                ),
+                subtitle: Text(
+                  'Colours and sizes fold away once you start drawing. Double-tap '
+                  'the tool, or tap the small tab, to bring them back.',
+                  style: text.caption.copyWith(color: t.inkMuted),
+                ),
+              ),
               section('Diagnostics'),
               SwitchListTile(
                 value: s.perfHud,

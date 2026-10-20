@@ -28,6 +28,9 @@ enum CanvasTool {
   const CanvasTool(this.label, this.tip, this.icon, this.key);
   final String label, tip, icon, key;
 
+  /// Mark, Ink and Erase have an options panel (colours, size, ...).
+  bool get hasPanel => this == mark || this == ink || this == erase;
+
   /// The four tools kept on a phone's bottom bar; the rest live under "More".
   bool get isPrimary =>
       this == mark || this == ink || this == erase || this == note;
@@ -63,6 +66,7 @@ class CanvasUiState {
     this.inkWidth = InkPalette.defaultWidth,
     this.inkColors = ToolColours.inkDefault,
     this.erasePartial = false,
+    this.collapsedPanels = const {},
     this.extractOpen,
     this.extractWidth = 340,
     this.filter = ExtractFilter.all,
@@ -79,6 +83,9 @@ class CanvasUiState {
   final ToolColours inkColors;
   int get inkColor => inkColors.current;
 
+  /// Tools whose options panel is folded away to a small chip.
+  final Set<CanvasTool> collapsedPanels;
+
   /// Erase only the part of a stroke under the eraser (off: whole strokes).
   final bool erasePartial;
 
@@ -93,6 +100,7 @@ class CanvasUiState {
     double? inkWidth,
     ToolColours? inkColors,
     bool? erasePartial,
+    Set<CanvasTool>? collapsedPanels,
     bool? extractOpen,
     double? extractWidth,
     ExtractFilter? filter,
@@ -102,11 +110,15 @@ class CanvasUiState {
     inkWidth: inkWidth ?? this.inkWidth,
     inkColors: inkColors ?? this.inkColors,
     erasePartial: erasePartial ?? this.erasePartial,
+    collapsedPanels: collapsedPanels ?? this.collapsedPanels,
     extractOpen: extractOpen ?? this.extractOpen,
     extractWidth: extractWidth ?? this.extractWidth,
     filter: filter ?? this.filter,
   );
 }
+
+/// The time source for double-tap detection; tests replace it.
+final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
 class CanvasUiNotifier extends Notifier<CanvasUiState> {
   static const double minExtract = 280, maxExtract = 480;
@@ -135,6 +147,49 @@ class CanvasUiNotifier extends Notifier<CanvasUiState> {
   static const _inkKey = 'palette.ink', _markKey = 'palette.mark';
 
   void setTool(CanvasTool t) => state = state.copyWith(tool: t);
+
+  CanvasTool? _lastPressed;
+  DateTime _lastPressAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Two presses this close together on one tool are a double tap.
+  static const Duration doubleTap = Duration(milliseconds: 400);
+
+  /// A press on a tool button: picks the tool; a second press within 400 ms
+  /// on the tool already in use folds its options panel away, or brings it
+  /// back (SPEC 21.5 F8).
+  void pressTool(CanvasTool t) {
+    final now = ref.read(clockProvider)();
+    final quick = now.difference(_lastPressAt) <= doubleTap;
+    final again = quick && _lastPressed == t && state.tool == t;
+    _lastPressed = again ? null : t;
+    _lastPressAt = now;
+    if (again && t.hasPanel) {
+      togglePanel(t);
+    } else {
+      setTool(t);
+    }
+  }
+
+  /// Folds the panel of [t] away if it is open, opens it if folded.
+  void togglePanel(CanvasTool t) =>
+      setPanelCollapsed(t, !state.collapsedPanels.contains(t));
+
+  void setPanelCollapsed(CanvasTool t, bool collapsed) {
+    if (!t.hasPanel || state.collapsedPanels.contains(t) == collapsed) return;
+    state = state.copyWith(
+      collapsedPanels: {
+        for (final c in state.collapsedPanels)
+          if (c != t) c,
+        if (collapsed) t,
+      },
+    );
+  }
+
+  /// A stroke, wipe or highlight of [t] is finished: with auto-hide on, the
+  /// options get out of the way of the page.
+  void gestureDone(CanvasTool t, {required bool autoHide}) {
+    if (autoHide && state.tool == t) setPanelCollapsed(t, true);
+  }
 
   /// Picking a marker colour also switches to Mark.
   void setMarkColor(int argb) {

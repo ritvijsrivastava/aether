@@ -30,7 +30,6 @@ import 'erase/erase_options.dart';
 import 'erase/erase_tool.dart';
 import 'ink/ink_layer.dart';
 import 'ink/ink_stress.dart';
-import 'ink/ink_options.dart';
 import 'ink/ink_tool.dart';
 import 'input/pen_config.dart';
 import 'input/tool_gestures.dart';
@@ -45,6 +44,7 @@ import 'select/selection_view.dart';
 import 'notes/note_tool.dart';
 import 'notes/notes_overlay.dart';
 import 'marks/highlight_actions.dart';
+import 'tool_panel.dart';
 import 'marks/mark_layers.dart';
 import 'marks/mark_tool.dart';
 import 'engine/canvas_controller.dart';
@@ -103,6 +103,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   final SelectionState _selection = SelectionState();
   final HighlightFocus _hlFocus = HighlightFocus();
   late final HighlightActions _hlActions = _HighlightStripActions(this);
+  late final EraseClearActions _eraseClear = _EraseClear(this);
   final LiveLasso _lasso = LiveLasso();
   Listenable? _layerChanges;
   double _lastKeyboardInset = 0;
@@ -282,6 +283,12 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     });
     _controller.view.addListener(_warmText);
     session.onHighlightTouched = (h) => _hlFocus.show(h.id);
+    session.onGestureDone = (t) => ref
+        .read(canvasUiProvider.notifier)
+        .gestureDone(
+          t,
+          autoHide: ref.read(settingsProvider).value?.autoHideToolPanel ?? true,
+        );
     _selection.addListener(_selectionToStrip);
     // Marks that go away (deleted, undone) leave the selection.
     _layerChanges = Listenable.merge([
@@ -541,6 +548,118 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     }
   }
 
+  /// A tool key: picks the tool; its own key again folds its options away or
+  /// brings them back.
+  void _pickToolByKey(CanvasTool t) {
+    final n = ref.read(canvasUiProvider.notifier);
+    if (ref.read(canvasUiProvider).tool == t && t.hasPanel) {
+      n.togglePanel(t);
+    } else {
+      n.setTool(t);
+    }
+  }
+
+  /// The page most in view: what "this page" means for the clear buttons.
+  String? _pageInView() {
+    final cards = _controller.scene.value.cards;
+    if (cards.isEmpty) return null;
+    final v = _controller.view.value;
+    final size = _controller.viewport;
+    final seen = Rect.fromPoints(
+      v.screenToWorld(Offset.zero),
+      v.screenToWorld(Offset(size.width, size.height)),
+    );
+    String? best;
+    var bestArea = 0.0;
+    for (final c in cards) {
+      final i = c.rect.intersect(seen);
+      final area = i.width <= 0 || i.height <= 0 ? 0.0 : i.width * i.height;
+      if (area > bestArea) {
+        bestArea = area;
+        best = c.id;
+      }
+    }
+    return best;
+  }
+
+  void _clearInk({required bool pageOnly}) {
+    final session = _session;
+    if (session == null) return;
+    final page = pageOnly ? _pageInView() : null;
+    final strokes = pageOnly
+        ? (page == null ? const [] : session.ink.forPage(page))
+        : session.ink.all.toList();
+    if (strokes.isEmpty) {
+      _say(pageOnly ? 'No ink on this page.' : 'No ink to clear.');
+      return;
+    }
+    session.deleteMarks([for (final s in strokes) MarkRef(MarkKind.ink, s.id)]);
+    _undoMessage(
+      strokes.length == 1
+          ? 'Cleared 1 stroke'
+          : 'Cleared ${strokes.length} strokes',
+    );
+  }
+
+  Future<void> _clearBoard() async {
+    final session = _session;
+    if (session == null) return;
+    final refs = [
+      for (final h in session.highlights.all) MarkRef(MarkKind.highlight, h.id),
+      for (final i in session.ink.all) MarkRef(MarkKind.ink, i.id),
+      for (final n in session.notes.all) MarkRef(MarkKind.note, n.id),
+    ];
+    if (refs.isEmpty) {
+      _say('The board is already clear.');
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear the board?'),
+        content: Text(
+          'This removes all ${refs.length} marks: ink, highlights and notes. '
+          'You can undo it right after.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: context.tokens.danger,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Clear board'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    _selection.clear();
+    _hlFocus.clear();
+    session.deleteMarks(refs);
+    _undoMessage('Board cleared');
+  }
+
+  void _say(String message) => ScaffoldMessenger.maybeOf(context)
+    ?..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
+
+  void _undoMessage(String message) {
+    final session = _session;
+    if (session == null) return;
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          action: SnackBarAction(label: 'Undo', onPressed: session.undo),
+        ),
+      );
+  }
+
   Future<void> _copyQuote(Highlight h) async {
     await Clipboard.setData(ClipboardData(text: h.quote));
     if (!mounted) return;
@@ -710,7 +829,7 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
       onContextMenu: session == null ? null : _showContextMenu,
       onTap: session == null ? null : _onCanvasTap,
       onPointerDownOnCanvas: _hlFocus.clear,
-      onTool: (t) => ref.read(canvasUiProvider.notifier).setTool(t),
+      onTool: _pickToolByKey,
       onEscape: () {
         _hlFocus.clear();
         _selection.clear();
@@ -817,11 +936,13 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
                     controller: _controller,
                     canvas: canvas,
                     extract: _extract,
+                    onClear: _eraseClear,
                   )
                 : _WideBody(
                     controller: _controller,
                     canvas: canvas,
                     extract: _extract,
+                    onClear: _eraseClear,
                     expanded: cls == WindowClass.expanded,
                     extractOpen: extractOpen,
                     leftHanded: settings.leftHanded,
@@ -887,12 +1008,14 @@ class _WideBody extends ConsumerWidget {
     required this.expanded,
     required this.extractOpen,
     required this.leftHanded,
+    this.onClear,
   });
 
   final CanvasController controller;
   final Widget canvas;
   final ExtractController? extract;
   final bool expanded, extractOpen, leftHanded;
+  final EraseClearActions? onClear;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -916,27 +1039,13 @@ class _WideBody extends ConsumerWidget {
               child: ToolRail(),
             ),
           ),
-          if (ui.tool == CanvasTool.mark)
+          if (ui.tool.hasPanel)
             Positioned(
+              // Next to the rail, along the top: one place for every tool.
               left: leftHanded ? null : 96,
               right: leftHanded ? 96 : null,
-              top: AetherTokens.s4 + 1 * 60,
-              child: const MarkOptions(),
-            ),
-          if (ui.tool == CanvasTool.ink)
-            Positioned(
-              // Beside the rail, level with the Ink button.
-              left: leftHanded ? null : 96,
-              right: leftHanded ? 96 : null,
-              top: AetherTokens.s4 + 2 * 60,
-              child: const InkOptions(),
-            ),
-          if (ui.tool == CanvasTool.erase)
-            Positioned(
-              left: leftHanded ? null : 96,
-              right: leftHanded ? 96 : null,
-              top: AetherTokens.s4 + 3 * 60,
-              child: const EraseOptions(),
+              top: AetherTokens.s4,
+              child: ToolPanel(onClear: onClear),
             ),
           Positioned(
             right: leftHanded ? null : AetherTokens.s4,
@@ -996,10 +1105,12 @@ class _CompactBody extends ConsumerWidget {
     required this.controller,
     required this.canvas,
     required this.extract,
+    this.onClear,
   });
   final CanvasController controller;
   final Widget canvas;
   final ExtractController? extract;
+  final EraseClearActions? onClear;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1016,27 +1127,13 @@ class _CompactBody extends ConsumerWidget {
                 right: AetherTokens.s3,
                 child: _Zoom(controller),
               ),
-              if (ui.tool == CanvasTool.mark)
-                const Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 88,
-                  child: Center(child: MarkOptions()),
-                ),
-              if (ui.tool == CanvasTool.erase)
-                const Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 88,
-                  child: Center(child: EraseOptions()),
-                ),
-              if (ui.tool == CanvasTool.ink)
-                const Positioned(
+              if (ui.tool.hasPanel)
+                Positioned(
                   left: 0,
                   right: 0,
                   bottom: 88,
                   child: Center(
-                    child: InkOptions(sliderWidth: 160, compact: true),
+                    child: ToolPanel(compact: true, onClear: onClear),
                   ),
                 ),
               _ExtractSheet(open: open, source: extract),
@@ -1150,6 +1247,20 @@ class _ExtractSheetState extends State<_ExtractSheet> {
 }
 
 /// The selection pill's actions, run against the open document.
+class _EraseClear implements EraseClearActions {
+  _EraseClear(this.state);
+  final _CanvasScreenState state;
+
+  @override
+  void clearPageInk() => state._clearInk(pageOnly: true);
+
+  @override
+  void clearAllInk() => state._clearInk(pageOnly: false);
+
+  @override
+  void clearBoard() => state._clearBoard();
+}
+
 class _HighlightStripActions implements HighlightActions {
   _HighlightStripActions(this.state);
   final _CanvasScreenState state;

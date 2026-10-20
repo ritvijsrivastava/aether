@@ -502,6 +502,79 @@ void main() {
       });
     }
     expect(again, 1);
+
+    // Erase has buttons that clear ink in one go; Undo brings it all back.
+    await tester.tap(find.text('Erase'));
+    await tester.pump();
+    await tester.tap(find.text('Clear all ink'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Cleared 1 stroke'), findsOneWidget);
+    for (var i = 0; i < 200; i++) {
+      var n = -1;
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+        n = (await store.entities(kind: EntityKind.mark, docId: docId)).length;
+      });
+      if (n == 0) break;
+    }
+    expect(
+      await tester.runAsync(
+        () => store.entities(kind: EntityKind.mark, docId: docId),
+      ),
+      isEmpty,
+    );
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 250));
+    }
+    await tester.tap(find.text('Undo').last);
+    var restored = 0;
+    for (var i = 0; i < 200 && restored == 0; i++) {
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+        restored = (await store.entities(
+          kind: EntityKind.mark,
+          docId: docId,
+        )).length;
+      });
+    }
+    expect(restored, 1);
+
+    // Clear board asks first; Cancel changes nothing, Clear board removes all.
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 250));
+    }
+    await tester.tap(find.text('Clear board'));
+    await tester.pumpAndSettle();
+    expect(find.text('Clear the board?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('Clear the board?'), findsNothing);
+    expect(
+      (await tester.runAsync(
+        () => store.entities(kind: EntityKind.mark, docId: docId),
+      ))!,
+      hasLength(1),
+    );
+    await tester.tap(find.text('Clear board'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clear board').last);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Board cleared'), findsOneWidget);
+    for (var i = 0; i < 200; i++) {
+      var n = -1;
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+        n = (await store.entities(kind: EntityKind.mark, docId: docId)).length;
+      });
+      if (n == 0) break;
+    }
+    expect(
+      await tester.runAsync(
+        () => store.entities(kind: EntityKind.mark, docId: docId),
+      ),
+      isEmpty,
+    );
   }, skip: skip != null);
 
   testWidgets('placing a note, typing in it and clicking away saves it', (
