@@ -72,6 +72,37 @@ void main() {
   });
 
   group('focus moves', () {
+    testWidgets(
+      'pressing the canvas folds the panel; the tool button brings it back',
+      (tester) async {
+        final c = container();
+        tester.view.physicalSize = const Size(600, 800);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: c,
+            child: MaterialApp(
+              theme: buildTheme(AetherTokens.light),
+              home: const Scaffold(body: ToolRail()),
+            ),
+          ),
+        );
+        final n = c.read(canvasUiProvider.notifier);
+        n.setTool(CanvasTool.ink);
+        n.canvasPressed(autoHide: true);
+        await tester.pump();
+        expect(c.read(canvasUiProvider).collapsedPanels, {CanvasTool.ink});
+        await tester.tap(find.text('Ink'));
+        await tester.pump();
+        expect(
+          c.read(canvasUiProvider).collapsedPanels,
+          isEmpty,
+          reason: 'the icon brings it back',
+        );
+      },
+    );
+
     test('a press on the canvas folds the panel of the tool in use', () {
       final c = container();
       final n = c.read(canvasUiProvider.notifier)..setTool(CanvasTool.ink);

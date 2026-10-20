@@ -861,6 +861,12 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
         // A note picked with the pen stays picked until something else is
         // touched; the Select tool manages its own selection.
         if (ui.tool != CanvasTool.select) _selection.clear();
+        ref
+            .read(canvasUiProvider.notifier)
+            .canvasPressed(
+              autoHide:
+                  ref.read(settingsProvider).value?.autoHideToolPanel ?? true,
+            );
       },
       touchStats: _touchStats,
       onTool: _pickToolByKey,
