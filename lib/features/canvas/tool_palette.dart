@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../ui/theme/tokens.dart';
-import '../../ui/widgets/aether_icon.dart';
 import '../../ui/widgets/panel_surface.dart';
 import '../../ui/widgets/tool_button.dart';
 import 'canvas_ui_state.dart';
@@ -64,22 +63,28 @@ class _MovableToolRailState extends ConsumerState<MovableToolRail> {
   /// first build puts it in its home corner.
   Offset? _pos;
 
-  /// Height of the grip strip on top of the buttons.
-  static const double _handleH = 16;
+  /// Height of the grip strip above the buttons when the rail stands, and
+  /// the grip strip's width when it lies (grip on the left).
+  static const double _handleH = 20;
 
-  /// Within this distance of the bottom edge the rail lies down.
-  static const double _bottomZone = 160;
-
-  /// The control's outer size in [direction] order: grip, pad, then buttons.
+  /// The control's outer size: pad, grip, then buttons.
   Size _controlSize(Axis railDirection) {
     final n = CanvasTool.values.length;
-    final buttons = railDirection == Axis.vertical
-        ? Size(ToolRail.button, n * ToolRail.button + (n - 1) * ToolRail.gap)
-        : Size(n * ToolRail.button + (n - 1) * ToolRail.gap, ToolRail.button);
-    return Size(
-      math.max(buttons.width, ToolRail.button) + ToolRail.pad * 2,
-      buttons.height + ToolRail.pad * 2 + _handleH,
-    );
+    return railDirection == Axis.vertical
+        ? Size(
+            ToolRail.button + ToolRail.pad * 2,
+            _handleH +
+                n * ToolRail.button +
+                (n - 1) * ToolRail.gap +
+                ToolRail.pad * 2,
+          )
+        : Size(
+            _handleH +
+                n * ToolRail.button +
+                (n - 1) * ToolRail.gap +
+                ToolRail.pad * 2,
+            ToolRail.button + ToolRail.pad * 2,
+          );
   }
 
   @override
@@ -91,14 +96,44 @@ class _MovableToolRailState extends ConsumerState<MovableToolRail> {
     final standing = _controlSize(Axis.vertical);
     final lying = _controlSize(Axis.horizontal);
     var pos = _pos ?? _home(size, settings.leftHanded);
-    // Very near the bottom edge the rail lies down; elsewhere it stands.
-    final liesDown = size.height - (pos.dy + standing.height) < _bottomZone;
+    // The rail lies down only when standing would poke past the bottom edge,
+    // and stands again the moment it fits.
+    final liesDown = pos.dy + standing.height > size.height - 8;
     final ctrl = liesDown ? lying : standing;
+    // The rail never leaves the screen.
     pos = Offset(
       pos.dx.clamp(8.0, math.max(8.0, size.width - ctrl.width - 8)),
       pos.dy.clamp(8.0, math.max(8.0, size.height - ctrl.height - 8)),
     );
     final railDirection = liesDown ? Axis.horizontal : Axis.vertical;
+
+    Widget grip(bool linesVertical) => KeyedSubtree(
+      key: const Key('rail-grip'),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.move,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanUpdate: (d) => setState(() {
+            _pos = (_pos ?? _home(size, settings.leftHanded)) + d.delta;
+          }),
+          child: SizedBox(
+            width: railDirection == Axis.horizontal
+                ? _handleH
+                : double.infinity,
+            height: railDirection == Axis.vertical ? _handleH : ToolRail.button,
+            child: Center(
+              child: Transform.rotate(
+                angle: linesVertical ? math.pi / 2 : 0,
+                child: CustomPaint(
+                  size: const Size(16, 8),
+                  painter: _GripPainter(color: context.tokens.inkFaint),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
 
     return Stack(
       children: [
@@ -109,37 +144,21 @@ class _MovableToolRailState extends ConsumerState<MovableToolRail> {
           height: ctrl.height,
           child: PanelSurface(
             padding: const EdgeInsets.all(ToolRail.pad),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                MouseRegion(
-                  cursor: SystemMouseCursors.move,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onPanUpdate: (d) => setState(() {
-                      _pos =
-                          (_pos ?? _home(size, settings.leftHanded)) + d.delta;
-                    }),
-                    child: SizedBox(
-                      height: _handleH,
-                      child: Center(
-                        child: Transform.rotate(
-                          angle: railDirection == Axis.vertical
-                              ? math.pi / 2
-                              : 0,
-                          child: AetherIcon(
-                            AetherIcons.more,
-                            size: 14,
-                            color: context.tokens.inkFaint,
-                          ),
-                        ),
-                      ),
-                    ),
+            child: railDirection == Axis.vertical
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      grip(false),
+                      ToolRail(direction: railDirection),
+                    ],
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      grip(true),
+                      ToolRail(direction: railDirection),
+                    ],
                   ),
-                ),
-                ToolRail(direction: railDirection),
-              ],
-            ),
           ),
         ),
         // The tool's options follow the rail: beside it when it stands,
@@ -173,6 +192,26 @@ class _MovableToolRailState extends ConsumerState<MovableToolRail> {
   Offset _home(Size size, bool leftHanded) => leftHanded
       ? Offset(size.width - ToolRail.width - AetherTokens.s3, AetherTokens.s3)
       : const Offset(AetherTokens.s3, AetherTokens.s3);
+}
+
+/// The drag handle: two lines. They run along the rail's long side, so a
+/// standing rail shows horizontal lines and a lying rail vertical ones.
+class _GripPainter extends CustomPainter {
+  _GripPainter({required this.color});
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(const Offset(2, 1.5), Offset(size.width - 2, 1.5), paint);
+    canvas.drawLine(const Offset(2, 6.5), Offset(size.width - 2, 6.5), paint);
+  }
+
+  @override
+  bool shouldRepaint(_GripPainter old) => old.color != color;
 }
 
 /// Phone bottom toolbar: four primary tools and a "More" tray.
