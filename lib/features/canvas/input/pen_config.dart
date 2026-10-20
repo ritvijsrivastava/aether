@@ -33,12 +33,13 @@ class PenButtonMap {
 
 /// How raw pressure becomes line width.
 ///
-/// Real strokes rarely pass 0.6 (the S Pen's light writing is about 0.1 to
-/// 0.4), so the curve reaches full width at [peak] and bends by [gamma]
-/// (below 1 makes light pressure count for more: the "soft" default).
+/// Natural writing on the Tab S9 is light: strokes from real use ran from 0 to
+/// about 0.25 with a median of 0.12 (a deliberate hard press reaches 0.6). The
+/// curve reaches full width at [peak] and bends by [gamma] (below 1 makes light
+/// pressure count for more: the "soft" default, tuned to that range).
 @immutable
 class PressureCurve {
-  const PressureCurve({this.peak = 0.6, this.gamma = 0.7, this.floor = 0.2});
+  const PressureCurve({this.peak = 0.3, this.gamma = 0.7, this.floor = 0.25});
 
   /// Pressure that gives full width.
   final double peak;
@@ -50,8 +51,8 @@ class PressureCurve {
   final double floor;
 
   static const soft = PressureCurve();
-  static const medium = PressureCurve(peak: 0.8, gamma: 1.0);
-  static const firm = PressureCurve(peak: 1.0, gamma: 1.4);
+  static const medium = PressureCurve(peak: 0.5, gamma: 1.0, floor: 0.2);
+  static const firm = PressureCurve(peak: 0.8, gamma: 1.2, floor: 0.15);
 
   /// Width factor in [floor, 1] for a pressure in [0, 1].
   double apply(double pressure) {

@@ -31,10 +31,31 @@ void main() {
       }
     });
 
-    test('soft reaches full width at normal writing pressure (0.6)', () {
-      expect(PressureCurve.soft.apply(0.6), closeTo(1, 1e-9));
-      expect(PressureCurve.firm.apply(0.6), lessThan(0.7));
-    });
+    test(
+      'soft reaches full width at a firm press (0.3); firm needs much more',
+      () {
+        expect(PressureCurve.soft.apply(0.3), closeTo(1, 1e-9));
+        expect(PressureCurve.firm.apply(0.3), lessThan(0.6));
+      },
+    );
+
+    test(
+      'natural writing on the S9 (0.06 to 0.2) spans a clear range of widths',
+      () {
+        // Measured from real strokes: light 0.06, typical 0.12, firm 0.2.
+        final light = PressureCurve.soft.apply(0.06);
+        final typical = PressureCurve.soft.apply(0.12);
+        final firm = PressureCurve.soft.apply(0.2);
+        expect(light, inInclusiveRange(0.4, 0.55));
+        expect(typical, inInclusiveRange(0.55, 0.75));
+        expect(firm, inInclusiveRange(0.75, 0.95));
+        expect(
+          firm - light,
+          greaterThan(0.3),
+          reason: 'pressure visibly changes the line',
+        );
+      },
+    );
 
     test('light pressure counts for more on soft than on firm', () {
       expect(

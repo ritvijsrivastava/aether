@@ -309,3 +309,14 @@ Stone Canvas with a dot grid (Grid Dot, 2.4 px dots, 32 px pitch × zoom) that p
 - **Don't** reproduce `Aether Concept.dc.html`'s treatment (Archivo, 2px hard black borders, square corners, red #ec3013 accent, all-caps tracked labels). It is an earlier exploration and was superseded by `Aether.dc.html`.
 - **Don't** show a debug-style input indicator as permanent chrome; fold it into a quiet state affordance.
 - **Don't** ship the iOS-style bottom-only navigation or Cupertino controls; use Material 3 components themed with these tokens.
+
+
+## As built (M4)
+
+- **Ink.** Pressure-width ribbon with round caps; width follows a soft curve tuned to real S Pen strokes. The pen size is in screen dp at the time of drawing. A crowded page (over 400 strokes) is drawn from a cached bitmap while panning and zooming.
+- **Pen options** float beside the tool rail (above the toolbar on a phone): four colour discs and a size slider for Ink; one switch, "Erase part of a stroke", for Erase.
+- **Eraser** shows a 14 dp ring under the pen.
+- **Sticky note.** Warm yellow, 14 px radius, Sticky shadow; header "Note" (12sp), a delete control, 15sp text, a resize grip. The header grows below 100% zoom so its controls stay 48 dp on screen. Below 35% zoom a note is a chip.
+- **Link.** Indigo curve with a dot on the highlight; a halo and a dashed line while dragging; "Remove link" pill (Alarm Red text) at the middle of a selected link.
+- **Selection.** Dashed 1.5 px indigo outline, 10 px radius, faint wash; a pill above it with "N selected", Recolor, Delete. Recolor shows the three meaning discs and/or the four ink colours.
+- **Extract notes.** A note tile: a sticky-yellow disc, "Note · p. N", the words in sans 14sp, and "↳ “quote”" lines in indigo ink (12sp, up to three, then "and N more").
