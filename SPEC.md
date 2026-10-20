@@ -536,16 +536,16 @@ Everything an earlier milestone report or this spec marked "later", "unverified"
 | R35 | A page with 10,000 strokes records its picture once on first paint: a one-time pause of about 0.4 s on the S9 (the bitmap cache fixed steady-state frames: raster 47 ms to 1.5 ms) | M4 | M6 | Recording is chunked or moved off the first frame; or accepted in writing |
 | R36 | Soft-keyboard behaviour of notes (the canvas pans to keep the note visible) was only tested with a hardware keyboard | M4 | M6 | Checked with the on-screen keyboard on the S9 and on a phone |
 | R37 | Pen pressure curve has no setting yet (`PenConfig` is code only) | M4 | M6 | A "pen pressure" choice in Settings (soft, medium, firm) |
-| R38 | **F1** Erase all: one action to clear ink (and optionally everything) | owner 2026-10-20 | M4.1 | Erase panel has "Clear all ink" with a scope choice (21.7 Q5); one undo step; confirm only if it cannot be undone |
+| R38 | **F1** Erase all: one action to clear ink (and optionally everything) | owner 2026-10-20 | M4.1 | Erase panel has "Clear all ink" with a scope choice (21.7); one undo step; confirm only if it cannot be undone |
 | R39 | **F2** Any ink colour; the last 5 used are kept | owner | M4.1 | Colour picker (hue/lightness plus hex) in the pen panel; 5 recents persist across launches |
 | R40 | **F3** Create a board with no PDF | owner | M4.2 | "New board" in Library opens an empty canvas; "Add" menu places content |
-| R41 | **F4** Import images, Markdown, plain text (Word: 21.7 Q4) | owner | M4.3 | Each lands as a movable card; text cards support highlights and Extract |
+| R41 | **F4** Import images, Markdown, plain text (Word: not in v1) | owner | M4.3 | Each lands as a movable card; text cards support highlights and Extract |
 | R42 | **F5** Select text anywhere, copy, paste onto canvas as a text block | owner | M4.2 (paste) and M4.3 (copy from text cards) | Ctrl+V / long-press Paste creates a text card at the pointer; clipboard image creates an image card |
 | R43 | **F6** Re-highlighting the same text with the same meaning is not allowed | owner | M4.1 | Same range and meaning: no new mark, the existing one flashes. Overlap rules in 21.5 |
 | R44 | **F7** Pen-friendly highlight menu (after highlighting, and on tapping a highlight): Add note, Change meaning, Copy, Delete; no long-press needed | owner | M4.1 | Vertical action strip beside the highlight; works with pen, finger and mouse |
 | R45 | **F8** Ink and Erase option panels horizontal and collapsible | owner | M4.1 | Horizontal strip; double-tap the tool to hide or reopen; state remembered per tool |
 | R46 | **F9** Resting palm must not block finger gestures | owner | M4.1 | Palm contact is classified and ignored on its own; pan and pinch with other fingers keep working (measured on the S9; test with synthetic contact sizes) |
-| R47 | **F10** A pen tap on a note must not close or edit it; pen can select, move, reorder (bring forward/back) | owner | M4.1 (pen select/move) and M4.2 (z-order for all items) | Pen never types; edit with finger tap or keyboard (21.7 Q6) |
+| R47 | **F10** A pen tap on a note must not close or edit it; pen can select, move, reorder (bring forward/back) | owner | M4.1 (pen select/move) and M4.2 (z-order for all items) | Pen never types; edit with finger tap or keyboard (21.7) |
 | R23 | Multiply blend cost on the S9 measured only with 8 highlights; flat-fill fallback undecided | M3 | M6 | Measured on a page with many highlights; keep multiply or switch by setting, written down |
 | R24 | Predictive back enabled but never exercised on a device | M1 | M6 | Back from Canvas, sheets and menus checked on the S9 |
 | R25 | Linux minimum window size (800x520) never resized by hand; HiDPI and Wayland checks | M1, §17 | M6 | Done and noted in the M6 report |
@@ -665,16 +665,18 @@ Card   { id, boardId, sourceId?, kind, pageIndex?, x, y, width, height, z, hlc }
 **Decided:**
 - **Pen on notes:** pen **double-tap** opens a note for typing (keyboard), in addition to finger tap, mouse click and Enter. A pen single tap only selects. An empty note must **not vanish** on a pen tap: an empty note is discarded only when it loses focus after having been opened for typing and left empty, never on selection.
 - **Overlapping highlights of the same colour merge into one.**
-- **Colour is free and replaces fixed meanings.** Ink and marker (highlighter) take **any colour**. Highlights on text use the same marker colours. The **Extract panel collects by colour**: a row of colour chips (one per colour in use, with counts) filters the list; items are grouped by colour. The last used colour is remembered separately for Ink and Marker, and choosing either tool restores its last colour. The last 5 colours are shared across both.
+- **Colour is free and replaces fixed meanings.** Ink and marker (highlighter) take **any colour**. Highlights on text use the same marker colours. The **Extract panel collects by colour**: a row of colour chips (one per colour in use, with counts) filters the list; items are grouped by colour. Each of Ink and Marker remembers its **own** last used colour and its **own last 5 colours** (not shared); choosing the tool restores its last colour.
 - Everything else in 21.5 stands as proposed (auto-collapse panels after first stroke, board wording, auto-convert existing documents, one shared Extract panel across PDFs, M4.1 first).
 
 **Consequences of free colour (to confirm, Q-A to Q-C):**
-- The built-in Claim / Method / Question meanings (R12) become **default named swatches**, not a fixed set. A colour may carry an optional name ("Claim"); Markdown export groups by colour, using the name if there is one, else a colour label (e.g. "Coral").
+- **Colours carry no names** (decided). The built-in Claim / Method / Question meanings (R12) become three **default swatches** with no name shown. Markdown export groups by colour in order of first use, headed by an automatic label (nearest basic colour name, e.g. "Coral", "Blue"); never user-set. Existing highlights keep their colour; the old meaning id stays in storage unused.
 - Existing highlights keep their colour and name; the data model stores a colour value, with the meaning id kept as an optional label. No data loss.
 
-**Still open:**
-- **Q1 Word documents (.docx):** (a) not in v1; (b) import text only as a Markdown card; (c) convert via LibreOffice on Linux only. Proposed: (a) for now.
-- **Q2 Erase all:** proposed: Erase panel offers "Clear ink on this page/card" and "Clear all ink on board", both undoable with a snackbar; "Clear board" (everything) is separate, behind a confirm.
-- **Q-A Colour names:** may a colour chip be renamed by the owner (proposed: yes, long-press the chip in Extract)?
-- **Q-B Do shapes and text blocks also show in Extract?** Proposed: only highlights and notes; shapes no.
-- **Q-C Markdown export** groups by colour in order of first use (proposed), or by the palette order?
+**Resolved (2026-10-20, second round):**
+- **Word files:** not in v1 (export to PDF first). Revisit in v1.1.
+- **Erase all:** "Clear ink on this page/card" and "Clear all ink on board" (both undoable by snackbar, no dialog); "Clear board" (everything) is separate, behind a confirm.
+- **Renaming colours:** out of v1.
+- **Extract and shapes:** shapes and text blocks do not appear in Extract; only highlights and notes.
+- **Markdown export order:** by colour, in order of first use.
+
+**Still open:** none. Next step: owner says "go" for M4.1.
