@@ -6,6 +6,7 @@ import 'package:flutter/services.dart' show HardwareKeyboard;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../ui/theme/theme.dart' show AetherText;
 import '../../ui/theme/tokens.dart';
 import '../../ui/widgets/panel_surface.dart';
 import '../../ui/adaptive/window_class.dart';
@@ -48,6 +49,8 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
   final LiveInk _liveInk = LiveInk();
   final EraserState _eraser = EraserState();
   final SelectionState _selection = SelectionState();
+  final ValueNotifier<String?> _toast = ValueNotifier(null);
+  Timer? _toastTimer;
   final LiveLasso _lasso = LiveLasso();
   Listenable? _layerChanges;
   late final EraseClearActions _eraseClear = _EraseClear(this);
@@ -149,51 +152,67 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _selection.prune((r) => s.ink.byId(r.id) != null);
   }
 
-  /// Delete or Backspace: remove the selected strokes, with Undo offered.
+  /// A short notice under the name pill. It fades by itself; there is
+  /// nothing to dismiss (Undo lives in the pill).
+  void _say(String message) {
+    _toastTimer?.cancel();
+    _toast.value = message;
+    _toastTimer = Timer(const Duration(milliseconds: 1400), () {
+      _toast.value = null;
+    });
+  }
+
+  /// Delete or Backspace: remove the selected strokes.
   void _deleteSelection() {
     final session = _session;
     if (session == null || _selection.isEmpty) return;
     final n = _selection.count;
     session.deleteMarks(_selection.refs);
     _selection.clear();
-    ScaffoldMessenger.maybeOf(context)
-      ?..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(n == 1 ? 'Deleted 1 stroke' : 'Deleted $n strokes'),
-          action: SnackBarAction(label: 'Undo', onPressed: session.undo),
-        ),
-      );
+    _say(n == 1 ? 'Deleted 1 stroke' : 'Deleted $n strokes');
   }
 
-  /// All ink on the board, one undo step.
-  void _clearAllInk() {
+  /// Everything on the board, after asking; one undo step.
+  Future<void> _clearAll() async {
     final session = _session;
     if (session == null) return;
     final strokes = session.ink.all.toList();
     if (strokes.isEmpty) {
-      _say('No ink to clear.');
+      _say('The board is already clear');
       return;
     }
-    session.deleteMarks([for (final s in strokes) MarkRef(MarkKind.ink, s.id)]);
-    _say('');
-    ScaffoldMessenger.maybeOf(context)
-      ?..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            strokes.length == 1
-                ? 'Cleared 1 stroke'
-                : 'Cleared ${strokes.length} strokes',
-          ),
-          action: SnackBarAction(label: 'Undo', onPressed: session.undo),
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear all?'),
+        content: Text(
+          strokes.length == 1
+              ? 'This removes the 1 stroke on the board. You can undo it.'
+              : 'This removes all ${strokes.length} strokes on the board. '
+                    'You can undo it.',
         ),
-      );
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: context.tokens.danger,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Clear all'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    _selection.clear();
+    session.deleteMarks([
+      for (final s in session.ink.all) MarkRef(MarkKind.ink, s.id),
+    ]);
+    _say('Board cleared');
   }
-
-  void _say(String message) => ScaffoldMessenger.maybeOf(context)
-    ?..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
 
   /// A tool key: picks the tool; its own key again folds its options away or
   /// brings them back.
@@ -223,6 +242,8 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
     _layerChanges?.removeListener(_pruneSelection);
     _selection.removeListener(_deleteSelection);
     _selection.dispose();
+    _toastTimer?.cancel();
+    _toast.dispose();
     _lasso.dispose();
     _history?.cancel();
     _session?.dispose();
@@ -239,12 +260,12 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
 
     // Fit and zoom aim at the area the floating controls leave free.
     _controller.insets = cls == WindowClass.compact
-        ? const EdgeInsets.only(top: 64, bottom: 96)
+        ? const EdgeInsets.only(top: 64, bottom: 88)
         : EdgeInsets.fromLTRB(
-            settings.leftHanded ? 0 : 104,
+            settings.leftHanded ? 0 : ToolRail.width + 24,
             64, // room for the name pill
-            settings.leftHanded ? 104 : 0,
-            72, // room for the zoom pill
+            settings.leftHanded ? ToolRail.width + 24 : 0,
+            24,
           );
 
     final title = _title ?? 'Board';
@@ -282,6 +303,12 @@ class _CanvasScreenState extends ConsumerState<CanvasScreen>
             actions: _SelectionActions(this),
             viewport: () => _controller.viewport,
           ),
+        Positioned(
+          top: 64,
+          left: 0,
+          right: 0,
+          child: IgnorePointer(child: Center(child: _Toast(_toast))),
+        ),
         if (settings.perfHud)
           Align(
             alignment: Alignment.topCenter,
@@ -401,24 +428,24 @@ class _WideBody extends ConsumerWidget {
           child: Center(child: pill),
         ),
         Positioned(
-          left: leftHanded ? null : AetherTokens.s4,
-          right: leftHanded ? AetherTokens.s4 : null,
-          top: AetherTokens.s4,
-          bottom: AetherTokens.s4,
+          left: leftHanded ? null : AetherTokens.s3,
+          right: leftHanded ? AetherTokens.s3 : null,
+          top: AetherTokens.s3,
+          bottom: AetherTokens.s3,
           child: const Align(alignment: Alignment.topCenter, child: ToolRail()),
         ),
         if (ui.tool.hasPanel)
           Positioned(
-            // A column hanging from the rail, level with its tool button.
-            left: leftHanded ? null : 96,
-            right: leftHanded ? 96 : null,
-            top: AetherTokens.s4 + 2 + ui.tool.panelIndex * 60,
+            // Beside the rail, level with its tool button.
+            left: leftHanded ? null : ToolRail.width + AetherTokens.s3 * 2,
+            right: leftHanded ? ToolRail.width + AetherTokens.s3 * 2 : null,
+            top: ToolRail.panelTop(ui.tool),
             child: ToolPanel(onClear: onClear),
           ),
         Positioned(
-          right: leftHanded ? null : AetherTokens.s4,
-          left: leftHanded ? AetherTokens.s4 : null,
-          bottom: AetherTokens.s4,
+          right: leftHanded ? null : AetherTokens.s3,
+          left: leftHanded ? AetherTokens.s3 : null,
+          top: AetherTokens.s3,
           child: _Zoom(controller),
         ),
       ],
@@ -443,26 +470,49 @@ class _CompactBody extends ConsumerWidget {
     return Stack(
       children: [
         Positioned.fill(child: canvas),
+        Positioned(top: AetherTokens.s3, left: AetherTokens.s3, child: pill),
         Positioned(
           top: AetherTokens.s3,
-          left: AetherTokens.s3,
           right: AetherTokens.s3,
-          child: Align(alignment: Alignment.topLeft, child: pill),
-        ),
-        Positioned(
-          right: AetherTokens.s3,
-          bottom: 96,
           child: _Zoom(controller),
         ),
         if (ui.tool.hasPanel)
           Positioned(
             left: 0,
             right: 0,
-            bottom: 160,
-            child: Center(child: ToolPanel(compact: true, onClear: onClear)),
+            bottom: 88,
+            child: Center(child: ToolPanel(onClear: onClear)),
           ),
         const Positioned(left: 0, right: 0, bottom: 0, child: BottomToolbar()),
       ],
+    );
+  }
+}
+
+/// A one-line notice that fades in and out.
+class _Toast extends StatelessWidget {
+  const _Toast(this.message);
+  final ValueNotifier<String?> message;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return ValueListenableBuilder<String?>(
+      valueListenable: message,
+      builder: (context, m, _) => AnimatedOpacity(
+        duration: const Duration(milliseconds: 120),
+        opacity: m == null ? 0 : 1,
+        child: m == null
+            ? const SizedBox.shrink()
+            : PanelSurface(
+                radius: AetherTokens.rPill,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AetherTokens.s3,
+                  vertical: AetherTokens.s2,
+                ),
+                child: Text(m, style: AetherText(t.ink).label),
+              ),
+      ),
     );
   }
 }
@@ -490,11 +540,11 @@ class _SelectionActions implements SelectionActions {
   }
 }
 
-/// The Erase panel's clear button, run against the open document.
+/// The Erase panel's Clear all row, run against the open document.
 class _EraseClear implements EraseClearActions {
   _EraseClear(this.state);
   final _CanvasScreenState state;
 
   @override
-  void clearAllInk() => state._clearAllInk();
+  void clearAll() => state._clearAll();
 }

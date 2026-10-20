@@ -31,15 +31,16 @@ class ColourStrip extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         for (final c in colours.recent)
-          _Swatch(
+          ColourSwatch(
             color: c,
             selected: c == colours.current,
             label: 'A $prefix colour',
             onTap: () => onPick(c),
           ),
-        _MoreButton(
+        AnyColourButton(
           label: 'Other $prefix colour',
           current: colours.current,
+          saved: colours.recent,
           onPick: onPick,
         ),
       ],
@@ -47,13 +48,16 @@ class ColourStrip extends StatelessWidget {
   }
 }
 
-class _Swatch extends StatelessWidget {
-  const _Swatch({
+class ColourSwatch extends StatelessWidget {
+  const ColourSwatch({
+    super.key,
+    this.tile = AetherTokens.minTarget,
     required this.color,
     required this.selected,
     required this.label,
     required this.onTap,
   });
+  final double tile;
   final int color;
   final bool selected;
   final String label;
@@ -73,8 +77,8 @@ class _Swatch extends StatelessWidget {
           radius: 24,
           onTap: onTap,
           child: SizedBox(
-            width: AetherTokens.minTarget,
-            height: AetherTokens.minTarget,
+            width: tile,
+            height: tile,
             child: Center(child: ColorDisc(color, selected: selected)),
           ),
         ),
@@ -83,20 +87,32 @@ class _Swatch extends StatelessWidget {
   }
 }
 
-class _MoreButton extends StatelessWidget {
-  const _MoreButton({
+class AnyColourButton extends StatelessWidget {
+  const AnyColourButton({
+    super.key,
+    this.tile = AetherTokens.minTarget,
     required this.label,
     required this.current,
+    required this.saved,
     required this.onPick,
   });
+  final double tile;
   final String label;
   final int current;
+  final List<int> saved;
   final ValueChanged<int> onPick;
 
   @override
   Widget build(BuildContext context) {
     Future<void> open() async {
-      final c = await showColourPicker(context, initial: current);
+      final c = await showColourPicker(
+        context,
+        initial: InkPalette.resolve(current, Theme.of(context).brightness),
+        saved: [
+          for (final c in saved)
+            InkPalette.resolve(c, Theme.of(context).brightness),
+        ],
+      );
       if (c != null) onPick(c);
     }
 
@@ -111,8 +127,8 @@ class _MoreButton extends StatelessWidget {
           radius: 24,
           onTap: open,
           child: SizedBox(
-            width: AetherTokens.minTarget,
-            height: AetherTokens.minTarget,
+            width: tile,
+            height: tile,
             child: Center(
               child: Container(
                 width: 28,

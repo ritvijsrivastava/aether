@@ -187,11 +187,11 @@ void main() {
       expect(picked.single >> 24, 0xFF, reason: 'always opaque');
     });
 
-    testWidgets('cancelling the picker picks nothing', (tester) async {
+    testWidgets('closing the picker picks nothing', (tester) async {
       final picked = await pumpStrip(tester, ToolColours.inkDefault);
       await tester.tap(find.byTooltip('Any colour'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Cancel'));
+      await tester.tap(find.byTooltip('Close'));
       await tester.pumpAndSettle();
       expect(picked, isEmpty);
     });

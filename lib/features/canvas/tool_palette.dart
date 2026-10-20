@@ -10,11 +10,21 @@ import 'canvas_ui_state.dart';
 class ToolRail extends ConsumerWidget {
   const ToolRail({super.key});
 
+  static const double button = 52, gap = 2, pad = AetherTokens.s1;
+
+  /// The rail's outer width.
+  static const double width = button + pad * 2;
+
+  /// Where the options panel of [tool] starts, so it hangs level with the
+  /// tool's button (the rail sits [AetherTokens.s3] from the top).
+  static double panelTop(CanvasTool tool) =>
+      AetherTokens.s3 + pad + tool.index * (button + gap);
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ui = ref.watch(canvasUiProvider);
     return PanelSurface(
-      padding: const EdgeInsets.all(AetherTokens.s2),
+      padding: const EdgeInsets.all(pad),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -23,12 +33,13 @@ class ToolRail extends ConsumerWidget {
               ToolButton(
                 icon: tool.icon,
                 label: tool.label,
+                size: button,
                 tooltip: '${tool.tip} (${tool.key})',
                 selected: ui.tool == tool,
                 onPressed: () =>
                     ref.read(canvasUiProvider.notifier).pressTool(tool),
               ),
-              const SizedBox(height: AetherTokens.s1),
+              const SizedBox(height: gap),
             ],
           ],
         ),
@@ -57,7 +68,7 @@ class BottomToolbar extends ConsumerWidget {
           top: false,
           child: Padding(
             padding: const EdgeInsets.symmetric(
-              horizontal: AetherTokens.s2,
+              horizontal: AetherTokens.s1,
               vertical: AetherTokens.s1,
             ),
             child: Row(

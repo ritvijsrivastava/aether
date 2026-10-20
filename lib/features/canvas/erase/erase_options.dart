@@ -6,19 +6,17 @@ import '../../../ui/theme/tokens.dart';
 import '../../../ui/widgets/panel_surface.dart';
 import '../canvas_ui_state.dart';
 
-/// What the Erase panel's clear button does.
+/// What the Erase panel's clear row does.
 abstract interface class EraseClearActions {
-  /// All ink on the board, one undo step.
-  void clearAllInk();
+  /// Clears the whole board (the caller confirms first); one undo step.
+  void clearAll();
 }
 
-/// The Erase tool's options as a column: the partial-erase switch, then the
-/// clear buttons under it.
+/// The Erase tool's options, kept small: a switch for erasing part of a
+/// stroke, and a Clear all row in the danger colour.
 class EraseOptions extends ConsumerWidget {
-  const EraseOptions({super.key, this.compact = false, this.actions});
+  const EraseOptions({super.key, this.actions});
 
-  /// True on a phone (the column floats above the bottom bar).
-  final bool compact;
   final EraseClearActions? actions;
 
   @override
@@ -29,59 +27,69 @@ class EraseOptions extends ConsumerWidget {
     final a = actions;
     return PanelSurface(
       radius: AetherTokens.rCard,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AetherTokens.s2,
-        vertical: AetherTokens.s1,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text('Erase part of a stroke', style: text.label),
+      child: IntrinsicWidth(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AetherTokens.s3,
+                AetherTokens.s1,
+                AetherTokens.s2,
+                AetherTokens.s1,
               ),
-              const SizedBox(width: AetherTokens.s2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text('Erase part of a stroke', style: text.label),
+                  ),
+                  const SizedBox(width: AetherTokens.s2),
+                  Semantics(
+                    label: 'Erase part of a stroke',
+                    toggled: partial,
+                    child: Switch(
+                      value: partial,
+                      onChanged: (v) => ref
+                          .read(canvasUiProvider.notifier)
+                          .setErasePartial(v),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (a != null) ...[
+              Container(height: 1, color: t.hairline),
+              // The whole row is the button.
               Semantics(
-                label: 'Erase part of a stroke',
-                toggled: partial,
-                child: Switch(
-                  value: partial,
-                  onChanged: (v) =>
-                      ref.read(canvasUiProvider.notifier).setErasePartial(v),
+                button: true,
+                label: 'Clear all',
+                excludeSemantics: true,
+                onTap: a.clearAll,
+                child: InkWell(
+                  onTap: a.clearAll,
+                  child: SizedBox(
+                    height: AetherTokens.minTarget,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AetherTokens.s3,
+                        ),
+                        child: Text(
+                          'Clear all',
+                          style: text.button.copyWith(color: t.danger),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
-          ),
-          if (a != null) ...[
-            Container(height: 1, color: t.hairline),
-            _Clear('Clear all ink', a.clearAllInk, t.ink),
           ],
-        ],
+        ),
       ),
-    );
-  }
-}
-
-class _Clear extends StatelessWidget {
-  const _Clear(this.label, this.onTap, this.color);
-  final String label;
-  final VoidCallback onTap;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = AetherText(color);
-    return TextButton(
-      style: TextButton.styleFrom(
-        minimumSize: const Size(0, AetherTokens.minTarget),
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.symmetric(horizontal: AetherTokens.s2),
-      ),
-      onPressed: onTap,
-      child: Text(label, style: text.button.copyWith(color: color)),
     );
   }
 }

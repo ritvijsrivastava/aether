@@ -5,6 +5,7 @@ import 'package:aether/features/canvas/ink/ink_options.dart';
 import 'package:aether/ui/theme/theme.dart';
 import 'package:aether/ui/theme/tokens.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -35,7 +36,7 @@ void main() {
     final c = await pump(tester);
     expect(c.read(canvasUiProvider).inkColor, InkPalette.auto);
     expect(c.read(canvasUiProvider).inkWidth, 2.5);
-    expect(find.text('2.5'), findsOneWidget);
+    expect(find.byType(CustomPaint), findsWidgets);
   });
 
   testWidgets('tapping a colour chooses it', (tester) async {
@@ -62,17 +63,42 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('the slider sets the pen size between 1 and 8', (tester) async {
+  testWidgets('minus and plus change the pen size by half a dp', (
+    tester,
+  ) async {
     final c = await pump(tester);
-    final slider = find.byType(Slider);
-    final box = tester.getRect(slider);
-    await tester.tapAt(Offset(box.left + 4, box.center.dy));
+    expect(c.read(canvasUiProvider).inkWidth, 2.5);
+    await tester.tap(find.byTooltip('Thicker'));
     await tester.pump();
-    expect(c.read(canvasUiProvider).inkWidth, lessThan(1.6));
-    await tester.tapAt(Offset(box.right - 4, box.center.dy));
+    expect(c.read(canvasUiProvider).inkWidth, 3.0);
+    await tester.tap(find.byTooltip('Thinner'));
     await tester.pump();
-    expect(c.read(canvasUiProvider).inkWidth, greaterThan(7.4));
-    expect(c.read(canvasUiProvider).inkWidth, lessThanOrEqualTo(8));
+    await tester.tap(find.byTooltip('Thinner'));
+    await tester.pump();
+    expect(c.read(canvasUiProvider).inkWidth, 2.0);
+  });
+
+  testWidgets('the wave is drawn as thick as the pen', (tester) async {
+    final c = await pump(tester);
+    SizeWavePainter painter() => tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((w) => w.painter)
+        .whereType<SizeWavePainter>()
+        .single;
+    expect(painter().width, 2.5);
+    c.read(canvasUiProvider.notifier).setInkWidth(6);
+    await tester.pump();
+    expect(painter().width, 6);
+  });
+
+  testWidgets('screen readers can raise and lower the size', (tester) async {
+    final handle = tester.ensureSemantics();
+    final c = await pump(tester);
+    final node = tester.getSemantics(find.bySemanticsLabel('Pen size 2.5'));
+    expect(node.getSemanticsData().hasAction(SemanticsAction.increase), isTrue);
+    expect(node.getSemanticsData().hasAction(SemanticsAction.decrease), isTrue);
+    handle.dispose();
+    expect(c.read(canvasUiProvider).inkWidth, 2.5);
   });
 
   testWidgets('the size is clamped to the allowed range', (tester) async {
@@ -85,30 +111,23 @@ void main() {
     expect(c.read(canvasUiProvider).inkWidth, 1);
   });
 
-  testWidgets('fits a phone: 360 dp wide with the short slider', (
-    tester,
-  ) async {
+  testWidgets('is lean: a narrow, short card', (tester) async {
     final c = ProviderContainer();
     addTearDown(c.dispose);
-    tester.view.physicalSize = const Size(360, 640);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: c,
         child: MaterialApp(
           theme: buildTheme(AetherTokens.light),
           home: const Scaffold(
-            body: Center(child: InkOptions(sliderWidth: 80, compact: true)),
+            body: Align(alignment: Alignment.topLeft, child: InkOptions()),
           ),
         ),
       ),
     );
-    expect(tester.takeException(), isNull);
-    expect(
-      tester.getSize(find.byType(InkOptions)).width,
-      lessThanOrEqualTo(360),
-    );
+    final size = tester.getSize(find.byType(InkOptions));
+    expect(size.width, lessThan(170));
+    expect(size.height, lessThan(180));
   });
 
   testWidgets(

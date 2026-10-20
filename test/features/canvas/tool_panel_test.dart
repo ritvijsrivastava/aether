@@ -11,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 class Clears implements EraseClearActions {
   final List<String> log = [];
   @override
-  void clearAllInk() => log.add('all');
+  void clearAll() => log.add('all');
 }
 
 ProviderContainer container() {
@@ -71,7 +71,6 @@ void main() {
     Future<ProviderContainer> pump(
       WidgetTester tester, {
       EraseClearActions? onClear,
-      bool compact = false,
       Size size = const Size(1000, 700),
     }) async {
       tester.view.physicalSize = size;
@@ -87,7 +86,7 @@ void main() {
             home: Scaffold(
               body: Align(
                 alignment: Alignment.topLeft,
-                child: ToolPanel(compact: compact, onClear: onClear),
+                child: ToolPanel(onClear: onClear),
               ),
             ),
           ),
@@ -113,11 +112,19 @@ void main() {
       await tester.pump();
       final a = tester.getRect(find.byTooltip('Colour').at(0));
       final b = tester.getRect(find.byTooltip('Colour').at(3));
-      expect(a.center.dx, b.center.dx, reason: 'colours in one column');
-      expect(b.top, greaterThan(a.bottom - 1), reason: 'stacked downwards');
-      final slider = tester.getRect(find.byType(Slider));
       expect(
-        slider.top,
+        b.top,
+        greaterThan(a.bottom - 1),
+        reason: 'a second row of colours',
+      );
+      expect(
+        a.center.dx,
+        lessThan(b.center.dx + 1),
+        reason: 'a grid, left to right',
+      );
+      final minus = tester.getRect(find.byTooltip('Thinner'));
+      expect(
+        minus.top,
         greaterThan(b.bottom - 1),
         reason: 'size below colours',
       );
@@ -125,63 +132,45 @@ void main() {
       await tester.pump();
       expect(find.text('Erase part of a stroke'), findsOneWidget);
       final sw = tester.getRect(find.byType(Switch));
-      final clear = tester.getRect(find.text('Clear all ink'));
+      final clear = tester.getRect(find.text('Clear all'));
       expect(clear.top, greaterThan(sw.bottom - 1), reason: 'buttons under it');
     });
 
-    testWidgets(
-      'a folded panel leaves a small tab with the colour; tap opens',
-      (tester) async {
-        final c = await pump(tester);
-        final n = c.read(canvasUiProvider.notifier)..setTool(CanvasTool.ink);
-        await tester.pump();
-        n.setPanelCollapsed(CanvasTool.ink, true);
-        await tester.pump();
-        expect(find.byType(Slider), findsNothing);
-        final tab = find.byTooltip('Show Ink options (double-tap Ink)');
-        expect(tab, findsOneWidget);
-        final r = tester.getRect(tab);
-        expect(r.height, greaterThanOrEqualTo(48));
-        expect(r.width, lessThan(120), reason: 'it is a tab, not a panel');
-        await tester.tap(tab);
-        await tester.pump();
-        expect(find.byType(Slider), findsOneWidget);
-        expect(c.read(canvasUiProvider).collapsedPanels, isEmpty);
-      },
-    );
-
-    testWidgets('the tab is named for screen readers', (tester) async {
-      final h = tester.ensureSemantics();
-      final c = await pump(tester);
-      c.read(canvasUiProvider.notifier)
-        ..setTool(CanvasTool.erase)
-        ..setPanelCollapsed(CanvasTool.erase, true);
+    testWidgets('a hidden panel leaves nothing behind: no tab, no chevron', (
+      tester,
+    ) async {
+      final c = await pump(tester, onClear: Clears());
+      final n = c.read(canvasUiProvider.notifier)..setTool(CanvasTool.ink);
       await tester.pump();
-      expect(find.bySemanticsLabel('Show Erase options'), findsOneWidget);
-      h.dispose();
+      expect(find.byTooltip('Thinner'), findsOneWidget);
+      n.setPanelCollapsed(CanvasTool.ink, true);
+      await tester.pump();
+      expect(find.byTooltip('Thinner'), findsNothing);
+      expect(find.byType(InkResponse), findsNothing);
+      n.togglePanel(CanvasTool.ink);
+      await tester.pump();
+      expect(find.byTooltip('Thinner'), findsOneWidget);
     });
 
-    testWidgets('Erase has Clear all ink', (tester) async {
+    testWidgets('Clear all is a full-width row in the danger colour', (
+      tester,
+    ) async {
       final clears = Clears();
       final c = await pump(tester, onClear: clears);
       c.read(canvasUiProvider.notifier).setTool(CanvasTool.erase);
       await tester.pump();
-      await tester.tap(find.text('Clear all ink'));
+      final label = find.text('Clear all');
+      final colour = tester.widget<Text>(label).style!.color;
+      expect(colour, AetherTokens.light.danger);
+      final panel = tester.getRect(find.byType(EraseOptions));
+      final row = tester.getRect(
+        find.ancestor(of: label, matching: find.byType(InkWell)),
+      );
+      expect(row.width, panel.width, reason: 'the row spans the panel');
+      expect(row.height, greaterThanOrEqualTo(48));
+      // Anywhere on the row triggers it, not just the words.
+      await tester.tapAt(Offset(row.right - 4, row.center.dy));
       expect(clears.log, ['all']);
-      for (final label in ['Clear all ink']) {
-        expect(
-          tester
-              .getSize(
-                find.ancestor(
-                  of: find.text(label),
-                  matching: find.byType(TextButton),
-                ),
-              )
-              .height,
-          greaterThanOrEqualTo(48),
-          reason: label,
-        );
-      }
     });
 
     testWidgets('on a phone the Erase and Ink panels fit 360 dp', (
@@ -189,7 +178,6 @@ void main() {
     ) async {
       final c = await pump(
         tester,
-        compact: true,
         onClear: Clears(),
         size: const Size(360, 640),
       );

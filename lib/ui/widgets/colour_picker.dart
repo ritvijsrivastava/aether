@@ -5,18 +5,24 @@ import '../theme/theme.dart';
 import '../theme/tokens.dart';
 import 'color_disc.dart';
 
-/// Asks for any colour: a saturation/brightness square, a hue bar and a hex
-/// field. Returns an opaque ARGB value, or null if cancelled.
-Future<int?> showColourPicker(BuildContext context, {required int initial}) {
+/// Asks for any colour: a saturation/brightness square, a hue bar, a hex
+/// field and the [saved] colours to start from. Returns an opaque ARGB value,
+/// or null if closed.
+Future<int?> showColourPicker(
+  BuildContext context, {
+  required int initial,
+  List<int> saved = const [],
+}) {
   return showDialog<int>(
     context: context,
-    builder: (_) => _PickerDialog(initial: initial),
+    builder: (_) => _PickerDialog(initial: initial, saved: saved),
   );
 }
 
 class _PickerDialog extends StatefulWidget {
-  const _PickerDialog({required this.initial});
+  const _PickerDialog({required this.initial, required this.saved});
   final int initial;
+  final List<int> saved;
 
   @override
   State<_PickerDialog> createState() => _PickerDialogState();
@@ -44,65 +50,106 @@ class _PickerDialogState extends State<_PickerDialog> {
     super.dispose();
   }
 
+  void _setColour(int argb) => _set(HSVColor.fromColor(Color(argb)));
+
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
     final text = AetherText(t.ink);
-    return AlertDialog(
+    return Dialog(
       backgroundColor: t.panel,
-      title: Text('Colour', style: text.panelTitle),
-      content: SizedBox(
-        width: 280,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _SvSquare(hsv: _hsv, onChanged: _set),
-            const SizedBox(height: AetherTokens.s3),
-            _HueBar(hsv: _hsv, onChanged: _set),
-            const SizedBox(height: AetherTokens.s3),
-            Row(
+      insetPadding: const EdgeInsets.all(AetherTokens.s4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AetherTokens.rPanel),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 320),
+        child: Padding(
+          padding: const EdgeInsets.all(AetherTokens.s4),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ColorDisc(_argb, size: 32),
-                const SizedBox(width: AetherTokens.s3),
-                Expanded(
-                  child: TextField(
-                    controller: _hex,
-                    maxLength: 6,
-                    textCapitalization: TextCapitalization.characters,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp('[0-9a-fA-F]')),
-                    ],
-                    decoration: const InputDecoration(
-                      prefixText: '#',
-                      counterText: '',
-                      labelText: 'Hex',
+                Row(
+                  children: [
+                    Expanded(child: Text('Colour', style: text.panelTitle)),
+                    IconButton(
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: Icon(Icons.close, color: t.ink),
                     ),
-                    onChanged: (v) {
-                      if (v.length == 6) {
-                        setState(
-                          () => _hsv = HSVColor.fromColor(
-                            Color(0xFF000000 | int.parse(v, radix: 16)),
+                  ],
+                ),
+                _SvSquare(hsv: _hsv, onChanged: _set),
+                const SizedBox(height: AetherTokens.s3),
+                _HueBar(hsv: _hsv, onChanged: _set),
+                const SizedBox(height: AetherTokens.s3),
+                Row(
+                  children: [
+                    ColorDisc(_argb, size: 28),
+                    const SizedBox(width: AetherTokens.s2),
+                    Expanded(
+                      child: TextField(
+                        controller: _hex,
+                        maxLength: 6,
+                        textCapitalization: TextCapitalization.characters,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp('[0-9a-fA-F]'),
                           ),
-                        );
-                      }
-                    },
+                        ],
+                        decoration: const InputDecoration(
+                          prefixText: '#',
+                          counterText: '',
+                          isDense: true,
+                        ),
+                        onChanged: (v) {
+                          if (v.length == 6) {
+                            setState(
+                              () => _hsv = HSVColor.fromColor(
+                                Color(0xFF000000 | int.parse(v, radix: 16)),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                if (widget.saved.isNotEmpty) ...[
+                  const SizedBox(height: AetherTokens.s3),
+                  Text('Saved colours', style: text.label),
+                  const SizedBox(height: AetherTokens.s1),
+                  Wrap(
+                    children: [
+                      for (final c in widget.saved)
+                        if (c != 0)
+                          InkResponse(
+                            radius: 24,
+                            onTap: () => _setColour(c),
+                            child: SizedBox(
+                              width: AetherTokens.minTarget,
+                              height: AetherTokens.minTarget,
+                              child: Center(child: ColorDisc(c)),
+                            ),
+                          ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: AetherTokens.s3),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(_argb),
+                    child: const Text('Use colour'),
                   ),
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_argb),
-          child: const Text('Use colour'),
-        ),
-      ],
     );
   }
 }
@@ -206,7 +253,7 @@ class _HueBar extends StatelessWidget {
             onPanDown: (d) => at(d.localPosition),
             onPanUpdate: (d) => at(d.localPosition),
             child: CustomPaint(
-              size: Size(w, 32),
+              size: Size(w, 24),
               painter: _HuePainter(hsv.hue),
             ),
           );
@@ -224,7 +271,7 @@ class _HuePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final r = Offset.zero & size;
     canvas.drawRRect(
-      RRect.fromRectAndRadius(r, const Radius.circular(16)),
+      RRect.fromRectAndRadius(r, const Radius.circular(12)),
       Paint()
         ..shader = LinearGradient(
           colors: [
@@ -236,7 +283,7 @@ class _HuePainter extends CustomPainter {
     final x = hue / 360 * size.width;
     canvas.drawCircle(
       Offset(x, size.height / 2),
-      14,
+      10,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3
@@ -244,7 +291,7 @@ class _HuePainter extends CustomPainter {
     );
     canvas.drawCircle(
       Offset(x, size.height / 2),
-      16,
+      12,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.5

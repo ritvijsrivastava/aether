@@ -1,97 +1,165 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../ui/theme/theme.dart';
 import '../../../ui/theme/tokens.dart';
+import '../../../ui/widgets/aether_icon.dart';
 import '../../../ui/widgets/panel_surface.dart';
 import '../canvas_ui_state.dart';
 import '../colour_strip.dart';
 
-/// The Ink tool's options as a column hanging from its rail button: the pen's
-/// last five colours (and any other colour), then the pen size below.
+/// The Ink tool's options, kept small: the pen's saved colours (and a button
+/// for any other) in a 3-wide grid, then the pen size as a wave drawn at the
+/// current thickness with a minus and a plus beside it.
 class InkOptions extends ConsumerWidget {
-  const InkOptions({super.key, this.sliderWidth = 140, this.compact = false});
+  const InkOptions({super.key});
 
-  /// Width of the size slider.
-  final double sliderWidth;
-
-  /// True on a phone: the column floats above the bottom bar, so it is not
-  /// anchored to a rail (no effect on content).
-  final bool compact;
+  /// How much one tap of minus or plus changes the size, in dp.
+  static const double step = 0.5;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ui = ref.watch(canvasUiProvider);
     final notifier = ref.read(canvasUiProvider.notifier);
     final t = context.tokens;
-    final text = AetherText(t.ink);
+    final colours = ui.inkColors;
+    const tile = AetherTokens.minTarget;
     return PanelSurface(
       radius: AetherTokens.rCard,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AetherTokens.s1,
-        vertical: AetherTokens.s1,
+      padding: const EdgeInsets.all(AetherTokens.s2),
+      child: SizedBox(
+        width: tile * 3,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Wrap(
+              alignment: WrapAlignment.center,
+              children: [
+                for (final c in colours.recent)
+                  ColourSwatch(
+                    tile: tile,
+                    color: c,
+                    selected: c == colours.current,
+                    label: 'A Pen colour',
+                    onTap: () => notifier.setInkColor(c),
+                  ),
+                AnyColourButton(
+                  tile: tile,
+                  label: 'Other Pen colour',
+                  current: colours.current,
+                  saved: colours.recent,
+                  onPick: notifier.setInkColor,
+                ),
+              ],
+            ),
+            Container(
+              height: 1,
+              margin: const EdgeInsets.symmetric(vertical: AetherTokens.s1),
+              color: t.hairline,
+            ),
+            _SizeRow(
+              width: ui.inkWidth,
+              colour: Color(
+                InkPalette.resolve(ui.inkColor, Theme.of(context).brightness),
+              ),
+              onChanged: notifier.setInkWidth,
+            ),
+          ],
+        ),
       ),
-      child: Column(
+    );
+  }
+}
+
+class _SizeRow extends StatelessWidget {
+  const _SizeRow({
+    required this.width,
+    required this.colour,
+    required this.onChanged,
+  });
+  final double width;
+  final Color colour;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Semantics(
+      container: true,
+      label: 'Pen size ${width.toStringAsFixed(1)}',
+      value: width.toStringAsFixed(1),
+      increasedValue: (width + InkOptions.step).toStringAsFixed(1),
+      decreasedValue: (width - InkOptions.step).toStringAsFixed(1),
+      onIncrease: () => onChanged(width + InkOptions.step),
+      onDecrease: () => onChanged(width - InkOptions.step),
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ColourStrip(
-            colours: ui.inkColors,
-            prefix: 'Pen',
-            axis: Axis.vertical,
-            onPick: notifier.setInkColor,
+          IconButton(
+            tooltip: 'Thinner',
+            visualDensity: VisualDensity.compact,
+            onPressed: width <= InkPalette.minWidth
+                ? null
+                : () => onChanged(width - InkOptions.step),
+            icon: AetherIcon(
+              AetherIcons.minus,
+              size: 18,
+              color: width <= InkPalette.minWidth ? t.inkFaint : t.ink,
+            ),
           ),
-          Container(height: 1, width: 40, color: t.hairline),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: sliderWidth,
-                height: AetherTokens.minTarget,
-                child: Slider(
-                  value: ui.inkWidth,
-                  min: InkPalette.minWidth,
-                  max: InkPalette.maxWidth,
-                  divisions: 14,
-                  label: ui.inkWidth.toStringAsFixed(1),
-                  semanticFormatterCallback: (v) =>
-                      'Pen size ${v.toStringAsFixed(1)}',
-                  onChanged: notifier.setInkWidth,
-                ),
+          Expanded(
+            child: ExcludeSemantics(
+              child: CustomPaint(
+                size: const Size.fromHeight(32),
+                painter: SizeWavePainter(width: width, color: colour),
               ),
-              // A dot as wide as the pen, so the size can be seen.
-              SizedBox(
-                width: 32,
-                child: Center(
-                  child: Container(
-                    width: (ui.inkWidth + 2).clamp(4, 24),
-                    height: (ui.inkWidth + 2).clamp(4, 24),
-                    decoration: BoxDecoration(
-                      color: Color(
-                        InkPalette.resolve(
-                          ui.inkColor,
-                          Theme.of(context).brightness,
-                        ),
-                      ),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-              ),
-              Semantics(
-                label: 'Pen size ${ui.inkWidth.toStringAsFixed(1)}',
-                excludeSemantics: true,
-                child: SizedBox(
-                  width: 30,
-                  child: Text(
-                    ui.inkWidth.toStringAsFixed(1),
-                    style: text.caption.copyWith(color: t.inkMuted),
-                  ),
-                ),
-              ),
-            ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Thicker',
+            visualDensity: VisualDensity.compact,
+            onPressed: width >= InkPalette.maxWidth
+                ? null
+                : () => onChanged(width + InkOptions.step),
+            icon: AetherIcon(
+              AetherIcons.plus,
+              size: 18,
+              color: width >= InkPalette.maxWidth ? t.inkFaint : t.ink,
+            ),
           ),
         ],
       ),
     );
   }
+}
+
+/// A sine wave stroked at the pen's size: what the line will look like.
+class SizeWavePainter extends CustomPainter {
+  SizeWavePainter({required this.width, required this.color});
+  final double width;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path();
+    final mid = size.height / 2;
+    const amp = 8.0;
+    for (var x = 0.0; x <= size.width; x += 1) {
+      final y = mid + amp * math.sin(x / size.width * 2 * math.pi);
+      x == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = width
+        ..color = color,
+    );
+  }
+
+  @override
+  bool shouldRepaint(SizeWavePainter old) =>
+      old.width != width || old.color != color;
 }
